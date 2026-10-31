@@ -1,7 +1,10 @@
 <script lang="ts">
+  import FaqLink from '$lib/components/help/FaqLink.svelte'
+  import CommandLine from '$lib/components/results/CommandLine.svelte'
   // History: the searches kept on this computer, each a folder of the app's data (the tool's outputs and a
   // record of the settings and the design; the mzML files stay where they are). Open, rename and delete;
-  // "Open project…" unpacks a .prose file into History. It stays usable while a search runs, and reads the
+  // "Import results archive (.prose)…" unpacks a .prose file into History (a project, .prose-setup.json, is opened from
+  // File › Open Project or New search). It stays usable while a search runs, and reads the
   // list again when it is shown. Beside each name: the search's database and, for searches of the same name,
   // what tells them apart (history/details.ts). A folder that is no search (no record, or a name that is not one
   // of a search) is listed with what is wrong, and can be deleted.
@@ -13,7 +16,7 @@
   import * as Table from '$lib/components/ui/table'
   import { formatBytes } from '$lib/format/bytes'
   import { formatCount } from '$lib/results/display'
-  import { history, openFromHistory, openProjectFile, refreshHistory, removeFromHistory, rename } from '$lib/history/history.svelte'
+  import { history, openFromHistory, openProjectFile, openQpxFolderFile, refreshHistory, removeFromHistory, rename, reopenInNewSearch } from '$lib/history/history.svelte'
   import type { HistoryEntry } from '$lib/history/history'
   import { distinguishing, entryFacts } from '$lib/history/details'
   import { searchForm } from '$lib/search/form.svelte'
@@ -71,7 +74,32 @@
     try {
       await openProjectFile()
     } catch (e) {
-      problem = { title: 'Could not open', text: `The project file could not be opened: ${message(e)}` }
+      problem = { title: 'Could not open', text: `The results archive could not be imported: ${message(e)}` }
+    } finally {
+      busy = null
+    }
+  }
+
+  /** "Settings" (into New search) and "Re-run" (and start it): the search's files, design, database and settings. */
+  async function reopen(entry: HistoryEntry, start: boolean) {
+    problem = null
+    busy = entry.id
+    try {
+      await reopenInNewSearch(entry.id, start)
+    } catch (e) {
+      problem = { title: 'Could not open', text: `The settings of ${entry.name ?? entry.id} could not be read: ${message(e)}` }
+    } finally {
+      busy = null
+    }
+  }
+
+  async function openQpx() {
+    problem = null
+    busy = 'qpx'
+    try {
+      await openQpxFolderFile()
+    } catch (e) {
+      problem = { title: 'Could not open', text: `The QPX folder could not be opened: ${message(e)}` }
     } finally {
       busy = null
     }
@@ -118,13 +146,22 @@
     <div>
       <h1 class="mb-1 text-xl font-semibold tracking-tight">History</h1>
       <p class="text-muted-foreground">
-        Finished searches are saved on this computer with their results and the spectra of their PSMs. Your mzML files
-        stay where they are.
+        Finished searches are saved on this computer with their results and the spectra of their PSMs. Your spectrum
+        files stay where they are.
       </p>
     </div>
-    <div>
+    <div class="flex gap-2">
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={busy !== null}
+        onclick={openQpx}
+        title="Open the QPX output of a ProSE run outside the app (-out_qpx <folder> -qpx_extended -keep_decoys), e.g. from a cluster"
+        data-testid="open-qpx">
+        {busy === 'qpx' ? 'Opening folder…' : 'Open QPX folder…'}
+      </Button>
       <Button variant="outline" size="sm" disabled={busy !== null} onclick={openFile} data-testid="open-project">
-        {busy === 'project' ? 'Opening project…' : 'Open project…'}
+        {busy === 'project' ? 'Importing…' : 'Import results archive (.prose)…'}
       </Button>
     </div>
   </div>
@@ -154,8 +191,8 @@
     <div class="rounded-lg border border-dashed bg-background px-6 py-10 text-center" data-testid="history-empty">
       <p class="text-sm font-medium">No saved searches yet</p>
       <p class="mx-auto mt-1 max-w-md text-xs text-muted-foreground">
-        Finished searches are saved here with their spectra, so you can reopen them later. To open a project file
-        (saved with Export › Project, here or on another computer), use Open project above.
+        Finished searches are saved here with their spectra, so you can reopen them later. To open a results archive
+        (saved with Export › Results archive, here or on another computer), use Import results archive above.<FaqLink faq="formats-results" label="What a search keeps ›" />
       </p>
     </div>
   {:else}
@@ -171,7 +208,7 @@
             <Table.Head scope="col" class="{head} text-left max-lg:hidden">Files</Table.Head>
             <Table.Head scope="col" class="{head} w-[4.5rem] text-right" title="Target PSMs that pass the search's PSM FDR">PSMs</Table.Head>
             <Table.Head scope="col" class="{head} w-[4.5rem] text-right" title="Disk space the search takes on this computer">Size</Table.Head>
-            <Table.Head scope="col" class="{head} w-[13rem] text-right"><span class="sr-only">Actions</span></Table.Head>
+            <Table.Head scope="col" class="{head} w-[28rem] text-right"><span class="sr-only">Actions</span></Table.Head>
           </Table.Row>
         </Table.Header>
         <Table.Body>
@@ -222,14 +259,29 @@
               <Table.Cell class="{cell} text-right tabular-nums" data-column="psms">{entry.psms === null ? '' : formatCount(entry.psms)}</Table.Cell>
               <Table.Cell class="{cell} text-right whitespace-nowrap tabular-nums" data-column="size">{formatBytes(entry.bytes)}</Table.Cell>
               <Table.Cell class="{cell} text-right whitespace-nowrap">
-                <div class="flex justify-end gap-1.5">
+                <div class="flex justify-end gap-0.5">
                   <Button size="xs" disabled={busy !== null || entry.error !== null} aria-label="Open {entry.name ?? entry.id}" onclick={() => open(entry)}>
                     {busy === entry.id ? 'Opening…' : 'Open'}
                   </Button>
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    disabled={busy !== null || entry.error !== null}
+                    title="Its files, design, database and settings in New search, to change and start"
+                    aria-label="Open the settings of {entry.name ?? entry.id} in New search"
+                    onclick={() => reopen(entry, false)}>Settings</Button>
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    disabled={busy !== null || entry.error !== null}
+                    title="Search the same files again with the same settings"
+                    aria-label="Re-run {entry.name ?? entry.id}"
+                    onclick={() => reopen(entry, true)}>Re-run</Button>
+                  {#if entry.error === null}<CommandLine id={entry.id} compact />{/if}
                   <!-- (not while it opens) -->
-                  <Button variant="outline" size="xs" disabled={busy === entry.id || entry.error !== null} aria-label="Rename {entry.name ?? entry.id}" onclick={() => startRename(entry)}
+                  <Button variant="ghost" size="xs" disabled={busy === entry.id || entry.error !== null} aria-label="Rename {entry.name ?? entry.id}" onclick={() => startRename(entry)}
                     >Rename</Button>
-                  <Button variant="outline" size="xs" disabled={busy === entry.id} aria-label="Delete {entry.name ?? entry.id}" onclick={() => askDelete(entry)}
+                  <Button variant="ghost" size="xs" disabled={busy === entry.id} aria-label="Delete {entry.name ?? entry.id}" onclick={() => askDelete(entry)}
                     >Delete</Button>
                 </div>
               </Table.Cell>
@@ -250,8 +302,8 @@
     <Dialog.Header>
       <Dialog.Title>Delete this search?</Dialog.Title>
       <Dialog.Description>
-        This removes “{deleting?.name ?? deleting?.id}” and its results from this computer. Your mzML files and any project
-        file you saved from it are kept.
+        This removes “{deleting?.name ?? deleting?.id}” and its results from this computer. Your mzML files, any results archive
+        and any project you saved from it are kept.
       </Dialog.Description>
     </Dialog.Header>
     <Dialog.Footer>

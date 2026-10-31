@@ -13,6 +13,11 @@ pub struct ToolInfo {
     pub path: String,
     /// Whether the tool was built with ONNX Runtime and has the PeptDeep models (see `has_onnx`).
     pub onnx: bool,
+    /// Whether the tool has `-sdrf` (its help lists it): New search then passes its SDRF.
+    pub sdrf: bool,
+    /// Whether the tool has `-inspect_out` (ProSE's own spectrum inspector, guidance G1): not used yet; the app
+    /// reads the mzML flags itself (`spectra`) until it is there.
+    pub inspect: bool,
 }
 
 pub const EXE: &str = if cfg!(windows) { "ProSE.exe" } else { "ProSE" };
@@ -100,14 +105,27 @@ pub const LOADER_VARIABLES: &[&str] = &[
 /// covers a tool from `PROSE_BIN` or the PATH. Any value but `OFF` turns the check off.
 pub const NO_UPDATE_CHECK: (&str, &str) = ("OPENMS_DISABLE_UPDATE_CHECK", "ON");
 
+/// The .NET runtime bundled beside the tool (`<tool>/../../dotnet`, `native/scripts/bundle-prose.sh`), if it is
+/// there: a folder with `host/fxr` (where the Thermo bridge of OpenMS looks for hostfxr under `DOTNET_ROOT`).
+/// ProSE's Thermo .raw reader runs its managed half (`bin/managed`) on it.
+pub fn bundled_dotnet(tool: &Path) -> Option<PathBuf> {
+    let root = tool.parent()?.parent()?.join("dotnet");
+    root.join("host").join("fxr").is_dir().then_some(root)
+}
+
 /// The command that runs the tool: `OPENBLAS_NUM_THREADS=1` unless the user has set it (Percolator's
 /// linear algebra would otherwise start a thread per core inside ProSE's own threads), as the
 /// FASTag shim does. `openblas` is the variable's current value. Always with [`NO_UPDATE_CHECK`] (a
-/// user's `OFF` included: the app makes no network contact). On macOS without the
-/// [`LOADER_VARIABLES`]; on Windows without a console window (the app has none to share).
+/// user's `OFF` included: the app makes no network contact). `DOTNET_ROOT` is the [`bundled_dotnet`]
+/// when the tool has one (it wins over a user's `DOTNET_ROOT`); without one the environment is left as it
+/// is, and the Thermo bridge looks for a .NET 8+ of the system (`DOTNET_ROOT`, then the standard places).
+/// On macOS without the [`LOADER_VARIABLES`]; on Windows without a console window (the app has none to share).
 pub fn command_with(path: &Path, openblas: Option<OsString>) -> Command {
     let mut command = Command::new(path);
     command.env(NO_UPDATE_CHECK.0, NO_UPDATE_CHECK.1);
+    if let Some(dotnet) = bundled_dotnet(path) {
+        command.env("DOTNET_ROOT", dotnet);
+    }
     if openblas.is_none() {
         command.env("OPENBLAS_NUM_THREADS", "1");
     }
@@ -177,10 +195,11 @@ pub fn has_onnx(path: &Path) -> bool {
             .all(|m| inside(m) && root.join(m).is_file())
 }
 
-/// Runs `path --help` and reads the version; fails if the tool does not run or does not say.
+/// Runs `path --helphelp` (the help with the advanced options, where `-sdrf` is) and reads the version; fails if
+/// the tool does not run or does not say.
 pub fn probe(path: &Path) -> Result<ToolInfo, String> {
     let output = command(path)
-        .arg("--help")
+        .arg("--helphelp")
         .stdin(Stdio::null())
         .output()
         .map_err(|e| format!("The ProSE tool {} cannot be run ({e}).", path.display()))?;
@@ -200,5 +219,7 @@ pub fn probe(path: &Path) -> Result<ToolInfo, String> {
         version,
         path: path.to_string_lossy().into_owned(),
         onnx: has_onnx(path),
+        sdrf: help.contains("-sdrf <file>"),
+        inspect: help.contains("-inspect_out <file>"),
     })
 }

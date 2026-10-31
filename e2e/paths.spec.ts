@@ -14,9 +14,11 @@ import {
   dropFiles,
   EXAMPLE_FASTA as FASTA,
   EXAMPLE_MZML as MZML,
+  EXAMPLE_PSMS,
   exampleSettings,
   goTo,
   searchFolders,
+  startReady,
   textOf,
   waitForResults,
 } from './lib.ts'
@@ -58,6 +60,7 @@ describe('inputs by path', () => {
       timeoutMsg: `${fileName} is not in the table`,
     })
     await expect($('[data-testid="fasta-proteins"]')).toHaveText('4,136 proteins')
+    await startReady()
     await $('button*=Start search').click()
     await waitForResults()
     const count = $('[data-testid="psm-count"]')
@@ -126,12 +129,13 @@ describe('inputs by path', () => {
     ).join(' ')
     expect(folders).toContain('erste Ablage')
     expect(folders).toContain('zweite Ablage')
+    await startReady()
     await $('button*=Start search').click()
     await waitForResults()
     const count = $('[data-testid="psm-count"]')
     await count.waitForDisplayed({ timeout: 20000 })
     // two copies of the run give what the example's two names give
-    await expect(count).toHaveText(expect.stringContaining('154'))
+    await expect(count).toHaveText(expect.stringContaining(EXAMPLE_PSMS))
     expect(await textOf('[data-testid="result-chip"]')).toContain('2 files')
   })
 })

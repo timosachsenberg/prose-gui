@@ -41,8 +41,8 @@ const defaults: Record<string, unknown> = {
 }
 
 describe('presets', () => {
-  it('has the three built-in presets, Orbitrap HCD first', () => {
-    expect(BUILTIN_PRESETS.map((p) => p.id)).toEqual(['orbitrap-hcd-tryptic', 'timstof-tryptic', 'open-search'])
+  it('has the built-in presets, Orbitrap HCD first', () => {
+    expect(BUILTIN_PRESETS.map((p) => p.id)).toEqual(['orbitrap-hcd-tryptic', 'astral-tryptic', 'iontrap-cid-tryptic', 'timstof-tryptic', 'open-search'])
     expect(DEFAULT_PRESET_ID).toBe('orbitrap-hcd-tryptic')
     for (const p of BUILTIN_PRESETS) expect(p.builtin).toBe(true)
   })
@@ -140,5 +140,15 @@ describe('presets', () => {
     expect(presetNamed(loadPresets(storage), ' mine ')?.name).toBe('mine')
     expect(presetNamed(loadPresets(storage), BUILTIN_PRESETS[1].name)?.builtin).toBe(true)
     expect(presetNamed(loadPresets(storage), 'other')).toBeNull()
+  })
+})
+
+describe('downloaded proteomes', () => {
+  it('names the organism of a proteome file', async () => {
+    const { proteomeLabel } = await import('./organisms')
+    expect(proteomeLabel('UP000005640_reviewed.fasta')).toBe('Human (Homo sapiens), reviewed')
+    expect(proteomeLabel('UP000002311.fasta')).toBe('Yeast (Saccharomyces cerevisiae S288C)')
+    expect(proteomeLabel('UP999999999.fasta')).toBeNull()
+    expect(proteomeLabel('human.fasta')).toBeNull()
   })
 })

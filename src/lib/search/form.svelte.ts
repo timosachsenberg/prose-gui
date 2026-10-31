@@ -5,13 +5,16 @@
 
 import { resolveDesign, type DesignInput } from '../design/model'
 import type { DesignFields, DesignUpdate } from '../design/paste'
-import { errorText, exampleFiles, inspectFiles, type FileFacts, type InputFile } from '../desktop'
+import { errorText, exampleFiles, inspectFiles, inspectSpectra, type FileFacts, type InputFile, type SpectraFacts, type FastaSummary } from '../desktop'
 import { changedParameters, copyValue, copyValues, defaultsOf, sameValue, type ParamEntry } from '../settings/parameters'
 import { BUILTIN_PRESETS, DEFAULT_PRESET_ID, deletePreset, loadPresets, renamePreset, savePreset, type Preset } from '../settings/presets'
 import { PROSE_PARAMETERS } from '../settings/prose'
 import { formatBytes } from '../format/bytes'
 import { formatPercent } from '../format/fdr'
-import { isFasta, isMzML } from './files'
+import { brukerFolder, isFasta, isSpectrum } from './files'
+
+/** How long the spectra of the files added together may take to inspect before Start goes ahead without their checks. */
+export const INSPECT_TIMEOUT_MS = 60_000
 
 export type FileRow = DesignFields & {
   id: string
@@ -20,6 +23,13 @@ export type FileRow = DesignFields & {
   spectra: number | null
   /** Why ProSE cannot search the file (cut off, not mzML, no spectra: `FileFacts.problem`); the search cannot start. */
   problem: string | null
+  /** The instrument model of an mzML's header, as SDRF writes it (NT=..;AC=..). */
+  instrument?: string
+  /** What its first MS2 spectra say by their flags (`inspectSpectra`, read after the row joins); null: not an
+   * mzML or not readable; undefined: not read yet. */
+  spectraFacts?: SpectraFacts | null
+  /** The file's last modification (ms; null: not known): an accepted red flag holds for this version of it. */
+  modified?: number | null
 }
 
 /**
@@ -34,14 +44,17 @@ export type DatabaseChoice = {
   error: string | null
   problem: string | null
   warnings: string[]
+  /** Its entries in numbers (organisms, decoys, ...), once counted. */
+  summary?: FastaSummary
+  /** Its last modification (ms; null: not known), as `FileRow.modified`. */
+  modified?: number | null
 }
 
 /** A cell of the design table whose text is not valid (`DesignCell`): the search cannot start until it is corrected. */
 export type InvalidCell = { row: string; label: string; text: string }
 
-/** The entries of the bundled cRAP FASTA (`src-tauri/resources/fasta/crap.fasta`), and their residues. */
+/** The entries of the bundled cRAP FASTA (`src-tauri/resources/fasta/crap.fasta`). */
 export const CRAP_PROTEINS = 116
-export const CRAP_RESIDUES = 38459
 
 /**
  * The example: OpenMS' small E. coli run (Ecoli_MS2_small.mzML: LTQ Orbitrap XL, CID, 139 MS2 spectra) searched
@@ -83,6 +96,18 @@ export function noFdrNotice(preset: Preset): string | null {
     `The preset “${preset.name}” searches without decoys, so its ${named} ${fdrs.length === 1 ? 'is' : 'are'} off: ` +
     'ProSE cannot estimate an FDR without decoys. Choose other decoys under Protein database to control the FDR.'
   )
+}
+
+/** A setup of New search, as `snapshot` keeps it. */
+export type FormSnapshot = {
+  files: FileRow[]
+  database: DatabaseChoice | null
+  notices: string[]
+  presetId: string
+  overrides: Record<string, unknown>
+  rescore: boolean
+  peptdeep: boolean
+  contaminants: boolean
 }
 
 /** What "Remove all" or "Start over" removed: the rows, the database (Start over), the notices, the example's settings. */
@@ -137,10 +162,35 @@ class SearchForm {
   #pending = new Set<string>()
   /** The cells of the design table whose text is not valid, by row and column. */
   invalidCells = $state<Record<string, InvalidCell>>({})
+  /** The number fields of the settings whose text is not valid (`NumberField`): their name, text and what is allowed. */
+  invalidFields = $state<Record<string, { label: string; text: string; hint: string }>>({})
   /** Files are being added or the example is loading: Remove all and Start over wait. */
   busy = $derived(this.adding > 0 || this.exampleLoading)
   /** What the last "Remove all" or "Start over" removed, for its Undo (until files or a database are chosen again). */
   removed = $state<Removed | null>(null)
+  /**
+   * The setup that opening a search from History (Re-run, Settings, a guidance re-run) replaced, for its Undo; `sdrf` is
+   * the SDRF session's (`SdrfSession.snapshot`). Until a search starts or another is opened.
+   */
+  replaced = $state.raw<{ by: string; form: FormSnapshot; sdrf: unknown } | null>(null)
+
+  /** Files, database, notices and settings as they are (`replaced`). */
+  snapshot(): FormSnapshot {
+    return {
+      files: $state.snapshot(this.files) as FileRow[], database: $state.snapshot(this.database) as DatabaseChoice | null,
+      notices: [...this.notices], presetId: this.presetId, overrides: $state.snapshot(this.overrides),
+      rescore: this.rescore, peptdeep: this.peptdeep, contaminants: this.contaminants,
+    }
+  }
+
+  /** The setup of `snapshot` back (the Undo of `replaced`). */
+  restoreSnapshot(s: FormSnapshot) {
+    this.#restoring++ // (a restore still inspecting its files changes nothing more)
+    this.guided = null
+    this.removed = null
+    Object.assign(this, { files: s.files, database: s.database, notices: s.notices, presetId: s.presetId, overrides: s.overrides, rescore: s.rescore, peptdeep: s.peptdeep, contaminants: s.contaminants })
+    for (const f of this.files) if (f.spectraFacts === undefined) this.#queueInspect(f.file.path)
+  }
   /** The example's settings (EXAMPLE.settings) are in force: set by loadExample (or an Undo), the example's files still there. */
   #exampleSettings = $state(false)
   /**
@@ -158,10 +208,25 @@ class SearchForm {
     return Object.entries(parameters).every(([name, value]) => sameValue(this.values[name], value))
   }
 
+  /**
+   * The values a guidance re-run changed (tolerance feedback, the diagnosis card: `rerunWith`), marked in the
+   * settings until the form is cleared or another search is opened: from which search, which parameters, as lines.
+   */
+  guided = $state<{ from: string; names: string[]; lines: string[] } | null>(null)
+
+  /** Marks `changes` of the search `from` (whose parameters were `before`) as the guidance's (`guided`). */
+  markGuided(from: string, before: Record<string, unknown>, changes: Record<string, unknown>) {
+    const old = { ...this.defaults, ...before }
+    const show = (v: unknown) => (Array.isArray(v) ? v.join(', ') : String(v))
+    const names = Object.keys(changes).filter((n) => !sameValue(old[n], changes[n]))
+    this.guided = { from, names, lines: names.map((n) => `${n}: ${show(old[n])} → ${show(changes[n])}`) }
+    this.showSettings = true
+  }
+
   /** Threads of the search (Advanced); null: all cores. */
   threads = $state<number | null>(null)
-  /** The Advanced area of the settings is open. */
-  advancedSettings = $state(false)
+  /** The parameters show (New search opens with the preset and a one-line summary of it only). */
+  showSettings = $state(false)
 
   /** ProSE's parameters by name (generated from the pinned tool). */
   entries = new Map(PROSE_PARAMETERS.map((e) => [e.name, e]))
@@ -220,15 +285,27 @@ class SearchForm {
     this.#exampleSettings = false
     this.presetId = id
     this.overrides = copyValues(preset.parameters)
+    // (the values a guidance re-run marked are replaced: no banner about them)
+    this.guided = null
+    // a preset of an organism brings its database, said so when it replaces the one chosen
+    if (preset.database) {
+      const before = this.database?.file.path
+      if (before && before !== preset.database) {
+        this.notices.push(`The preset “${preset.name}” brought its database ${fileName(preset.database)} in place of ${fileName(before)}. Choose yours again under Protein database to keep it.`)
+      }
+      void this.setDatabase(preset.database)
+      if (preset.contaminants !== undefined) this.contaminants = preset.contaminants
+    }
     const notice = noFdrNotice(preset)
-    if (notice) this.notices.push(notice)
+    if (notice && !this.notices.includes(notice)) this.notices.push(notice)
   }
 
   /** Saves the settings that differ from ProSE's defaults as a user preset and selects it. */
-  saveAsPreset(name: string): Preset {
+  saveAsPreset(name: string, withDatabase = false): Preset {
     // (the settings become the user's own: the example's no longer go back when its files go)
     this.#exampleSettings = false
-    const preset = savePreset(name, changedParameters($state.snapshot(this.values), this.defaults))
+    const database = withDatabase && this.database ? { path: this.database.file.path, contaminants: this.contaminants } : undefined
+    const preset = savePreset(name, changedParameters($state.snapshot(this.values), this.defaults), undefined, database)
     this.presets = loadPresets()
     this.presetId = preset.id
     this.overrides = copyValues(preset.parameters)
@@ -269,13 +346,13 @@ class SearchForm {
    * start with them. Resolves when the rows are there.
    */
   async addFiles(paths: Iterable<string>) {
-    const list = [...paths]
-    const skipped = list.filter((p) => !isMzML(fileName(p)) && !isFasta(fileName(p))).map(fileName)
+    const list = [...paths].map(brukerFolder)
+    const skipped = list.filter((p) => !isSpectrum(fileName(p)) && !isFasta(fileName(p))).map(fileName)
     const database = list.filter((p) => isFasta(fileName(p))).pop()
     const listed = new Set([...this.files.map((r) => r.file.path), ...this.#pending])
     const spectra: string[] = []
     const again: string[] = []
-    for (const p of list.filter((p) => isMzML(fileName(p)))) {
+    for (const p of list.filter((p) => isSpectrum(fileName(p)))) {
       if (listed.has(p)) again.push(fileName(p))
       else {
         listed.add(p)
@@ -284,7 +361,7 @@ class SearchForm {
     }
     if (skipped.length > 0) {
       this.notices.push(
-        `Not an mzML file: ${skipped.join(', ')}. Convert vendor files to mzML first, e.g. with ProteoWizard msconvert.`,
+        `Not a spectrum file ProSE reads (mzML, mzPeak, Thermo .raw, Bruker .d): ${skipped.join(', ')}.`,
       )
     }
     if (again.length > 0) {
@@ -320,7 +397,32 @@ class SearchForm {
   #addRow(facts: FileFacts, fields: DesignFields) {
     const id = `f${++nextId}`
     const file: InputFile = { path: facts.path, name: facts.name, size: facts.size }
-    this.files.push({ id, file, spectra: facts.spectra, problem: facts.problem ?? null, ...fields })
+    const instrument = facts.instrument ? `NT=${facts.instrument.name};AC=${facts.instrument.accession}` : undefined
+    this.files.push({ id, file, spectra: facts.spectra, problem: facts.problem ?? null, instrument, modified: facts.modified ?? null, ...fields })
+    this.#queueInspect(facts.path)
+  }
+
+  /** The paths whose spectra are to be inspected next (one call for the rows added together). */
+  #inspectQueue: string[] = []
+
+  /** Inspects the spectra of `path` in the background (`inspectSpectra`, cached by the shim): never blocks adding. */
+  #queueInspect(path: string) {
+    this.#inspectQueue.push(path)
+    if (this.#inspectQueue.length === 1) queueMicrotask(() => void this.#flushInspect())
+  }
+
+  async #flushInspect() {
+    const paths = this.#inspectQueue.splice(0)
+    let facts: (SpectraFacts | null)[]
+    try {
+      // (a read that hangs, say on a network share, must not hold Start for good: after a minute the facts are unknown)
+      facts = await Promise.race([inspectSpectra(paths), new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), INSPECT_TIMEOUT_MS))])
+    } catch {
+      facts = paths.map(() => null) // (no shim, or it failed: the status stays unknown)
+    }
+    paths.forEach((p, k) => {
+      for (const r of this.files) if (r.file.path === p) r.spectraFacts = facts[k] ?? null
+    })
   }
 
   removeFile(id: string) {
@@ -359,6 +461,7 @@ class SearchForm {
       replacedWith: { ...left.replacedWith, ...earlier?.replacedWith },
     }
     if (removed.files.length > 0 || removed.database) this.removed = removed
+    this.guided = null
     this.files = []
     this.notices = []
     if (database) this.database = null
@@ -370,6 +473,7 @@ class SearchForm {
     if (!r || this.busy) return
     this.removed = null
     this.files = [...r.files, ...this.files]
+    for (const f of r.files) if (f.spectraFacts === undefined) this.#queueInspect(f.file.path)
     this.notices = r.notices
     if (r.database) {
       this.database = r.database
@@ -456,6 +560,8 @@ class SearchForm {
         error: null,
         problem: facts.problem ?? null,
         warnings: facts.warnings ?? [],
+        modified: facts.modified ?? null,
+        ...(facts.fasta ? { summary: facts.fasta } : {}),
       }
   }
 
@@ -481,6 +587,60 @@ class SearchForm {
     } finally {
       this.exampleLoading = false
     }
+  }
+
+  /**
+   * A saved search's files, design, database and settings in the form ("Open in New search" and "Re-run" of
+   * History, survey P0-9). Files that are no longer where they were are named in a notice and left out (the search
+   * cannot start with fewer files unnoticed: the notice stays); a missing database leaves the FASTA to choose.
+   * Resolves with whether every file and the database were found (Re-run starts only then); a later restore
+   * supersedes an earlier one that is still inspecting its files (false, and it changes nothing more).
+   */
+  #restoring = 0
+  async restoreSearch(s: {
+    name: string
+    inputs: { path: string; fields: DesignFields }[]
+    database: string | null
+    databaseName: string
+    settings: { parameters: Record<string, unknown>; rescore: boolean; peptdeep: boolean; contaminants: boolean; presetId?: string }
+  }): Promise<boolean> {
+    const generation = ++this.#restoring
+    this.#leaveExample()
+    this.guided = null
+    this.files = []
+    this.notices = []
+    this.removed = null
+    this.database = null
+    this.presetId = this.presets.some((p) => p.id === s.settings.presetId) ? s.settings.presetId! : DEFAULT_PRESET_ID
+    this.overrides = copyValues(s.settings.parameters)
+    this.rescore = s.settings.rescore
+    this.peptdeep = s.settings.peptdeep
+    this.contaminants = s.settings.contaminants
+    this.showSettings = true
+    let complete = true
+    this.adding++
+    try {
+      const facts = await inspectFiles(s.inputs.map((i) => i.path))
+      if (generation !== this.#restoring) return false
+      const missing = facts.filter((f) => f.error !== null)
+      complete = missing.length === 0
+      facts.forEach((f, k) => {
+        if (f.error === null) this.#addRow(f, s.inputs[k].fields)
+      })
+      if (missing.length > 0) {
+        this.notices.push(`From “${s.name}”, ${missing.length === 1 ? 'this file is' : 'these files are'} no longer there: ${missing.map((f) => f.name).join(', ')}. Add ${missing.length === 1 ? 'it' : 'them'} again to search the same files.`)
+      }
+    } finally {
+      this.adding--
+    }
+    if (s.database) await this.setDatabase(s.database)
+    if (generation !== this.#restoring) return false
+    const chosen = this.database as DatabaseChoice | null
+    if (!chosen || chosen.error) {
+      this.notices.push(`Choose the database of “${s.name}” again: ${s.databaseName}${s.database ? ` is no longer at ${s.database}` : ''}.`)
+      return false
+    }
+    return complete
   }
 
   /** "6 files · 1.9 GB" */

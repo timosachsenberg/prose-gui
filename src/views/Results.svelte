@@ -4,6 +4,7 @@
   // panel beside the Proteins table; a PSM opens the PSM view beside the PSM table, which then narrows
   // to the list that "Previous" and "Next" go through. The Overview (files, and the mass shifts of an
   // open search), Samples and QC tabs show the search as a whole; Proteins stays the first view.
+  import FaqLink from '$lib/components/help/FaqLink.svelte'
   import SaveNotice from '$lib/components/history/SaveNotice.svelte'
   import ColumnsMenu from '$lib/components/results/ColumnsMenu.svelte'
   import FilterBar from '$lib/components/results/FilterBar.svelte'
@@ -23,7 +24,7 @@
   import { formatCount } from '$lib/results/display'
   import { exportCsv } from '$lib/results/exports'
   import { keyFigures, levelTotal } from '$lib/results/figures'
-  import { psmFdrAppliedToNone, psmFdrNotice } from '$lib/results/overview'
+  import { inputNoticeItems, psmFdrAppliedToNone, psmFdrNotice } from '$lib/results/overview'
   import { restoreFromHistory } from '$lib/history/history.svelte'
   import { resultsViewFor, type Tab } from '$lib/results/view.svelte'
   import { openResult } from '$lib/search/session.svelte'
@@ -35,6 +36,8 @@
   const view = $derived(result ? resultsViewFor(result) : null)
 
   // An address of a search that is not open (after a restart): History may have it
+  /** Why the last CSV export failed (the button's own export; the Export menu shows its errors itself). */
+  let csvError = $state<string | null>(null)
   let restoring = $state<string | null>(null)
   let restoreFailed = $state<{ id: string; reason: string | null } | null>(null)
   $effect(() => {
@@ -56,6 +59,8 @@
   const peptideTotal = $derived(view ? levelTotal(view.model, 'peptides', false) : 0)
   // the PSM FDR was requested but not applied to some file (no decoy PSM): its PSMs are not FDR-controlled
   const fdrNotice = $derived(view ? psmFdrNotice(view.result.outcome.summary) : null)
+  // what ProSE reported about the inputs' spectra (no MS2 spectra, profile spectra, charges outside the range)
+  const spectraNotices = $derived(view ? inputNoticeItems(view.result.outcome.summary) : [])
   const proteinTotal = $derived(view ? levelTotal(view.model, 'proteins', false) : 0)
 
   const tabs = $derived<{ value: Tab; label: string; count?: number }[]>([
@@ -91,6 +96,13 @@
     view?.openProtein(protein)
     await tick()
     panel?.focus()
+  }
+
+  /** A protein accession in the Peptides or PSM table: the Proteins tab with the protein's panel open. */
+  async function openProteinTab(protein: number) {
+    if (!view) return
+    view.tab = 'proteins'
+    await openProtein(protein)
   }
 
   async function closePanel() {
@@ -168,19 +180,26 @@
       <h1 class="sr-only">Results</h1>
       <SaveNotice id={view.result.id} />
       {#if fdrNotice}
-        <p class="text-xs text-amber-700" data-testid="psm-fdr-notice">{fdrNotice}</p>
+        <p class="text-xs text-amber-700" data-testid="psm-fdr-notice">{fdrNotice}<FaqLink faq="faq-decoys-fdr" /></p>
+      {/if}
+      {#if spectraNotices.length > 0}
+        <ul class="flex flex-col gap-0.5 text-xs text-amber-700 dark:text-amber-400" data-testid="input-notices">
+          {#each spectraNotices as notice (notice.text)}
+            <li>{notice.text}<FaqLink check={notice.kind} /></li>
+          {/each}
+        </ul>
       {/if}
       {#if view.result.outcome.warnings.length > 0}
         <p class="text-xs text-amber-700 dark:text-amber-400" data-testid="results-warnings">{view.result.outcome.warnings.join(' ')}</p>
       {/if}
       {#if !panelOpen && !psmOpen}
-        <KeyFigures {figures} proteinFdr={view.result.proteinFdr} proteinFdrApplied={view.result.outcome.summary.proteinFdrApplied} />
+        <KeyFigures {figures} proteinFdr={view.result.proteinFdr} proteinFdrApplied={view.result.outcome.summary.proteinFdrApplied} psmFdr={view.model.psmFdr} />
       {/if}
 
       <Tabs.Root bind:value={view.tab} class="flex min-h-0 flex-1 flex-col gap-3">
-        <div class="flex flex-wrap items-center justify-between gap-2" class:hidden={psmOpen}>
+        <div class="flex flex-wrap items-center justify-between gap-2 border-b" class:hidden={psmOpen}>
           <!-- scrolls sideways where the window is too narrow for all tabs -->
-          <Tabs.List class="max-w-full overflow-x-auto">
+          <Tabs.List class="max-w-full overflow-x-auto" data-testid="results-tabs">
             {#each tabs as t (t.value)}
               <Tabs.Trigger value={t.value} class="px-3 text-[13px]">
                 {t.label}{#if t.count !== undefined}<span class="ml-1 text-xs font-normal text-muted-foreground tabular-nums"
@@ -192,14 +211,18 @@
           {#if level}
             <div class="flex items-center gap-2">
               <ColumnsMenu {view} {level} />
-              <Button size="sm" class="h-7 px-2.5 text-xs" disabled={view.exporting} onclick={() => exportCsv(view)}>
+              <Button size="sm" class="h-7 px-2.5 text-xs" disabled={view.exporting} onclick={() => exportCsv(view).then(() => (csvError = null), (e) => (csvError = String((e as Error)?.message ?? e)))}>
                 {#if view.exporting}
                   Exporting…
+                {:else if panelOpen}
+                  <!-- beside the protein panel the tabs and these fit one row: the filter bar counts the rows -->
+                  Export CSV
                 {:else}
                   Export CSV · {formatCount(level.rows.length)}
                   {level.rows.length === 1 ? 'row' : 'rows'}
                 {/if}
               </Button>
+              {#if csvError}<span class="text-xs text-destructive" role="alert" data-testid="csv-error">Export failed: {csvError}</span>{/if}
             </div>
           {/if}
         </div>
@@ -218,9 +241,9 @@
             {:else if level.level === 'proteins'}
               <ProteinsTable bind:this={proteinsTable} {view} {level} onOpen={openProtein} />
             {:else if level.level === 'peptides'}
-              <PeptidesTable {view} {level} />
+              <PeptidesTable {view} {level} onOpen={(peptide) => openInPsmTable({ peptide })} onOpenProtein={openProteinTab} />
             {:else}
-              <PsmsTable bind:this={psmsTable} {view} {level} onOpen={openPsm} compact={psmOpen} />
+              <PsmsTable bind:this={psmsTable} {view} {level} onOpen={openPsm} compact={psmOpen} onOpenProtein={openProteinTab} />
             {/if}
             {#if level.level !== 'proteins' && !psmOpen}
               <p class="-mt-1 text-xs text-muted-foreground" data-testid="mod-legend">

@@ -2,14 +2,25 @@
   // The Overview tab: what was searched and how (the settings that matter for reading the numbers, and
   // the engine: the ProSE tool's version), a table of the searched files with what the search reports
   // of each, and, for an open search, the mass shifts the PSMs carry. The key figures stand above the tabs.
+  import FaqLink from '$lib/components/help/FaqLink.svelte'
   import * as Table from '$lib/components/ui/table'
   import { formatPercent, formatQ } from '$lib/format/fdr'
   import { formatCount } from '$lib/results/display'
   import { levelRows } from '$lib/results/figures'
+  import { baseName } from '$lib/results/model'
+  import { PSM_FDR_SKIPPED_WHY } from '$lib/results/overview'
   import { fileRows, formatSeconds, psmFdrFact, totalsOf, type EngineNote } from '$lib/results/overview'
   import type { ResultsView } from '$lib/results/view.svelte'
   import { toolState } from '$lib/search/tool.svelte'
+  import { openHelp } from '$lib/help-link.svelte'
+  import { methodsText } from '$lib/results/methods'
   import DeltaMassPanel from './DeltaMassPanel.svelte'
+  import GuidanceNotices from './GuidanceNotices.svelte'
+  import DiagnosisCard from './DiagnosisCard.svelte'
+  import SanitySection from './SanitySection.svelte'
+  import CommandLine from './CommandLine.svelte'
+  import ChemistrySection from './ChemistrySection.svelte'
+  import { precursorSample, searchedWindows, toleranceFindings } from '$lib/results/tolerance'
 
   let { view }: { view: ResultsView } = $props()
 
@@ -34,9 +45,12 @@
     return settings.peptdeep && applied > 0 ? `${percolator} with PeptDeep predictions` : percolator
   })
 
-  // the tool that searched: ProSE's version (that of this session's tool, or the stored search's)
+  // the tool that searched: ProSE's version as the result's provenance records it, else that of the stored search or
+  // of this session's tool ('unknown': History did not know it)
+  const version = $derived(
+    result.outcome.toolVersion || [result.stored?.moduleVersion, toolState.info?.version].find((v) => v !== undefined && v !== '' && v !== 'unknown') || '',
+  )
   const engine = $derived.by(() => {
-    const version = result.stored?.moduleVersion ?? toolState.info?.version ?? ''
     const short = /^\d+\.\d+/.exec(version)?.[0] ?? version
     return {
       value: short ? `ProSE ${short}` : 'ProSE',
@@ -54,6 +68,29 @@
     { name: 'Total time', value: formatSeconds(result.outcome.seconds) },
     { name: 'Engine', ...engine },
   ])
+
+  // the mass accuracy that ProSE measured per file, and the tolerances it recommends from it (advisory)
+  const accuracy = $derived(summary.files.filter((f) => f.precursorError || f.fragmentError))
+  // what the errors say about the windows (guidance G3), with re-runs that cannot make them worse
+  const findings = $derived(
+    toleranceFindings(summary, settings.parameters, precursorSample(view.model, searchedWindows(settings.parameters).precursor, summary.openSearch)),
+  )
+  const ppm = (e: { median: number; mad: number } | null) => (e ? `${e.median.toFixed(2)} ± ${e.mad.toFixed(2)}` : '–')
+
+  const methods = $derived(methodsText({ summary, settings, version, accepted: result.accepted }))
+  let copied = $state(false)
+  // ('Copied', or why not: a clipboard the system refused)
+  let copyFailed = $state(false)
+  async function copyMethods() {
+    try {
+      await navigator.clipboard.writeText(methods)
+      copied = true
+      copyFailed = false
+    } catch {
+      copyFailed = true
+    }
+    setTimeout(() => ((copied = false), (copyFailed = false)), 1500)
+  }
 
   const head = 'h-auto border-b px-2.5 py-1.5 font-medium text-muted-foreground'
   const cell = 'border-b px-2.5 py-1.5'
@@ -73,7 +110,15 @@
   {/if}
 {/snippet}
 
-<div class="flex flex-col gap-6 pb-6">
+<div class="flex flex-col gap-5 pb-6">
+  {#if !summary.proteinFdrApplied}
+    <div role="note" class="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200" data-testid="no-protein-fdr">
+      <span class="font-medium">No protein-level FDR.</span> The protein groups and their counts come from the PSMs at the PSM FDR and are not
+      FDR-controlled themselves. Peptide counts are not FDR-controlled at peptide level either.
+      <button type="button" class="ml-1 underline underline-offset-2" onclick={() => openHelp('fdr')}>What this means ›</button>
+    </div>
+  {/if}
+  <DiagnosisCard {view} />
   <section aria-labelledby="overview-search">
     <h2 id="overview-search" class="mb-2 text-[13px] font-semibold">Search</h2>
     <dl class="grid grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-x-6 gap-y-2 text-xs" data-testid="search-facts">
@@ -108,14 +153,19 @@
         <Table.Body>
           {#each rows as r (r.index)}
             <Table.Row>
-              <Table.Cell data-column="file" class="{cell} text-left font-medium">{r.file}</Table.Cell>
+              <Table.Cell data-column="file" class="{cell} text-left font-medium"
+                >{r.file}{#each r.inputWarnings as w (w.kind)}<span
+                    class="block font-normal text-amber-700 dark:text-amber-400"
+                    data-testid="input-warning"
+                    title={w.text}>{w.short}</span
+                  >{/each}</Table.Cell>
               <Table.Cell data-column="sample" class="{cell} text-left">{r.sample ?? '–'}</Table.Cell>
               <Table.Cell data-column="ms2" class="{cell} text-right">{r.ms2 === null ? '–' : formatCount(r.ms2)}</Table.Cell>
               <Table.Cell data-column="targets" class="{cell} text-right"
                 >{r.targets === null ? '–' : formatCount(r.targets)}{#if r.psmFdrSkipped}<span
                     class="block font-normal text-amber-700"
                     data-testid="no-psm-fdr"
-                    title="The PSM FDR was not applied to this file: no PSM matched a decoy, so its PSMs have no q-value and are not FDR-controlled."
+                    title="The PSM FDR was not applied to this file, so its PSMs have no q-value and are not FDR-controlled. {PSM_FDR_SKIPPED_WHY}"
                     >no FDR</span
                   >{/if}</Table.Cell>
               <Table.Cell data-column="decoys" class="{cell} text-right">{r.decoys === null ? '–' : formatCount(r.decoys)}</Table.Cell>
@@ -145,6 +195,53 @@
         {/if}
       </Table.Root>
     </div>
+  </section>
+
+  {#if accuracy.length > 0}
+    <section aria-labelledby="overview-accuracy" data-testid="mass-accuracy">
+      <h2 id="overview-accuracy" class="mb-1 text-[13px] font-semibold">Mass accuracy<span class="text-xs font-normal text-muted-foreground"><FaqLink faq="faq-mass-errors" label="Help ›" /></span></h2>
+      <p class="mb-2 text-xs text-muted-foreground">
+        Measured by ProSE on the PSMs that passed the FDR (median ± MAD, ppm). The recommended tolerances are advisory: they rest on
+        passing PSMs only.
+      </p>
+      <div class="mb-2"><GuidanceNotices {result} items={findings} testid="tolerance-findings" /></div>
+      <div class="rounded-lg border bg-background">
+        <Table.Root class="text-xs tabular-nums" aria-label="Mass accuracy per file">
+          <Table.Header>
+            <Table.Row class="hover:bg-transparent">
+              <Table.Head scope="col" class="{head} text-left">File</Table.Head>
+              <Table.Head scope="col" class="{head} text-right">Precursor error</Table.Head>
+              <Table.Head scope="col" class="{head} text-right">Recommended precursor tol.</Table.Head>
+              <Table.Head scope="col" class="{head} text-right">Fragment error</Table.Head>
+              <Table.Head scope="col" class="{head} text-right">Recommended fragment tol.</Table.Head>
+            </Table.Row>
+          </Table.Header>
+          <Table.Body>
+            {#each accuracy as f (f.path)}
+              <Table.Row>
+                <Table.Cell class="{cell} text-left font-medium">{baseName(f.path)}</Table.Cell>
+                <Table.Cell class="{cell} text-right">{ppm(f.precursorError)}</Table.Cell>
+                <Table.Cell class="{cell} text-right">{f.precursorError ? `${f.precursorError.recommended.toFixed(1)} ppm` : '–'}</Table.Cell>
+                <Table.Cell class="{cell} text-right">{ppm(f.fragmentError)}</Table.Cell>
+                <Table.Cell class="{cell} text-right">{f.fragmentError ? `${f.fragmentError.recommended.toFixed(1)} ppm` : '–'}</Table.Cell>
+              </Table.Row>
+            {/each}
+          </Table.Body>
+        </Table.Root>
+      </div>
+    </section>
+  {/if}
+
+  <SanitySection {view} />
+  <ChemistrySection {view} />
+
+  <section aria-labelledby="overview-methods" data-testid="methods">
+    <div class="mb-1 flex items-center gap-2">
+      <h2 id="overview-methods" class="text-[13px] font-semibold">Methods text</h2>
+      <button type="button" class="rounded border px-2 py-0.5 text-xs hover:bg-muted" onclick={copyMethods}>{copied ? 'Copied' : copyFailed ? 'Copy failed: select the text' : 'Copy'}</button>
+      <CommandLine id={result.id} />
+    </div>
+    <p class="max-w-[60rem] rounded-lg border bg-background px-3 py-2 text-xs leading-relaxed select-text">{methods}</p>
   </section>
 
   {#if summary.openSearch}

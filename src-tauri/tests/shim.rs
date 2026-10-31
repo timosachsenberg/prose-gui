@@ -137,7 +137,7 @@ fn the_app_outputs_are_always_requested() {
     assert!(!has(&args, "-Search:peptdeep:enable"));
     // one input: its own idXML (the Export menu's), no pooled output; a closed search: no modification analysis
     assert_eq!(
-        values_of(&args, "-out_idxml"),
+        values_of(&args, "-out"),
         vec![out.join("search.idXML").into_os_string()]
     );
     assert!(!has(&args, "-out_merged"));
@@ -158,7 +158,7 @@ fn several_inputs_ask_for_the_merged_output_and_open_search_for_the_modification
         values_of(&args, "-out_merged"),
         vec![out.join("merged.idXML").into_os_string()]
     );
-    assert!(!has(&args, "-out_idxml"));
+    assert!(!has(&args, "-out"));
     assert_eq!(
         values_of(&args, "-out_mod_analysis_dir"),
         vec![out.join("mods").into_os_string()]
@@ -507,7 +507,7 @@ fn input_paths_are_validated() {
     let out = i.dir.path().join("o");
     let missing = i.dir.path().join("data/missing.mzML");
     let folder = i.dir.path().join("data");
-    let raw = i.dir.write("data/a.raw", "x");
+    let raw = i.dir.write("data/a.wiff", "x");
     let text = i.dir.write("data/db.txt", ">a\nMK\n");
     assert!(
         build_args(&request(&[&missing], &i.fasta, false, json!({})), &out)
@@ -521,8 +521,17 @@ fn input_paths_are_validated() {
     assert!(
         build_args(&request(&[&raw], &i.fasta, false, json!({})), &out)
             .unwrap_err()
-            .contains("a.raw")
+            .contains("a.wiff")
     );
+    // Thermo .raw and mzPeak files and Bruker .d folders are inputs ProSE reads
+    let thermo = i.dir.write("data/b.raw", "x");
+    assert!(build_args(&request(&[&thermo], &i.fasta, false, json!({})), &out).is_ok());
+    let bruker = i.dir.path().join("data/c.d");
+    std::fs::create_dir_all(&bruker).unwrap();
+    assert!(build_args(&request(&[&bruker], &i.fasta, false, json!({})), &out).is_ok());
+    // a regular file named .d is no Bruker folder
+    let fake = i.dir.write("data/fake.d", "x");
+    assert!(build_args(&request(&[&fake], &i.fasta, false, json!({})), &out).unwrap_err().contains("Bruker .d folder"));
     assert!(
         build_args(&request(&[&i.mzml], &text, false, json!({})), &out)
             .unwrap_err()
@@ -1549,6 +1558,25 @@ fn the_tool_runs_with_one_blas_thread_unless_set() {
 }
 
 #[test]
+fn the_tool_runs_on_its_bundled_dotnet_if_it_has_one() {
+    let dir = TempDir::new("dotnet");
+    let tool_path = dir.write("prose/bin/ProSE", "");
+    let dotnet_root = |cmd: &std::process::Command| {
+        cmd.get_envs().find(|(k, _)| *k == "DOTNET_ROOT").map(|(_, v)| v.map(PathBuf::from))
+    };
+    // no bundled runtime: DOTNET_ROOT is left as it is (a system .NET is found by the Thermo bridge)
+    assert_eq!(tool::bundled_dotnet(&tool_path), None);
+    assert_eq!(dotnet_root(&tool::command_with(&tool_path, None)), None);
+    // a folder without host/fxr is no runtime
+    fs::create_dir_all(dir.path().join("prose/dotnet/shared")).unwrap();
+    assert_eq!(tool::bundled_dotnet(&tool_path), None);
+    fs::create_dir_all(dir.path().join("prose/dotnet/host/fxr/10.0.14")).unwrap();
+    let root = dir.path().join("prose/dotnet");
+    assert_eq!(tool::bundled_dotnet(&tool_path), Some(root.clone()));
+    assert_eq!(dotnet_root(&tool::command_with(&tool_path, None)), Some(Some(root)));
+}
+
+#[test]
 fn the_tool_never_runs_the_update_check_of_openms() {
     for openblas in [None, Some(OsString::from("4"))] {
         let cmd = tool::command_with(Path::new("/x/ProSE"), openblas);
@@ -2452,4 +2480,43 @@ fn cancel_all_stops_every_running_search() {
     run.searches.cancel_all();
     assert!(pids.iter().all(|p| !process_alive(*p)));
     assert!(run.listing().is_empty());
+}
+
+#[test]
+fn an_sdrf_is_passed_as_a_file_of_the_search_folder() {
+    let dir = std::env::temp_dir().join(format!("prose-sdrf-args-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let mzml = dir.join("a.mzML");
+    let fasta = dir.join("db.fasta");
+    std::fs::write(&mzml, "").unwrap();
+    std::fs::write(&fasta, ">p\nPEPTIDEK\n").unwrap();
+    let mut req = request(&[&mzml], &fasta, false, json!({}));
+    let out = dir.join("out");
+    assert!(!args_of(&req, &out).iter().any(|a| a == "-sdrf"));
+    req.sdrf = Some("source name\tcomment[data file]\ns\ta.mzML\n".into());
+    let args = args_of(&req, &out);
+    let at = args.iter().position(|a| a == "-sdrf").expect("-sdrf");
+    assert_eq!(args[at + 1], out.join(prose_desktop_lib::args::SDRF_FILE).into_os_string());
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn the_sdrf_names_the_links_prose_sees() {
+    use prose_desktop_lib::args::{sdrf_for_inputs, InputRecord};
+    let rec = |i: usize, name: &str| InputRecord {
+        id: format!("f{i}"),
+        index: i,
+        link: format!("{i}__{name}"),
+        stem: format!("{i}__{}", name.split('.').next().unwrap()),
+        name: name.into(),
+        path: format!("/d/{name}"),
+    };
+    let records = [rec(0, "Ecoli_1.mzML"), rec(1, "Ecoli_2.mzML")];
+    let text = "source name\tComment[Data File]\tfactor value[x]\r\na\tEcoli_1.wiff\tp\r\nb\tecoli_2.raw\tq\r\nc\tother.raw\tr\r\n";
+    assert_eq!(
+        sdrf_for_inputs(text, &records),
+        "source name\tComment[Data File]\tfactor value[x]\r\na\t0__Ecoli_1.mzML\tp\r\nb\t1__Ecoli_2.mzML\tq\r\nc\tother.raw\tr\r\n"
+    );
+    assert_eq!(sdrf_for_inputs("no data file\n", &records), "no data file\n");
 }

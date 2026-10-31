@@ -8,7 +8,7 @@ import { psmFdrOff } from './overview'
 import type { PsmOptionState } from '../psm/psm'
 import type { OpenResult } from '../search/session.svelte'
 import { columnDef } from './columns'
-import { toCsv } from './csv'
+import { toCsv, toXlsx } from './csv'
 import { levelTotal } from './figures'
 import { applyFilters, initialFilters, sortRows, type FilterState } from './filters'
 import { buildModel, peptideCounts, type Level, type ResultModel } from './model'
@@ -117,6 +117,11 @@ export class LevelState {
   /** The CSV of the view: the visible columns, the filtered and sorted rows (peptides in ProForma). */
   csv(): string {
     return toCsv(this.#view.model, this.level, this.rows, csvColumns(this.visible), this.filters)
+  }
+
+  /** The view as an Excel workbook: the columns and rows of `csv`. */
+  xlsx(): Uint8Array {
+    return toXlsx(this.#view.model, this.level, this.rows, csvColumns(this.visible), this.filters, this.level)
   }
 }
 
@@ -234,6 +239,8 @@ export class ResultsView {
       text: '',
       maxQ: m.psmFdr,
       proteinFilter: 'protein' in what ? index : undefined,
+      charges: undefined,
+      ranges: undefined,
       peptideFilter: 'peptide' in what ? index : undefined,
       hideContaminants: contaminant ? false : f.hideContaminants,
       showDecoys: decoy ? true : f.showDecoys,
@@ -243,7 +250,7 @@ export class ResultsView {
 
   /**
    * Opens PSM `i` (a row of `tables.psms`) in the PSM view, from the PSM table: the PSMs tab with the
-   * PSM selected. A filter that hides it is lifted (text, protein and peptide filters, the cutoff,
+   * PSM selected. A filter that hides it is lifted (text, protein, peptide and SDRF filters, the cutoff,
    * contaminants or decoys as far as it is one), so that it is a row of the list beside the view.
    */
   openPsm(i: number): void {
@@ -259,6 +266,9 @@ export class ResultsView {
         maxQ: m.psmFdr,
         proteinFilter: undefined,
         peptideFilter: undefined,
+        sdrf: undefined,
+        charges: undefined,
+        ranges: undefined,
         hideContaminants: m.peptide.contaminant[ps.peptide[i]] ? false : f.hideContaminants,
         showDecoys: ps.decoy[i] ? true : f.showDecoys,
       }
@@ -288,6 +298,9 @@ export class ResultsView {
       maxQ: m.psmFdr,
       proteinFilter: protein,
       peptideFilter: peptide ?? undefined,
+      sdrf: undefined,
+      charges: undefined,
+      ranges: undefined,
       hideContaminants: m.peptide.contaminant[ps.peptide[i]] ? false : restore.hideContaminants,
       showDecoys: ps.decoy[i] ? true : restore.showDecoys,
     }
@@ -355,6 +368,11 @@ export class ResultsView {
 /** The view of the open result. Its own effect root owns its deriveds, so that they keep working
  * after the component that first asked for it unmounts (the state survives a visit to New search). */
 let cached: { view: ResultsView; destroy: () => void } | null = null
+
+/** The view state of the result open last, if there is one (a project saves it: `project/project.svelte.ts`). */
+export function currentResultsView(): ResultsView | null {
+  return cached?.view ?? null
+}
 
 /** Releases the view of the open result (its model and caches), e.g. when another result opens. */
 export function releaseResultsView(): void {

@@ -14,7 +14,7 @@
 //!   the disk is asked.
 //! - [`example_files`]: the bundled example, as the two named runs the web app searches.
 
-use crate::args::{is_fasta_file, is_input_link, is_spectrum_file, suffix_start, DATABASE_RECORD};
+use crate::args::{is_bruker_d, is_fasta_file, is_input_link, is_spectrum_file, suffix_start, DATABASE_RECORD};
 use crate::content;
 use serde::Serialize;
 use std::fs;
@@ -273,6 +273,9 @@ pub struct FileFacts {
     pub name: String,
     /// Bytes (0 with an error).
     pub size: u64,
+    /// The last modification, in milliseconds since 1970 (None: not known): with the size, what an accepted red
+    /// flag is kept for, so that a changed file is checked again.
+    pub modified: Option<u64>,
     /// The `count` of an mzML's `<spectrumList>` (all spectra; of a `.mzML.gz` decompressed); None if the
     /// header does not say.
     pub spectra: Option<u64>,
@@ -287,6 +290,26 @@ pub struct FileFacts {
     pub problem: Option<String>,
     /// What ProSE may mishandle (a FASTA's byte-order mark, lowercase residues): shown, not blocking.
     pub warnings: Vec<String>,
+    /// An mzML's instrument model (for an SDRF's comment[instrument]).
+    pub instrument: Option<content::Instrument>,
+    /// A FASTA's summary (organisms, header style, decoys, contaminants, isoforms; guidance G6).
+    pub fasta: Option<content::FastaSummary>,
+}
+
+/// The bytes of the regular files in `dir` and below (links not followed).
+fn folder_bytes(dir: &Path) -> u64 {
+    fs::read_dir(dir)
+        .map(|entries| {
+            entries
+                .flatten()
+                .map(|e| match e.file_type() {
+                    Ok(t) if t.is_dir() => folder_bytes(&e.path()),
+                    Ok(t) if t.is_file() => e.metadata().map(|m| m.len()).unwrap_or(0),
+                    _ => 0,
+                })
+                .sum()
+        })
+        .unwrap_or(0)
 }
 
 /// The facts of the file at `path` (an absolute path). Never fails: what goes wrong is in `error`.
@@ -299,12 +322,15 @@ pub fn inspect(path: &str) -> FileFacts {
         path: path.to_string(),
         name: name.clone(),
         size: 0,
+        modified: None,
         spectra: None,
         proteins: None,
         residues: None,
         error: None,
         problem: None,
         warnings: Vec::new(),
+        instrument: None,
+        fasta: None,
     };
     if !Path::new(path).is_absolute() {
         facts.error = Some(format!("{path} is not an absolute path."));
@@ -314,14 +340,14 @@ pub fn inspect(path: &str) -> FileFacts {
     // are not even looked up, so the page learns nothing of them
     if !is_spectrum_file(&name) && !is_fasta_file(&name) {
         facts.error = Some(format!(
-            "{path} is not an mzML file (.mzML, .mzML.gz) or a FASTA file (.fasta, .fa, .faa)."
+            "{path} is not a spectrum file (.mzML, .mzML.gz, .mzpeak, .raw, a Bruker .d folder) or a FASTA file (.fasta, .fa, .faa)."
         ));
         return facts;
     }
     let meta = match fs::metadata(path) {
-        Ok(meta) if meta.is_file() => meta,
+        Ok(meta) if (meta.is_file() && !is_bruker_d(&name)) || (meta.is_dir() && is_bruker_d(&name)) => meta,
         Ok(_) => {
-            facts.error = Some(format!("{path} is not a file."));
+            facts.error = Some(if is_bruker_d(&name) { format!("{path} is not a Bruker .d folder.") } else { format!("{path} is not a file.") });
             return facts;
         }
         Err(e) => {
@@ -329,7 +355,9 @@ pub fn inspect(path: &str) -> FileFacts {
             return facts;
         }
     };
-    facts.size = meta.len();
+    // (a .d folder: the sum of its files, not the folder's own entry)
+    facts.size = if meta.is_dir() { folder_bytes(Path::new(path)) } else { meta.len() };
+    facts.modified = meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_millis() as u64);
     let file = Path::new(path);
     let counted = if is_fasta_file(&name) {
         content::fasta(file, &name).map(|f| {
@@ -337,13 +365,18 @@ pub fn inspect(path: &str) -> FileFacts {
             facts.residues = Some(f.residues);
             facts.problem = (!f.problems.is_empty()).then(|| f.problems.join(" "));
             facts.warnings = f.warnings;
+            facts.fasta = Some(f.summary);
         })
+    } else if suffix_start(&name, ".mzml").is_none() && suffix_start(&name, ".mzml.gz").is_none() {
+        // ponytail: mzPeak and vendor files are not looked into here; ProSE says what it cannot read
+        Ok(())
     } else {
         let mzml = if suffix_start(&name, ".gz").is_some() {
             content::mzml_gz(file, &name)
         } else {
             content::mzml(file, &name)
         };
+        facts.instrument = content::mzml_instrument(file);
         mzml.map(|m| {
             facts.spectra = m.spectra;
             facts.problem = m.problem;

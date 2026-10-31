@@ -165,9 +165,17 @@ fn the_example_is_searched_through_start_search() {
     for gone in ["oms", "spectra", "summary.yaml"] {
         assert!(!folder.join(gone).exists(), "{gone}");
     }
-    for file in ["merged.idXML", "inputs.json", "prose.log", "database.fasta"] {
+    for file in ["merged.idXML", "inputs.json", "prose.log", "database.fasta", "prose.ini", "command.txt"] {
         assert!(folder.join(file).is_file(), "{file}");
     }
+    // the parameters went in through the INI (guidance G8), not on the command line: ProSE took the example's
+    // fragment tolerance from it
+    let log = fs::read_to_string(folder.join("prose.log")).unwrap();
+    assert!(log.contains("Fragment tolerance 0.5 Da"), "{log}");
+    assert!(fs::read_to_string(folder.join("prose.ini")).unwrap().contains("<ITEM name=\"mass_tolerance\" value=\"0.5\" type=\"double\""));
+    let command = fs::read_to_string(folder.join("command.txt")).unwrap();
+    assert!(command.starts_with("ProSE -in <input 1> <input 2> -database <database> -out_qpx <search folder>/qpx"), "{command}");
+    assert!(command.contains("-ini <search folder>/prose.ini"), "{command}");
     assert!(fs::read_to_string(folder.join("database.fasta"))
         .unwrap()
         .contains(">CON__sp|ALBU_BOVIN|"));
@@ -382,4 +390,92 @@ fn processes_with(needle: &str) -> usize {
                 .unwrap_or(false)
         })
         .count()
+}
+
+#[test]
+fn an_sdrf_annotates_the_qpx_views_of_a_tool_that_has_sdrf() {
+    let Some(real) = real() else { return };
+    if !tool::probe(&real.bin).unwrap().sdrf {
+        eprintln!("skipped: {} has no -sdrf", real.bin.display());
+        return;
+    }
+    let work = TempDir::new("real-sdrf");
+    let mut request = example_request_with(&real, &work, false, json!({ "FDR:PSM": 0.02, "FDR:protein": 0 }));
+    // two inputs of their own names; the SDRF names the vendor file of the first
+    for (i, f) in request.files.iter_mut().enumerate() {
+        let renamed = Path::new(&f.path).with_file_name(format!("rep_{}.mzML", i + 1));
+        fs::rename(&f.path, &renamed).unwrap();
+        f.path = renamed.to_string_lossy().into_owned();
+    }
+    request.sdrf = Some(
+        "source name\tcharacteristics[organism]\tcharacteristics[biological replicate]\tassay name\tcomment[label]\tcomment[data file]\tcomment[fraction identifier]\tcomment[technical replicate]\tfactor value[condition]\n\
+         first sample\tEscherichia coli\t1\trun 1\tlabel free sample\trep_1.raw\t1\t1\tA\n\
+         second sample\tEscherichia coli\t2\trun 2\tlabel free sample\trep_2.mzML\t1\t1\tB\n"
+            .into(),
+    );
+    let searches = Arc::new(Searches::default());
+    let (sink, rx) = channel_sink();
+    let crap = tool::bundled_crap(None).expect("resources/fasta/crap.fasta");
+    let searches_dir = work.path().join("searches");
+    searches.start(&real.bin, &searches_dir, Some(&crap), request, sink).unwrap();
+    let folder = match until_terminal(&rx, Duration::from_secs(300)).last() {
+        Some(SearchEvent::Done(d)) => PathBuf::from(&d.folder),
+        other => panic!("not done: {other:?}"),
+    };
+    let sdrf = fs::read_to_string(folder.join(prose_desktop_lib::args::SDRF_FILE)).unwrap();
+    assert!(sdrf.contains("\t1__rep_1.mzML\t") && sdrf.contains("\t2__rep_2.mzML\t"), "{sdrf}");
+    let log = fs::read_to_string(folder.join("prose.log")).unwrap();
+    assert!(log.contains("SDRF: sample metadata of 2 of 2 input(s)"), "{log}");
+    assert!(parquet(&folder.join("qpx/quantms.sample.parquet")));
+}
+
+/// Vendor inputs ProSE reads without conversion: a Thermo .raw file (`PROSE_RAW_FILE`) and a Bruker timsTOF .d folder
+/// (`PROSE_D_FOLDER`, e.g. OpenTIMS' test.d), each searched against the example's FASTA with `PROSE_BIN`. Skipped without them.
+/// A tool with a bundled .NET runtime (`tool::bundled_dotnet`) has to read the .raw file on that runtime, not on a
+/// .NET of the system (the host's trace, `COREHOST_TRACE`, names the framework folder it chose).
+#[test]
+fn searches_thermo_raw_and_bruker_d_inputs() {
+    let Some(real) = real() else { return };
+    let inputs: Vec<PathBuf> = ["PROSE_RAW_FILE", "PROSE_D_FOLDER"]
+        .iter()
+        .filter_map(|v| std::env::var_os(v).map(PathBuf::from))
+        .collect();
+    if inputs.is_empty() {
+        eprintln!("skipped: set PROSE_RAW_FILE and/or PROSE_D_FOLDER");
+        return;
+    }
+    for input in inputs {
+        let work = TempDir::new("vendor");
+        let out = work.path().join("out.idXML");
+        // (the app's command: DOTNET_ROOT is the bundled .NET runtime of the tool, if it has one)
+        let mut command = tool::command(&real.bin);
+        let trace = work.path().join("corehost-trace.txt");
+        let bundled = tool::bundled_dotnet(&real.bin)
+            .filter(|_| input.extension().is_some_and(|e| e.eq_ignore_ascii_case("raw")));
+        if bundled.is_some() {
+            command.env("COREHOST_TRACE", "1").env("COREHOST_TRACEFILE", &trace);
+        }
+        let run = command
+            .arg("-in")
+            .arg(&input)
+            .arg("-database")
+            .arg(real.example.join(FASTA))
+            .arg("-out")
+            .arg(&out)
+            .args(["-threads", "4", "-Search:rescore", "false"])
+            .output()
+            .unwrap();
+        let log = String::from_utf8_lossy(&run.stdout).into_owned() + &String::from_utf8_lossy(&run.stderr);
+        assert!(run.status.success(), "{} was not searched:\n{log}", input.display());
+        assert!(out.is_file(), "{}: no idXML written:\n{log}", input.display());
+        assert!(log.contains("MS2 spectra"), "{}: ProSE read no spectra:\n{log}", input.display());
+        if let Some(root) = bundled {
+            // (Windows: either slash, any case of the drive letter)
+            let slashes = |s: &str| s.replace('\\', "/").to_lowercase();
+            let trace = slashes(&String::from_utf8_lossy(&fs::read(&trace).unwrap()));
+            let chosen = trace.lines().find(|l| l.starts_with("chose fx version [")).unwrap_or("(none)");
+            let want = slashes(&root.join("shared").join("Microsoft.NETCore.App").to_string_lossy());
+            assert!(chosen.contains(&want), "the .raw file was not read on the bundled .NET ({want}): {chosen}");
+        }
+    }
 }

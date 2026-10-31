@@ -6,6 +6,13 @@ import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 /** The example's run and FASTA, as the app bundles them (src-tauri/resources/example). */
+/**
+ * The PSMs ProSE finds in one copy of the example's run at its settings (2 % PSM FDR), and in the example (two copies):
+ * a property of the engine at native/OPENMS_COMMIT (598017b1; the develop pin before it, 31e6d9da, found 77), to
+ * update with the pin.
+ */
+export const EXAMPLE_RUN_PSMS = 66
+export const EXAMPLE_PSMS = String(2 * EXAMPLE_RUN_PSMS)
 export const EXAMPLE_DIR = resolve(fileURLToPath(new URL('../src-tauri/resources/example', import.meta.url)))
 export const EXAMPLE_MZML = join(EXAMPLE_DIR, 'Ecoli_MS2_small.mzML')
 export const EXAMPLE_FASTA = join(EXAMPLE_DIR, 'Ecoli_K12_proteome.fasta')
@@ -178,6 +185,7 @@ export async function runExample(options: { peptdeep?: boolean } = {}): Promise<
     await $('#peptdeep').click()
     await expect($('#peptdeep')).toHaveAttribute('aria-checked', 'true')
   }
+  await startReady()
   await $('button*=Start search').click()
   const id = await waitForResults()
   await $('[data-testid="psm-count"]').waitForDisplayed({ timeout: 30000 })
@@ -191,6 +199,7 @@ export async function runExample(options: { peptdeep?: boolean } = {}): Promise<
  */
 export async function exampleSettings() {
   await freshForm()
+  await openAdvanced()
   await $('button[aria-label^="Fragment tolerance unit: ppm"]').click()
   await $('#fragment-tolerance').setValue('0.5')
   await expect($('button[aria-label^="Fragment tolerance unit: Da"]')).toBeExisting()
@@ -219,6 +228,7 @@ export async function startLongSearch() {
   await dropFiles([...files, EXAMPLE_FASTA])
   await expect($('[data-testid="design-summary"]')).toHaveText(expect.stringContaining(`${LONG_SEARCH_FILES} files`))
   await expect($('[data-testid="fasta-proteins"]')).toHaveText('4,136 proteins')
+  await startReady()
   await $('button*=Start search').click()
   await $('[data-testid="search-progress"]').waitForDisplayed({ timeout: 20000 })
 }
@@ -251,4 +261,23 @@ export function windowCloseToolsMissing(): string | null {
     }
   })
   return missing.length === 0 ? null : `needs ${missing.map(([t]) => (t === 'python3' ? 'python3 with libX11' : t)).join(', ')} on the host`
+}
+
+/** Start search can start: it is aria-disabled, not disabled, while it cannot (it stays focusable to say why). */
+export async function startReady(timeout = 30000) {
+  await browser.waitUntil(async () => (await $('[data-testid="start-search"]').getAttribute('aria-disabled')) !== 'true', {
+    timeout,
+    timeoutMsg: 'Start search stays unavailable',
+  })
+}
+
+/**
+ * Opens "Advanced settings" of New search if it is closed: the tolerances, enzyme, charges and the rest are there,
+ * and a fresh form shows only their summary.
+ */
+export async function openAdvanced() {
+  const toggle = $('[data-testid="show-settings"]')
+  await toggle.waitForDisplayed({ timeout: 20000 })
+  if ((await toggle.getAttribute('aria-expanded')) !== 'true') await toggle.click()
+  await $('#fragment-tolerance').waitForDisplayed({ timeout: 10000 })
 }

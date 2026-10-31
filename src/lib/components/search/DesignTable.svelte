@@ -1,7 +1,9 @@
 <script lang="ts">
-  // The Spectra card: the mzML files and, from two files on, the experimental design (File ·
+  // The Spectra card: the spectrum files and, from two files on, the experimental design (File ·
   // Condition · Replicate · Fraction; Advanced: Tech. replicate, Fraction group, Sample). Assumed values
   // are greyed; notices go below the table, the summary above it.
+  import FaqLink from '$lib/components/help/FaqLink.svelte'
+  import StepNumber from './StepNumber.svelte'
   import TriangleAlertIcon from '@lucide/svelte/icons/triangle-alert'
   import XIcon from '@lucide/svelte/icons/x'
   import { tick } from 'svelte'
@@ -14,14 +16,19 @@
   import type { Notice as DesignNotice } from '$lib/design/model'
   import { applyDesign } from '$lib/design/paste'
   import { parseSdrf } from '$lib/design/sdrf'
-  import { chooseFiles } from '$lib/desktop'
-  import { download } from '$lib/download'
+  import { sdrfSession, addAnyFiles } from '$lib/design/sdrf-session.svelte'
+  import { chooseFiles, isDesktop, saveText } from '$lib/desktop'
   import { cn } from '$lib/utils'
   import { formatBytes } from '$lib/format/bytes'
   import { searchForm as form } from '$lib/search/form.svelte'
+  import { batchStatus, inspectable } from '$lib/search/spectra'
+  import { FRACTIONS_NOTE_ID, fractionsWithoutReplicates, scopeLine } from '$lib/search/scope'
+  import { searchPlan } from '$lib/search/plan.svelte'
   import DesignCell from './DesignCell.svelte'
   import NoticeList from './NoticeList.svelte'
   import PasteDialog from './PasteDialog.svelte'
+  import SdrfPanel from './SdrfPanel.svelte'
+  import SdrfStatusCell from './SdrfStatusCell.svelte'
 
   let designInput = $state<HTMLInputElement | null>(null)
   let pasteOpen = $state(false)
@@ -33,7 +40,7 @@
 
   async function add() {
     const paths = await chooseFiles('spectra')
-    if (paths.length > 0) await form.addFiles(paths)
+    if (paths.length > 0) await addAnyFiles(paths)
   }
 
   /** The folder of a path (shown beside the name: two files of one name stay apart). */
@@ -63,7 +70,7 @@
   async function saveDesign() {
     saveError = null
     try {
-      await download('design.tsv', writeDesignTsv(design), 'text/tab-separated-values')
+      await saveText('design.tsv', writeDesignTsv(design))
     } catch (e) {
       saveError = String((e as Error)?.message ?? e)
     }
@@ -87,9 +94,15 @@
           action: n.kind === 'techReplicate' ? { label: 'Change', run: () => change(n) } : undefined,
         }))
       : []),
+    ...(multi && fractionsWithoutReplicates(design) ? [{ message: fractionsWithoutReplicates(design)!, help: FRACTIONS_NOTE_ID }] : []),
     ...form.notices.map((message, k) => ({ message, onDismiss: () => form.notices.splice(k, 1) })),
     ...(saveError ? [{ message: saveError, onDismiss: () => (saveError = null) }] : []),
   ])
+
+  // what the files' first MS2 spectra say by their flags (G1): one line for the batch, a mark where a file differs
+  const status = $derived(batchStatus(form.files.map((r) => ({ path: r.file.path, facts: r.spectraFacts }))))
+  const inspecting = $derived(form.files.some((r) => r.spectraFacts === undefined && inspectable(r.file.name)))
+  const unchecked = $derived(form.files.filter((r) => r.spectraFacts === null).length)
 
   /** The files ProSE cannot search (`FileRow.problem`), as the Spectra card lists them. */
   const problems = $derived(form.files.filter((r) => r.problem).map((r) => `${r.problem} Remove it to start the search.`))
@@ -101,8 +114,9 @@
   const minWidth = $derived(!multi ? '' : form.advanced ? 'min-w-[1000px]' : 'min-w-[720px]')
 </script>
 
-<Card.Root size="sm" class="gap-3 rounded-lg shadow-none">
+<Card.Root size="sm" class="gap-3">
   <Card.Header class="flex flex-wrap items-center gap-x-2.5 gap-y-2">
+    <StepNumber n={1} />
     <Card.Title class="text-[14px] font-semibold">Spectra</Card.Title>
     <span class="text-muted-foreground">{form.filesLine}</span>
     <div class="flex-1"></div>
@@ -110,8 +124,6 @@
       {#if multi}
         <Button variant="ghost" size="sm" class={headerButton + ' text-muted-foreground'} onclick={() => (pasteOpen = true)}
           >Paste from spreadsheet</Button>
-        <Button variant="outline" size="sm" class={headerButton} onclick={() => designInput?.click()}
-          >Load design (SDRF, design.tsv)</Button>
         {#if duplicate}
           <!-- aria-disabled, not disabled: the button stays focusable, so that its tooltip says why -->
           <Tooltip.Root>
@@ -132,9 +144,17 @@
           <Button variant="outline" size="sm" class={headerButton} onclick={saveDesign}>Save design.tsv</Button>
         {/if}
       {/if}
+      <!-- (in the app, Add files takes an SDRF or design.tsv too) -->
+      {#if !isDesktop()}
+        <Button variant="outline" size="sm" class={headerButton} onclick={() => designInput?.click()}>Load design (SDRF, design.tsv)</Button>
+      {/if}
+      {#if !sdrfSession.path}
+        <Button variant="ghost" size="sm" class={headerButton + ' text-muted-foreground'} title="An SDRF of these files, to annotate and save" onclick={() => sdrfSession.create()}
+          >Create SDRF…</Button>
+      {/if}
       <Button variant="ghost" size="sm" class={headerButton + ' text-muted-foreground'} disabled={form.busy} onclick={() => form.removeAllFiles()}
         >Remove all</Button>
-      <Button variant="outline" size="sm" class={headerButton} disabled={form.adding > 0} onclick={add}>Add files</Button>
+      <Button variant="outline" size="sm" class={headerButton} disabled={form.adding > 0} onclick={() => add()}>Add files</Button>
     </div>
     <input bind:this={designInput} type="file" accept=".tsv,.txt" hidden onchange={(e) => loadDesign(e.currentTarget)} />
   </Card.Header>
@@ -156,11 +176,19 @@
       </div>
     {/if}
 
+    {#if status || inspecting || unchecked > 0}
+      <p class="text-xs text-muted-foreground" data-testid="spectra-status">
+        {#if status}MS2 spectra by their flags (not verified): <span class="text-foreground">{status.line}</span>{#if status.differ.size > 0}; {status.differ.size}
+            {status.differ.size === 1 ? 'file differs' : 'files differ'} (marked){/if}{#if unchecked > 0}; {unchecked} {unchecked === 1 ? 'file' : 'files'} not checked{/if}{:else if inspecting}Reading the spectra's flags…{:else}{unchecked} {unchecked === 1 ? 'file' : 'files'} not checked (New search looks into mzML only){/if}{#if unchecked > 0}<FaqLink faq="faq-conversion" label="Why ›" />{/if}
+      </p>
+    {/if}
+    <SdrfPanel />
     <!-- a bounded scroll box: long or wide tables scroll inside it, and it is the sticky header's context -->
     <div class="relative max-h-[70vh] w-full overflow-auto" data-testid="design-scroll">
       <table class={cn('w-full table-fixed border-collapse tabular-nums', minWidth)}>
         <thead>
           <tr class="text-left text-xs text-muted-foreground">
+            {#if sdrfSession.path}<th scope="col" class="{th} w-[64px]" title="The SDRF's data file was found">Exists</th>{/if}
             <th scope="col" class={th}>File</th>
             {#if multi}
               <th scope="col" class="{th} w-[140px]">Condition</th>
@@ -184,6 +212,7 @@
             {@const name = file.file.name}
             {@const folder = folderOf(file.file.path)}
             <tr class={cn('border-b last:border-b-0', file.problem && 'bg-destructive/5')} data-problem={file.problem ? '' : undefined}>
+              {#if sdrfSession.path}<td class="px-2.5 py-1.5"><SdrfStatusCell path={file.file.path} /></td>{/if}
               <th scope="row" class="truncate px-2.5 py-1.5 text-left font-normal" title={file.file.path}
                 ><span class="font-mono text-[12.5px]">{name}</span>{#if folder}<span
                     class="ml-2 text-xs text-muted-foreground"
@@ -243,7 +272,12 @@
                 <td class="px-2.5 py-1.5 text-right text-xs whitespace-nowrap text-destructive" title={file.problem}
                   ><TriangleAlertIcon class="mr-1 inline size-3.5 align-[-2px]" aria-hidden="true" />unusable</td>
               {:else}
-                <td class="px-2.5 py-1.5 text-right">{file.spectra?.toLocaleString('en-US') ?? '–'}</td>
+                <td class="px-2.5 py-1.5 text-right"
+                  >{file.spectra?.toLocaleString('en-US') ?? '–'}{#if status?.differ.has(file.file.path)}<span
+                      class="block truncate text-[11px] text-amber-700 dark:text-amber-400"
+                      data-testid="spectra-differs"
+                      title="By the spectra's flags (not verified): {status.differ.get(file.file.path)}">{status.differ.get(file.file.path)}</span
+                    >{/if}</td>
               {/if}
               <td class="px-2.5 py-1.5 text-right whitespace-nowrap">{formatBytes(file.file.size)}</td>
               <td class="px-1 py-1.5 text-center">
@@ -265,6 +299,7 @@
       </p>
     {/if}
 
+    <p class="text-xs text-muted-foreground"><span data-testid="fdr-scope">{scopeLine(form.files.length, form.values, searchPlan.fdrBlocked, form.rescore)}</span><FaqLink faq="fdr-scope" label="Help ›" /></p>
     {#if problems.length > 0}
       <!-- what ProSE cannot search: the search does not start until these files are removed -->
       <ul class="flex flex-col gap-1 text-[12.5px] text-destructive" data-testid="file-problems">

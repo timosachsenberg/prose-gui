@@ -1,12 +1,18 @@
 <script lang="ts">
   import CloseGuard from '$lib/components/CloseGuard.svelte'
+  import NewProjectDialog from '$lib/components/NewProjectDialog.svelte'
+  import SdrfReplaceDialog from '$lib/components/SdrfReplaceDialog.svelte'
+  import Shortcuts from '$lib/components/Shortcuts.svelte'
   import TopBar from '$lib/components/TopBar.svelte'
   import { Toaster } from '$lib/components/ui/sonner'
   import * as Tooltip from '$lib/components/ui/tooltip'
   import { initHistory } from '$lib/history/history.svelte'
+  import { initMenu } from '$lib/menu.svelte'
+  import { initProject } from '$lib/project/project.svelte'
   import { readHash, router } from '$lib/route.svelte'
   import { loadTool } from '$lib/search/tool.svelte'
   import { initTheme } from '$lib/theme/theme.svelte'
+  import Help from './views/Help.svelte'
   import History from './views/History.svelte'
   import NewSearch from './views/NewSearch.svelte'
   import Results from './views/Results.svelte'
@@ -18,23 +24,30 @@
   void loadTool()
   // finished searches are saved to History; the list is read
   initHistory()
+  // the project of the window (File › Save Project) learns the id of the search started here
+  initProject()
+  // the application menus (desktop only): their clicks, and which items apply
+  initMenu()
 </script>
 
 <svelte:window onhashchange={readHash} />
+<Shortcuts />
 
 <Tooltip.Provider delayDuration={300}>
   <!-- the results use the whole width and the height of the window below the top bar (which wraps on
        narrow windows), at least 440 px: main takes what is left, the results fill it (absolutely) -->
-  <div class={router.route.view === 'results' ? 'flex min-h-screen flex-col bg-muted/40' : 'min-h-screen bg-muted/40'}>
+  <div class={router.route.view === 'results' ? 'flex min-h-screen flex-col bg-background' : 'min-h-screen bg-background'}>
     <TopBar route={router.route} resultId={router.resultId} />
     {#if router.route.view === 'results'}
       <main class="relative min-h-[440px] flex-1">
         <Results id={router.route.id} />
       </main>
     {:else}
-      <main class="mx-auto max-w-[1120px] px-5 pt-6 pb-24">
+      <main class="mx-auto max-w-[1120px] px-5 pt-5 pb-24">
         {#if router.route.view === 'search'}
           <NewSearch />
+        {:else if router.route.view === 'help'}
+          <Help />
         {:else}
           <History />
         {/if}
@@ -44,5 +57,9 @@
 </Tooltip.Provider>
 
 <CloseGuard />
+<!-- File › New Search with unsaved changes to the opened project -->
+<NewProjectDialog />
+<!-- Save Project when the created SDRF's file beside it is there already -->
+<SdrfReplaceDialog />
 <!-- notifications: a search that finished while the user was elsewhere (search/finished.ts) -->
 <Toaster position="bottom-right" closeButton />

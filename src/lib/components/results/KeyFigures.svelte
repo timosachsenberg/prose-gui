@@ -2,9 +2,18 @@
   // The key figures above the tables: what the search found at its own cutoffs.
   import { formatPercent } from '$lib/format/fdr'
   import { formatCount } from '$lib/results/display'
+  import { PSM_FDR_SKIPPED_WHY } from '$lib/results/overview'
   import type { KeyFigures } from '$lib/results/figures'
 
-  let { figures, proteinFdr, proteinFdrApplied }: { figures: KeyFigures; proteinFdr: number; proteinFdrApplied: boolean } = $props()
+  let {
+    figures,
+    proteinFdr,
+    proteinFdrApplied,
+    psmFdr,
+  }: { figures: KeyFigures; proteinFdr: number; proteinFdrApplied: boolean; psmFdr: number } = $props()
+
+  // the FDR that controls each count, said on the tile and not only in its tooltip (survey P0-1)
+  const psmScope = $derived(`at ${formatPercent(psmFdr)} PSM FDR`)
 
   // proteins that cannot be told apart count once here, but each has a row in the Proteins tab
   const groupTitle = $derived.by(() => {
@@ -25,9 +34,9 @@
     noFdr
       ? figures.fdrOff
         ? ' The search had no decoys, so no FDR was applied: the PSMs have no q-value and are not FDR-controlled.'
-        : ' The PSM FDR was not applied: no PSM matched a decoy, so the PSMs have no q-value and are not FDR-controlled.'
+        : ` The PSM FDR was not applied, so the PSMs have no q-value and are not FDR-controlled. ${PSM_FDR_SKIPPED_WHY}`
       : someWithoutFdr
-        ? ` ${formatCount(figures.psmsWithoutFdr)} of them have no q-value: the PSM FDR was not applied to their files (no PSM matched a decoy), so they are not FDR-controlled.`
+        ? ` ${formatCount(figures.psmsWithoutFdr)} of them have no q-value: the PSM FDR was not applied to their files, so they are not FDR-controlled. ${PSM_FDR_SKIPPED_WHY}`
         : '',
   )
   const stats = $derived([
@@ -46,13 +55,13 @@
     },
     {
       value: formatCount(figures.peptides),
-      note: noFdr ? 'peptides · no PSM FDR' : 'peptides',
-      title: `Target peptides at the PSM FDR. Each modified form counts as its own peptide.${noFdr ? fdrTitle : ''}`,
+      note: noFdr ? 'peptides · no PSM FDR' : `peptides · ${psmScope} · no peptide FDR`,
+      title: `Target peptides of the PSMs at the PSM FDR. Each modified form counts as its own peptide. No peptide-level FDR was estimated, so the peptide FDR can be higher than the PSM FDR.${noFdr ? fdrTitle : ''}`,
       testid: 'peptide-count',
     },
     {
       value: formatCount(figures.psms),
-      note: ['PSMs', fdrNote, severalPerSpectrum ? `${formatCount(figures.spectra)} spectra` : null, share].filter(Boolean).join(' · '),
+      note: ['PSMs', fdrNote ?? psmScope, severalPerSpectrum ? `${formatCount(figures.spectra)} spectra` : null, share].filter(Boolean).join(' · '),
       title:
         (severalPerSpectrum
           ? `Target PSMs at the PSM FDR. They identify ${formatCount(figures.spectra)} of the ${formatCount(figures.ms2)} MS2 spectra: with co-isolated precursors a spectrum can have several PSMs.`
@@ -74,11 +83,13 @@
   ])
 </script>
 
-<div class="grid grid-cols-5 gap-2.5">
+<!-- one strip with dividers, not five cards -->
+<div class="grid grid-cols-5 divide-x rounded-lg border">
   {#each stats as s (s.testid)}
-    <div class="rounded-lg border bg-background px-3 py-2.5" title={s.title}>
-      <div class="text-xl font-semibold tracking-tight tabular-nums" data-testid={s.testid}>{s.value}</div>
-      <div class="truncate text-xs text-muted-foreground">{s.note}</div>
+    <div class="min-w-0 px-3.5 py-2" title={s.title}>
+      <div class="text-lg leading-tight font-semibold tracking-tight tabular-nums" data-testid={s.testid}>{s.value}</div>
+      <!-- wraps, never cut off: the note says which FDR controls the count (an ellipsis would hide "no peptide FDR") -->
+      <div class="text-xs text-balance text-muted-foreground">{s.note}</div>
     </div>
   {/each}
 </div>

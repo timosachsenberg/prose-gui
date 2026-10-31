@@ -5,7 +5,7 @@ mod common;
 
 use common::{set_folder_modified, TempDir};
 use prose_desktop_lib::history::{
-    delete, finish_partial, folder_files, frame, import, list, lock_partial, read_chosen_project,
+    delete, finish_partial, folder_files, frame, import, import_qpx, list, qpx_stems, lock_partial, read_chosen_project,
     remove_partial, rename, save_proteins, save_record, sweep, with_backoff, BACKOFF_TRIES,
     LOCK_FILE, NOT_A_SEARCH, NO_RECORD, SWEEP_GRACE,
 };
@@ -117,7 +117,7 @@ fn history_lists_an_incomplete_folder_with_its_message() {
     fs::create_dir_all(dir.join("4-0")).unwrap();
     fs::write(
         dir.join("4-0/search.json"),
-        r#"{"schema":2,"id":"4-0","name":"future"}"#,
+        r#"{"schema":3,"id":"4-0","name":"future"}"#,
     )
     .unwrap();
     fs::create_dir_all(dir.join("5-0")).unwrap();
@@ -156,7 +156,7 @@ fn history_lists_an_incomplete_folder_with_its_message() {
     assert!(get("2-0").error.as_ref().unwrap().contains("search.json"));
     let newer = get("4-0").error.as_ref().unwrap();
     assert!(
-        newer.contains("newer version of ProSE") && newer.contains("schema 2"),
+        newer.contains("newer version of ProSE") && newer.contains("schema 3"),
         "{newer}"
     );
     // the good one first, the broken ones after
@@ -266,7 +266,7 @@ fn save_refuses_what_is_not_a_record() {
     let (_tmp, dir) = searches();
     fs::create_dir_all(dir.join("1-0")).unwrap();
     assert!(save_record(&dir, "1-0", "not json").is_err());
-    assert!(save_record(&dir, "1-0", r#"{"schema":2,"id":"1-0"}"#).is_err());
+    assert!(save_record(&dir, "1-0", r#"{"schema":3,"id":"1-0"}"#).is_err());
     assert!(
         save_record(&dir, "1-0", &record("other", "x")).is_err(),
         "the id is the folder's"
@@ -453,11 +453,15 @@ fn import_needs_a_record_of_this_schema() {
     assert!(import(&dir, &frame(&[("search.json", b"{")])).is_err());
     assert!(import(&dir, &frame(&[("search.json", b"{}")])).is_err());
     // a newer schema: refused, with a message
-    let err = import(&dir, &frame(&[("search.json", br#"{"schema":2}"#)])).unwrap_err();
+    let err = import(&dir, &frame(&[("search.json", br#"{"schema":3}"#)])).unwrap_err();
     assert!(
-        err.contains("newer version of ProSE") && err.contains("schema 2"),
+        err.contains("newer version of ProSE") && err.contains("schema 3"),
         "{err}"
     );
+    // schema 0 is no schema of the app's
+    assert!(import(&dir, &frame(&[("search.json", br#"{"schema":0}"#)]))
+        .unwrap_err()
+        .contains("unknown schema 0"));
     // nothing is empty
     assert!(import(&dir, &[]).is_err());
     assert_eq!(fs::read_dir(&dir).unwrap().count(), 0);
@@ -811,4 +815,25 @@ fn a_partial_folder_is_removed_while_its_lock_is_held() {
     assert!(!partial.exists());
     // a folder that is gone already is fine
     remove_partial(None, &partial).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn a_qpx_folder_is_copied_without_following_links() {
+    let (tmp, dir) = searches();
+    let folder = tmp.path().join("cluster-run");
+    fs::create_dir_all(folder.join("qpx/runs")).unwrap();
+    fs::write(folder.join("qpx/quantms.psm.parquet"), b"PAR1").unwrap();
+    fs::write(folder.join("qpx/runs/1__a.psm.parquet"), b"PAR1").unwrap();
+    fs::write(folder.join("qpx/runs/1__a.mz.parquet"), b"PAR1").unwrap();
+    let secret = tmp.path().join("secret.txt");
+    fs::write(&secret, b"private").unwrap();
+    std::os::unix::fs::symlink(&secret, folder.join("qpx/leak.txt")).unwrap();
+    std::os::unix::fs::symlink(folder.join("qpx"), folder.join("qpx/runs/loop")).unwrap();
+    assert_eq!(qpx_stems(&folder).unwrap(), vec!["1__a".to_string()]);
+    let id = import_qpx(&dir, &folder, &record("x", "cluster run"), "[]").unwrap();
+    let copied = dir.join(&id);
+    assert_eq!(fs::read(copied.join("qpx/runs/1__a.mz.parquet")).unwrap(), b"PAR1");
+    assert!(!copied.join("qpx/leak.txt").exists(), "a link to a file outside is not copied");
+    assert!(!copied.join("qpx/runs/loop").exists(), "a link to a folder is not followed");
 }

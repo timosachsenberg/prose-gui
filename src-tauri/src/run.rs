@@ -31,9 +31,10 @@
 //!   handler), at the end of its current step; a later start of the app sweeps the folder.
 
 use crate::args::{
-    build_args_with, humanize, input_placements, input_records_with, reserved_stem,
+    build_args_with, command_line, humanize, ini_of, split_search_args, COMMAND_FILE, INI_FILE, input_placements, input_records_with, reserved_stem,
     with_contaminants, InputLinks, InputRecord, Placement, SearchRequest, DATABASE_FILE,
     DATABASE_RECORD,
+    DATABASE_SOURCE,
 };
 use crate::decoys::DecoyRules;
 use crate::history::{finish_partial, lock_partial, remove_partial, with_backoff};
@@ -1097,6 +1098,15 @@ impl Searches {
             discard_partial(Some(lock), &partial, None);
             return Err(e);
         }
+        // ProSE's parameters go in through an INI in the folder, which stays as the record of them (guidance G8),
+        // with the command line, its paths as placeholders
+        let args = match write_ini_and_command(&partial, args) {
+            Ok(args) => args,
+            Err(e) => {
+                discard_partial(Some(lock), &partial, None);
+                return Err(e);
+            }
+        };
 
         let handle = Arc::new(Handle {
             group: Mutex::new(None),
@@ -1257,6 +1267,10 @@ fn prepare_folder(
     let json = serde_json::to_string_pretty(records).map_err(|e| e.to_string())?;
     fs::write(dir.join("inputs.json"), json)
         .map_err(|e| format!("inputs.json cannot be written ({e})."))?;
+    if let Some(sdrf) = &request.sdrf {
+        fs::write(dir.join(crate::args::SDRF_FILE), crate::args::sdrf_for_inputs(sdrf, records))
+            .map_err(|e| format!("{} cannot be written ({e}).", crate::args::SDRF_FILE))?;
+    }
     if request.contaminants {
         let crap =
             crap.ok_or("The contaminant database (cRAP) is not available in this installation.")?;
@@ -1272,6 +1286,10 @@ fn prepare_folder(
             std::io::ErrorKind::InvalidData => e.to_string(),
             _ => format!("The database with contaminants cannot be written ({e})."),
         })?;
+        // where the user's FASTA was, for History's Re-run only (never read as a database, and not in projects)
+        let source = serde_json::json!({ "path": request.database }).to_string();
+        fs::write(dir.join(DATABASE_SOURCE), source)
+            .map_err(|e| format!("{DATABASE_SOURCE} cannot be written ({e})."))?;
     } else {
         // the one file outside the folder that the results reader may read (files::resolve_search_file)
         let record = serde_json::json!({ "path": request.database }).to_string();
@@ -1279,6 +1297,25 @@ fn prepare_folder(
             .map_err(|e| format!("{DATABASE_RECORD} cannot be written ({e})."))?;
     }
     Ok(())
+}
+
+/// Writes the folder's [`INI_FILE`] of the `-Search:` arguments of `args` and its [`COMMAND_FILE`]; the arguments
+/// for the tool: the others, and `-ini` with the file.
+fn write_ini_and_command(folder: &Path, args: Vec<std::ffi::OsString>) -> Result<Vec<std::ffi::OsString>, String> {
+    let (mut tool_args, search) = split_search_args(&args);
+    let ini = folder.join(INI_FILE);
+    fs::write(&ini, ini_of(&search)?).map_err(|e| format!("{INI_FILE} cannot be written ({e})."))?;
+    tool_args.push("-ini".into());
+    tool_args.push(ini.into_os_string());
+    let after = |flag: &str| -> Vec<std::ffi::OsString> {
+        let at = tool_args.iter().position(|a| a == flag).map_or(tool_args.len(), |k| k + 1);
+        tool_args[at..].iter().take_while(|a| !a.to_string_lossy().starts_with('-')).cloned().collect()
+    };
+    let inputs = after("-in");
+    let database = after("-database").into_iter().next().unwrap_or_default();
+    let line = command_line("ProSE", &tool_args, &inputs, &database, folder);
+    fs::write(folder.join(COMMAND_FILE), format!("{line}\n")).map_err(|e| format!("{COMMAND_FILE} cannot be written ({e})."))?;
+    Ok(tool_args)
 }
 
 /// Runs the tool, passes on its progress, and settles the folder. Runs on the thread that started the

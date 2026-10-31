@@ -2,9 +2,12 @@
 // where the user chooses (the system's save dialog).
 
 import { writeDesignTsv } from '../design/design-tsv'
-import { saveSearchFile } from '../desktop'
-import { download } from '../download'
+import { exportSdrf as sdrfOf } from '../design/sdrf-export'
+import { saveBytes, saveSearchFile, saveText } from '../desktop'
+import { APP_VERSION } from '../history/history'
 import type { OpenResult } from '../search/session.svelte'
+import { defaultsOf } from '../settings/parameters'
+import { PROSE_PARAMETERS } from '../settings/prose'
 import { resultName } from './display'
 import type { ResultsView } from './view.svelte'
 
@@ -26,7 +29,21 @@ export async function exportCsv(view: ResultsView): Promise<boolean> {
   view.exporting = true
   try {
     await painted()
-    await download(`${exportName(view.result)}-${level.level}.csv`, level.csv(), 'text/csv;charset=utf-8')
+    await saveText(`${exportName(view.result)}-${level.level}.csv`, level.csv())
+    return true
+  } finally {
+    view.exporting = false
+  }
+}
+
+/** The table view (proteins or peptides; PSMs too) as `<name>-<level>.xlsx`, the rows and columns of the CSV. */
+export async function exportXlsx(view: ResultsView): Promise<boolean> {
+  const level = view.level
+  if (!level || view.exporting) return false
+  view.exporting = true
+  try {
+    await painted()
+    await saveBytes(`${exportName(view.result)}-${level.level}.xlsx`, level.xlsx())
     return true
   } finally {
     view.exporting = false
@@ -35,12 +52,19 @@ export async function exportCsv(view: ResultsView): Promise<boolean> {
 
 /** The design of the searched files as `<name>_design.tsv` (OpenMS' one-table format). */
 export async function exportDesign(result: OpenResult): Promise<void> {
-  await download(`${exportName(result)}_design.tsv`, writeDesignTsv(result.design), 'text/tab-separated-values')
+  await saveText(`${exportName(result)}_design.tsv`, writeDesignTsv(result.design))
+}
+
+/** The SDRF of the search (`sdrf-export`): the one it was started with, else one of its design, with the search's settings. */
+export async function exportSdrf(result: OpenResult): Promise<void> {
+  const values = { ...defaultsOf(PROSE_PARAMETERS), ...result.settings.parameters }
+  const text = sdrfOf(result.sdrf?.text ?? null, result.design, { values, appVersion: APP_VERSION, instruments: result.instruments })
+  await saveText(result.sdrf?.name ?? `${exportName(result)}.sdrf.tsv`, text)
 }
 
 /**
  * The idXML of a search in its folder (src-tauri/src/args.rs): the merged one of several files
- * (`-out_merged`), the file's own of one (`-out_idxml`; a search of one file saved by an earlier build has
+ * (`-out_merged`), the file's own of one (`-out`; a search of one file saved by an earlier build has
  * none, and the export says so).
  */
 export function idXMLFile(result: OpenResult): { name: string; label: string } {
