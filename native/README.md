@@ -327,7 +327,7 @@ into the AppDir with the relative helper path the GTK plugin writes on a normal 
 ## AppImage smoke test
 
 ```bash
-native/scripts/smoke-appimage.sh src-tauri/target/release/bundle/appimage/ProSE_0.1.4_amd64.AppImage \
+native/scripts/smoke-appimage.sh src-tauri/target/release/bundle/appimage/ProSE_0.2.0_amd64.AppImage \
   --hide-openms /scratch/sachsenb/openms-desktop/build
 ```
 
@@ -393,3 +393,14 @@ Windows installer), each from its platform's artifact; the release carries them 
 release (`https://github.com/timosachsenberg/prose-gui/releases/latest`). It fails with a message when there is no
 such run (tag a commit of `main` whose run passed), a package is missing or its artifact has expired (`gh run rerun <run>`, then
 re-run the release job).
+
+To publish the draft, either click Publish on GitHub or run Actions › "Publish release"
+(`.github/workflows/publish-release.yml`) with the version. It publishes only the one draft release of
+`desktop-native-v<version>` whose tag is on `main` and which carries all six packages, and marks it the latest
+release; anything else stops it with a message.
+
+A tag can be made from the web too: Actions › "Tag release" (`.github/workflows/tag-release.yml`) with the version
+tags `main`'s head (after checking that the version is `main`'s and that `main`'s run of it passed) and starts the
+release job on the tag. With `publish` checked it waits for the release job and then publishes the draft: a whole
+release in one run. Before that, the version is set on `main` with `node scripts/bump-version.mjs <version>` (through a
+pull request). The steps for a Claude session are in `CLAUDE.md`, "Releasing".
