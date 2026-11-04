@@ -1,8 +1,9 @@
 <script lang="ts">
   // The PSMs of the open result (the best hit of each spectrum). An open search's mass shift above
   // 0.05 Da goes before the sequence as an unlocalized ProForma mass ("[+15.9949]?"). A row opens the
-  // PSM view (`onOpen`); while it is open, the table is the list beside it (`compact`): peptide,
-  // charge, sample, q-value and precursor error, as in the mockup. A decoy PSM and that of a co-isolated
+  // PSM view (`onOpen`); while it is open, the table stands under its spectrum (`follow`: the arrow keys
+  // go through the PSMs, the view showing each). `compact` makes it a narrow list (peptide, charge, sample,
+  // q-value and precursor error). A decoy PSM and that of a co-isolated
   // precursor (a search with chimeric:enabled) are marked after the peptide.
   import PeptideSequence from '$lib/components/PeptideSequence.svelte'
   import { massShift, peptideView } from '$lib/format/peptide'
@@ -20,7 +21,8 @@
     level,
     onOpen,
     compact = false,
-  }: { view: ResultsView; level: LevelState; onOpen: (psm: number) => void; compact?: boolean } = $props()
+    follow = false,
+  }: { view: ResultsView; level: LevelState; onOpen: (psm: number) => void; compact?: boolean; follow?: boolean } = $props()
 
   const m = $derived(view.model)
   const ps = $derived(m.tables.psms)
@@ -126,4 +128,5 @@
   onRowClick={onOpen}
   selected={level.selected}
   autoMinWidth={compact ? 80 : 220}
+  followFocus={follow}
   empty={level.emptyText} />

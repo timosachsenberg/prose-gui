@@ -135,7 +135,7 @@ const INTERNAL_TO_FULL_MONO = monoWeight(INTERNAL_TO_FULL)
 //------------------------------------------------------------------------------
 // The peptide (AASequence::fromString)
 
-type Residue = {
+export type Residue = {
   code: string
   /** the free amino acid's formula, with the modification's (not with a mass-only one's) */
   formula: Formula
@@ -148,8 +148,8 @@ type Residue = {
   /** a modification known by its mass only: not in the formula */
   massOnly: boolean
 }
-type TerminalMod = { diffMono: number; diffFormula: Formula; massOnly: boolean }
-type Peptide = { residues: Residue[]; nTerm: TerminalMod | null; cTerm: TerminalMod | null }
+export type TerminalMod = { diffMono: number; diffFormula: Formula; massOnly: boolean }
+export type Peptide = { residues: Residue[]; nTerm: TerminalMod | null; cTerm: TerminalMod | null }
 
 /** A residue as ResidueDB has it (formula, mass, losses). */
 function residue(code: string, formula: Formula, losses: Formula[]): Residue {
@@ -321,7 +321,7 @@ function squareBracket(peptide: Peptide, mod: string, term: 'N' | 'C' | null, s:
  * the Unimod file does not have (or not for that residue or terminus) is taken as the mass delta that
  * `massOf` gives it, if it gives one.
  */
-function parsePeptide(text: string, massOf?: ModificationMass): Peptide {
+export function parsePeptide(text: string, massOf?: ModificationMass): Peptide {
   let s = text.trim()
   if (s.startsWith('n')) s = s.slice(1)
   if (s.endsWith('c')) s = s.slice(0, -1)
