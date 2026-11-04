@@ -18,12 +18,17 @@ with and without Percolator and PeptDeep) and a search without decoys. The reade
 the size of the fragment index (`indexedPeptides`, `indexedFragments`: the native tool indexes the whole database once
 for both inputs, the web module only the peptides the precursor windows reach) and for what the pinned ProSE computes
 differently from the web app's older one (`src/lib/results/read.test.ts` checks these differences): its q-values are at
-or above the web app's (1/T for T target PSMs without a decoy PSM, OpenMS #10714; Percolator's (decoys + 1) / targets
-without pi0, as the percolator executable, #10721), Percolator's scores and PEPs differ (by up to 0.01 and 0.05 on the
-web app's example), the recommended tolerances are whole ppm (#10715) and the delta-mass table counts the target PSMs
-only, with each peak's own unique peptides (#10715). The app's example is searched at a PSM FDR of 2 % (none of its PSMs
-passes 1 % with these q-values): 112 of the web app's 120 PSMs (at 1 %) are among its 154, equal but for Percolator's
-values.
+or above the web app's (1/T for T target PSMs without a decoy PSM, OpenMS #10714), Percolator's scores, q-values and PEPs
+differ (its rescoring since #10740: the Newton solver, the runner-up hit of each spectrum, pi0; on the web app's example,
+with one decoy PSM per file, its scores are on another scale and its PEPs all but 0, while the q-values differ by at
+most 0.002 and the same PSMs and proteins pass), the recommended tolerances are whole ppm (#10715) and the delta-mass
+table counts the target PSMs only, with each peak's own unique peptides (#10715). Since #10740 the ProSE tool has
+defaults of its own (decoys generate with decoy_method keep_termini, the terminal rescoring features protein_nterm and
+met_clipped, stratum q-values, Acetyl (Protein N-term)): the fixtures compared with the web app (its example, the TOPP
+test data) are searched with the web app's settings (decoys auto, decoy_method reverse, no terminal features or stratum
+q-values; `scripts/results-example.mjs`), the app's example with the tool's defaults. The app's example is searched at a
+PSM FDR of 2 %: 88 of the web app's 120 PSMs (at 1 %) are among its 132 target PSMs, equal but for Percolator's values
+and the features of each spectrum's candidates (hyperscore_zscore, ln_num_candidates, delta_score: other decoys).
 
 **The app reads only QPX** (the user's decision, 2026-10-21): the QPX psm, mz, pg, run and provenance views ProSE writes
 with `-out_qpx` and its `-qpx_extended` (#10676), with optional columns. QPX readers ignore columns and keys they do

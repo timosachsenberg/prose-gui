@@ -336,7 +336,7 @@ native/scripts/smoke-appimage.sh src-tauri/target/release/bundle/appimage/ProSE_
 ```
 
 The AppImage runs with `--appimage-extract-and-run` under `xvfb-run` and is driven through WebDriver
-(`e2e/appimage.smoke.ts`): the example with PeptDeep gives 154 PSMs and the PeptDeep mirror. tauri-driver and
+(`e2e/appimage.smoke.ts`): the example with PeptDeep gives 132 PSMs and the PeptDeep mirror. tauri-driver and
 WebKitWebDriver are not in the AppImage; they run from the toolchain (here `in-env.sh`, in CI the runner's
 packages) and drive the AppImage's own webview over WebKit's automation protocol, which release builds allow when
 `TAURI_WEBVIEW_AUTOMATION=true` (tauri-driver sets it). The application tauri-driver starts is

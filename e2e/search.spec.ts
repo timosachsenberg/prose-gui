@@ -76,7 +76,7 @@ describe('the example search', () => {
     expect(widths.sequence).toBeLessThan(widths.dejavu - 10)
   })
 
-  it('the example search shows 154 PSMs', async () => {
+  it('the example search shows 132 PSMs', async () => {
     await $('header').waitForDisplayed({ timeout: 20000 })
     await $('button=Try the example').click()
     // the two files in the design table, the database counted
@@ -109,7 +109,7 @@ describe('the example search', () => {
     })
     const count = $('[data-testid="psm-count"]')
     await count.waitForDisplayed({ timeout: 20000 })
-    await expect(count).toHaveText(expect.stringContaining('154'))
+    await expect(count).toHaveText(expect.stringContaining('132'))
     expect(await $('[data-testid="result-chip"]').getProperty('textContent')).toContain('Ecoli · 2 files')
     // real data: the first PSM's precursor error is not 0 ppm, its peaks have intensities of their own
     await openFirstPsm()
@@ -264,7 +264,7 @@ describe('the example search', () => {
     expect(existsSync(join(searchesDir(), searchId, 'proteins.fasta'))).toBe(true)
     expect(existsSync(join(searchesDir(), searchId, 'database.fasta'))).toBe(false)
     // the record's PSMs (written when ProSE ended, from its QPX run view) are the result's
-    expect(await row().$('[data-column="psms"]').getProperty('textContent')).toBe('154')
+    expect(await row().$('[data-column="psms"]').getProperty('textContent')).toBe('132')
 
     await row().$('button=Rename').click()
     await row().$('input').waitForDisplayed()
@@ -283,6 +283,6 @@ describe('the example search', () => {
     await browser.waitUntil(async () => (await browser.getUrl()).endsWith(`#/results/${searchId}`), { timeout: 30000 })
     const count = $('[data-testid="psm-count"]')
     await count.waitForDisplayed({ timeout: 30000 })
-    await expect(count).toHaveText(expect.stringContaining('154'))
+    await expect(count).toHaveText(expect.stringContaining('132'))
   })
 })
