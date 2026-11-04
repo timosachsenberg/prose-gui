@@ -166,8 +166,23 @@
 
 <!-- The PSM table under the PSM view's spectrum: the arrow keys, Page Up/Down, Home and End go through the PSMs, the
      view showing each; the filter row stays with it. -->
+<!-- What the result says about itself: the History save, PSMs without an FDR, ProSE's warnings (above the PSM table
+     while the PSM view is open) -->
+{#snippet notices()}
+  {#if view}
+    <SaveNotice id={view.result.id} />
+    {#if fdrNotice}
+      <p class="text-xs text-amber-700" data-testid="psm-fdr-notice">{fdrNotice}</p>
+    {/if}
+    {#if view.result.outcome.warnings.length > 0}
+      <p class="text-xs text-amber-700 dark:text-amber-400" data-testid="results-warnings">{view.result.outcome.warnings.join(' ')}</p>
+    {/if}
+  {/if}
+{/snippet}
+
 {#snippet psmList()}
   {#if view}
+    {@render notices()}
     {#key view.psms}
       <FilterBar
         {view}
@@ -185,12 +200,8 @@
     <!-- (with the PSM view open, the PSM table stands in it, under the spectrum: `psmList`) -->
     <div class="flex min-w-0 flex-1 flex-col gap-3 px-5 py-4" class:hidden={psmOpen}>
       <h1 class="sr-only">Results</h1>
-      <SaveNotice id={view.result.id} />
-      {#if fdrNotice}
-        <p class="text-xs text-amber-700" data-testid="psm-fdr-notice">{fdrNotice}</p>
-      {/if}
-      {#if view.result.outcome.warnings.length > 0}
-        <p class="text-xs text-amber-700 dark:text-amber-400" data-testid="results-warnings">{view.result.outcome.warnings.join(' ')}</p>
+      {#if !psmOpen}
+        {@render notices()}
       {/if}
       {#if !panelOpen && !psmOpen}
         <KeyFigures {figures} proteinFdr={view.result.proteinFdr} proteinFdrApplied={view.result.outcome.summary.proteinFdrApplied} />

@@ -337,6 +337,10 @@
     void row
     toolBusy = false
   })
+  // (a PSM without stored peaks has nothing to measure: the tool goes, so that Esc closes the view)
+  $effect.pre(() => {
+    if (spectra !== null && !peaks) tool = null
+  })
   /** Whose marks these are: the spectrum's (its file and native ID; the PSM's, when the spectrum is not referenced). */
   const marksKey = $derived(ps.nativeId[row] ? `${ps.file[row]} ${ps.nativeId[row]}` : `psm ${row}`)
   const marks = $derived(view.psmMarks[marksKey] ?? NO_MARKS)

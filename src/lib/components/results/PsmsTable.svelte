@@ -73,7 +73,7 @@
     }
   }
 
-  /** The list beside the PSM view: these columns, narrower. */
+  /** `compact`: a narrow list of these columns. */
   const compactColumns: Record<string, { width: number | 'auto'; header?: string; title?: string }> = {
     peptide: { width: 'auto' },
     charge: { width: 32 },
