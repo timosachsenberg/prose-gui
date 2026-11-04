@@ -53,19 +53,15 @@ jobs:
         run: |
           export OPENMS_TOPP="$RUNNER_TEMP/topp"
           node scripts/prose-parameters.mjs "$PROSE"
-          for c in example suitability mods open empty no-decoys; do
+          # (second run: the cases compared with the web app's results, with its ProSE's settings)
+          for c in suitability mods open; do
             node scripts/results-fixture-native.mjs "$c" "$PROSE"
           done
-          mkdir -p regen
-          "$PROSE" --helphelp > regen/helphelp.txt 2>&1 || true
-          # the example's search as the app runs it, its log kept (the PSM counts, the progress lines)
-          KEEP=1 OUT="$RUNNER_TEMP/example" node scripts/results-fixture-native.mjs example "$PROSE" | tee regen/example-run.txt
-          cp "$(grep -o 'kept .*' regen/example-run.txt | cut -d' ' -f2)/search/prose.log" regen/example-prose.log
 
       - name: Commit
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A src/lib/settings src/lib/results/fixtures regen
+          git add -A src/lib/settings src/lib/results/fixtures
           git commit -m "Parameter table and reader fixtures of the bundled ProSE (regenerate-fixtures.yml, run $BUNDLE_RUN)"
           git push
