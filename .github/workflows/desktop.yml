@@ -258,18 +258,6 @@ jobs:
           src-tauri/resources/prose/bin/ProSE --help 2>&1 | grep -m1 'Version:'
           du -sh src-tauri/resources/prose src-tauri/resources/prose/lib src-tauri/resources/prose/share
 
-      # TEMPORARY (the OpenMS re-pin's pull request): the bundled ProSE of the new pin, to make the parameter table
-      # and the reader's fixtures with it; removed before the merge
-      - name: The bundled ProSE as an artifact (temporary)
-        if: matrix.arch == 'x64'
-        run: tar -C src-tauri/resources -czf "$RUNNER_TEMP/prose-bundle.tar.gz" prose
-      - uses: actions/upload-artifact@v7
-        if: matrix.arch == 'x64'
-        with:
-          name: prose-bundle-linux-x64
-          path: ${{ runner.temp }}/prose-bundle.tar.gz
-          retention-days: 3
-
       - name: Unit tests (svelte-check, vitest)
         run: |
           npm run check
