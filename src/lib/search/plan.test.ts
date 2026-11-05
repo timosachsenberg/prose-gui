@@ -146,7 +146,10 @@ describe('the search request', () => {
     await sdrfSession.load('/r/exp.sdrf.tsv', 'source name\tcomment[data file]\tfactor value[x]\ns1\ta.mzML\tp\ns2\tb.mzML\tq\n')
     toolState.info = { version: '3.7', path: '/p', onnx: false, sdrf: false }
     expect(searchRequest()!.sdrf).toBeUndefined()
+    // (said, not silent: a note that ProSE does not get it)
+    expect(searchPlan.advice.find((c) => c.id === 'sdrf-not-passed')).toMatchObject({ level: 'info', source: 'sdrf' })
     toolState.info = { version: '3.7', path: '/p', onnx: false, sdrf: true }
+    expect(searchPlan.advice.some((c) => c.id === 'sdrf-not-passed')).toBe(false)
     expect(searchRequest()!.sdrf).toContain('comment[data file]')
     expect(searchRequest()!.sdrf).toContain('b.mzML')
     sdrfSession.clear()

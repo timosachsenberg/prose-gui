@@ -75,12 +75,13 @@ export function databaseChecks(
       })
     }
   }
+  // (Generate is ProSE's default and does the right thing with them: a note, not a warning)
   if (s.decoyMarker && decoySetting === 'generate') {
     out.push({
       id: 'decoys-twice',
-      level: 'warn',
+      level: 'info',
       source: 'database',
-      message: `The database has decoys of its own (${s.decoys.toLocaleString('en-US')}, marked ${s.decoyMarker}), and the setting is Generate: ProSE would replace them with decoys of its own. Use the database’s decoys to keep them.`,
+      message: `The database has decoys of its own (${s.decoys.toLocaleString('en-US')}, marked ${s.decoyMarker}). With Generate, the default, ProSE removes them and makes one decoy per target itself. To search with the database’s decoys instead, use them.`,
       action: { label: 'Use the database’s decoys', run: () => setDecoys('auto') },
     })
   }

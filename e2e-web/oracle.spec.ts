@@ -200,9 +200,17 @@ test.describe('example', () => {
       expect(body.length, `${tab}: the CSV has the rows of the view`).toBe(shown)
       // the table's columns (the count columns of the samples included) are the CSV's, in its order
       const first = page.getByTestId('results-table').locator('tbody tr').first()
-      expect(await first.locator('td').count(), `${tab}: as many columns as the table`).toBe(header.length)
+      // (the Peptides' Curation column is two in the CSV: the accepted and the rejected PSMs)
+      const split = header.includes('Rejected PSMs') ? 1 : 0
+      expect((await first.locator('td').count()) + split, `${tab}: as many columns as the table`).toBe(header.length)
       // (the table's short headers and display units, the CSV's long ones and raw units)
-      const csvName: Record<string, string> = { z: 'Charge', 'RT (min)': 'RT (s)', 'Error (ppm)': 'Precursor error (ppm)', Coverage: 'Coverage (%)' }
+      const csvName: Record<string, string> = {
+        z: 'Charge',
+        'RT (min)': 'RT (s)',
+        'Error (ppm)': 'Precursor error (ppm)',
+        Coverage: 'Coverage (%)',
+        ...(split ? { Curation: 'Accepted PSMs' } : {}),
+      }
       const named = (await page.getByTestId('results-table').locator('thead tr').first().locator('th').allInnerTexts()).map((t) => t.trim()).filter((t) => t.length > 1)
       for (const c of named) expect(header, `${tab}: column ${c}`).toContain(csvName[c] ?? c)
       // the first rows of the table, cell by cell where the text is the same

@@ -207,8 +207,11 @@ describe('the protein panel', () => {
     view.psms.filters.text = 'zzz'
     view.psms.filters.maxQ = 0.001
     view.psms.filters.peptideFilter = 0
+    // (an SDRF column's value would hide the PSMs of the other files: "All n" would show fewer than n)
+    view.psms.filters.sdrf = { column: 'factor value[x]', value: 'p', files: [] }
+    view.psms.filters.charges = [7]
     view.filterBy({ protein: 1 })
-    expect(view.psms.filters).toMatchObject({ text: '', maxQ: 1, proteinFilter: 1, peptideFilter: undefined })
+    expect(view.psms.filters).toMatchObject({ text: '', maxQ: 1, proteinFilter: 1, peptideFilter: undefined, sdrf: undefined, charges: undefined })
     expect(Array.from(view.psms.rows)).toEqual([4, 5, 6])
     expect(view.psms.rows.length).toBe(view.model.protein.psms[1])
   })

@@ -453,8 +453,8 @@ export const FAQ: FaqEntry[] = [
       'A file marked “no FDR” in Overview › Files: its PSM FDR was not applied, so its PSMs have no q-value. The current ProSE applies a conservative estimate (1 / T for T target PSMs) even when no PSM of a file matched a decoy; a result of an earlier ProSE can show “no FDR” for such a file.',
     ],
     fixes: [
-      'Leave Decoys on “Use the database’s, else generate”: ProSE then reuses decoys it recognises (common markers such as rev_, DECOY_, as prefix or suffix) or makes its own.',
-      'With Generate, ProSE removes the database’s recognised decoys and makes new ones from the targets: either way each target gets one decoy. To keep the database’s own (e.g. when you must report how they were made), click “Use the database’s decoys” in the warning, which sets Decoys back to “Use the database’s, else generate”.',
+      'Leave Decoys on Generate, the default: ProSE removes the database’s recognised decoys (common markers such as rev_, DECOY_, as prefix or suffix) and makes one decoy per target itself.',
+      'To keep the database’s own decoys (e.g. when you must report how they were made), click “Use the database’s decoys” in the note, which sets Decoys to “Use the database’s, else generate”: ProSE then reuses them if there is about one per target, and refuses the database otherwise.',
       'When all q-values of a file are 0, check before you trust its FDR. Without Percolator a short list can give this legitimately (ProSE’s q-values are then decoys ÷ targets, 0 above the best decoy). Otherwise look at the decoy count of the database summary; if the decoys were not recognised, use a target-only FASTA and let ProSE generate the decoys, then search again.',
       'Never report the results of a search without decoys, or of a file marked “no FDR”, as FDR-controlled.',
     ],

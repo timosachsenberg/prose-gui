@@ -60,8 +60,11 @@
     ['↑ ↓  Home  End', 'Tables: move through the rows'],
     ['Enter', 'Tables: open the row (protein, its PSMs, the spectrum)'],
     ['← →', 'Spectrum view: previous and next PSM'],
-    ['Esc', 'Close the protein panel or the spectrum view'],
-    ['Drag, double-click', 'Spectrum: zoom into an m/z range, zoom out'],
+    ['A · R', 'Spectrum view: accept or reject the PSM (again: take the mark away)'],
+    ['M · L', 'Spectrum view: the Measure and Label tools (again: off)'],
+    ['Delete', 'Spectrum view: remove the selected measurement or label'],
+    ['Esc', 'Cancel a measurement or label, leave the tool; else close the protein panel or the spectrum view'],
+    ['Drag, double-click', 'Spectrum (no tool on): zoom into an m/z range, zoom out'],
     [`${mod} Enter`, 'New search: start the search'],
     ...(desktop
       ? ([

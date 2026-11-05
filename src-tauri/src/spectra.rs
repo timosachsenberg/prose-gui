@@ -180,7 +180,25 @@ fn spectrum(text: &str, facts: &mut SpectraFacts, centres: &mut HashMap<i64, u64
     }
 }
 
+/// The first `needle` in `hay` at or after `from`.
+fn find(hay: &[u8], needle: &[u8], from: usize) -> Option<usize> {
+    hay.get(from..)?
+        .windows(needle.len())
+        .position(|w| w == needle)
+        .map(|at| at + from)
+}
+
+/// Where a look-up that found nothing goes on once more bytes are there: a marker may have begun in the last
+/// bytes, so these are searched again (the markers are shorter than 16 bytes).
+fn resume(len: usize, from: usize) -> usize {
+    len.saturating_sub(16).max(from)
+}
+
 /// The facts of an mzML read from `reader` (decompressed), at most [`MAX_BYTES`] and [`MAX_MS2`] MS2 spectra.
+///
+/// The markup is found in the bytes (the markers are ASCII), and only the header and each spectrum's own markup
+/// are made text: a byte that is no UTF-8 (a Latin-1 sample name) cannot shift a position, and every byte is
+/// searched about once, also through a spectrum of many megabytes.
 pub fn inspect_reader(reader: impl Read) -> io::Result<SpectraFacts> {
     let mut facts = SpectraFacts::default();
     let mut centres = HashMap::new();
@@ -188,48 +206,67 @@ pub fn inspect_reader(reader: impl Read) -> io::Result<SpectraFacts> {
     let mut buf: Vec<u8> = Vec::new();
     let mut chunk = vec![0u8; 1 << 20];
     let mut header_done = false;
+    // where the next look-up in `buf` starts, and the start of a spectrum whose end is not there yet
+    let mut from = 0;
+    let mut open: Option<usize> = None;
     loop {
         let n = reader.read(&mut chunk)?;
         buf.extend_from_slice(&chunk[..n]);
-        let text = String::from_utf8_lossy(&buf).into_owned();
-        let mut consumed = 0;
         if !header_done {
-            if let Some(at) = text
-                .find("<spectrumList")
-                .or_else(|| (n == 0).then_some(text.len()))
-            {
-                header(&text[..at], &mut facts);
-                header_done = true;
-                consumed = at;
+            match find(&buf, b"<spectrumList", from) {
+                Some(at) => {
+                    header(&String::from_utf8_lossy(&buf[..at]), &mut facts);
+                    header_done = true;
+                    from = at;
+                }
+                None if n == 0 => {
+                    header(&String::from_utf8_lossy(&buf), &mut facts);
+                    header_done = true;
+                    from = buf.len();
+                }
+                None => from = resume(buf.len(), from),
             }
         }
         if header_done {
             loop {
-                let rest = &text[consumed..];
-                let Some(start) = rest.find("<spectrum ") else {
-                    if rest.contains("</spectrumList") {
-                        facts.complete = true;
+                let Some(start) = open else {
+                    match find(&buf, b"<spectrum ", from) {
+                        Some(at) => {
+                            open = Some(at);
+                            from = at;
+                            continue;
+                        }
+                        None => {
+                            if find(&buf, b"</spectrumList", from).is_some() {
+                                facts.complete = true;
+                            }
+                            from = resume(buf.len(), from);
+                            break;
+                        }
                     }
-                    consumed = text.len().saturating_sub(16).max(consumed);
+                };
+                let Some(end) = find(&buf, b"</spectrum>", from) else {
+                    from = resume(buf.len(), from.max(start));
                     break;
                 };
-                let Some(end) = rest[start..].find("</spectrum>") else {
-                    consumed += start;
-                    break;
-                };
-                let body = &rest[start..start + end];
-                let body = &body[..body.find("<binaryDataArrayList").unwrap_or(body.len())];
-                spectrum(body, &mut facts, &mut centres);
-                consumed += start + end + "</spectrum>".len();
+                let body = &buf[start..end];
+                let body = &body[..find(body, b"<binaryDataArrayList", 0).unwrap_or(body.len())];
+                spectrum(&String::from_utf8_lossy(body), &mut facts, &mut centres);
+                open = None;
+                from = end + b"</spectrum>".len();
                 if facts.levels.get(&2).copied().unwrap_or(0) >= MAX_MS2 {
                     count_centres(&mut facts, &centres);
                     return Ok(facts);
                 }
             }
         }
-        // (lossy text and bytes agree up to the cut: the cut is at ASCII markup)
-        let cut = text[..consumed].len().min(buf.len());
-        buf.drain(..cut);
+        // what is done goes: all before an open spectrum (its start stays), else all before the next look-up
+        if header_done {
+            let done = open.unwrap_or(from).min(buf.len());
+            buf.drain(..done);
+            from -= done.min(from);
+            open = open.map(|start| start - done);
+        }
         if n == 0 {
             break;
         }
@@ -327,6 +364,69 @@ mod tests {
         fs::write(dir.join("a.fasta"), ">x\nPEPTIDE\n").unwrap();
         assert_eq!(inspect(&dir.join("a.fasta")).unwrap(), None);
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// A reader that gives at most `step` bytes per read: every marker and character falls across reads somewhere.
+    struct Trickle<'a> {
+        data: &'a [u8],
+        step: usize,
+    }
+
+    impl Read for Trickle<'_> {
+        fn read(&mut self, out: &mut [u8]) -> io::Result<usize> {
+            let n = self.step.min(out.len()).min(self.data.len());
+            out[..n].copy_from_slice(&self.data[..n]);
+            self.data = &self.data[n..];
+            Ok(n)
+        }
+    }
+
+    #[test]
+    fn bytes_that_are_no_utf8_and_markers_across_reads_change_nothing() {
+        // a Latin-1 é (no UTF-8) and multi-byte characters in the header and the spectra, around the markers
+        let spectrum = |i: usize| {
+            format!(
+                "<spectrum index=\"{i}\" id=\"µ-scan={i} ö\"><cvParam accession=\"MS:1000511\" name=\"ms level\" value=\"2\"/>\
+                 <cvParam accession=\"MS:1000127\" name=\"centroid spectrum\"/>\
+                 <cvParam accession=\"MS:1000041\" name=\"charge state\" value=\"2\"/>\
+                 <binaryDataArrayList><binary>AAAA€€</binary></binaryDataArrayList></spectrum>ü"
+            )
+        };
+        let mut text: Vec<u8> = b"<mzML><sample name=\"Caf".to_vec();
+        text.push(0xE9);
+        text.extend_from_slice("\"/>µµ<spectrumList count=\"40\">".as_bytes());
+        for i in 0..40 {
+            text.extend_from_slice(spectrum(i).as_bytes());
+        }
+        text.extend_from_slice("</spectrumList>ü</mzML>".as_bytes());
+        let whole = inspect_reader(&text[..]).unwrap();
+        assert_eq!(whole.levels.get(&2), Some(&40));
+        assert_eq!(whole.ms2_centroid, 40);
+        assert_eq!(whole.ms2_with_charge, 40);
+        assert!(whole.complete);
+        for step in [1, 2, 3, 7, 13, 64] {
+            let read = inspect_reader(Trickle { data: &text, step }).unwrap();
+            assert_eq!(read, whole, "{step} bytes per read");
+        }
+    }
+
+    #[test]
+    fn a_spectrum_of_many_megabytes_is_read_once() {
+        // one MS1 spectrum of 40 MB of binary data before the MS2 spectrum: read in 1 MiB chunks, in about the time
+        // of one pass (it was decoded again for every chunk)
+        let mut text = b"<mzML><spectrumList count=\"2\"><spectrum index=\"0\"><cvParam accession=\"MS:1000511\" name=\"ms level\" value=\"1\"/><binaryDataArrayList><binary>".to_vec();
+        text.extend(std::iter::repeat_n(b'A', 40 << 20));
+        text.extend_from_slice(b"</binary></binaryDataArrayList></spectrum><spectrum index=\"1\"><cvParam accession=\"MS:1000511\" name=\"ms level\" value=\"2\"/></spectrum></spectrumList></mzML>");
+        let started = std::time::Instant::now();
+        let f = inspect_reader(&text[..]).unwrap();
+        assert_eq!(f.levels.get(&1), Some(&1));
+        assert_eq!(f.levels.get(&2), Some(&1));
+        assert!(f.complete);
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(5),
+            "{:?}",
+            started.elapsed()
+        );
     }
 
     #[test]

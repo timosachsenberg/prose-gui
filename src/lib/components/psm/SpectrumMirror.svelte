@@ -530,7 +530,7 @@
       const i = snapAt(px0, py)
       snap = i < 0 ? null : i
       // (a measurement half made: the live Δm/z says it, no tooltip over the brackets)
-      if (start !== null) return void (tip = null)
+      if (start !== null) return void ((tip = null), (hover = null))
     }
     if (px0 < M.left - 4 || px0 > width - M.right + 4 || py < plotTop - 4 || py > plotBottom) return void ((tip = null), (hover = null))
     const at = mzAt(px0)

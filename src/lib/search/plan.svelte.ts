@@ -55,6 +55,15 @@ function adviceChecks(): Check[] {
       files,
       set: (name, value) => form.setParam(name, value),
     }),
+    // (the SDRF still fills the design and is checked; ProSE just does not get it)
+    sdrfSession.table && toolState.info?.sdrf === false
+      ? {
+          id: 'sdrf-not-passed',
+          level: 'info',
+          source: 'sdrf',
+          message: `This ProSE has no -sdrf option: ${sdrfSession.name} fills the design table and is checked against the search, but ProSE does not get it, so its QPX output names one sample per file.`,
+        }
+      : null,
   ]
   return out.filter((c): c is Check => c !== null)
 }

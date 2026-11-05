@@ -356,6 +356,8 @@
   $effect.pre(() => {
     void row
     toolBusy = false
+    // (the m/z the ion table and the spectrum shared was the last PSM's)
+    hoverMz = null
   })
   // (a PSM without stored peaks has nothing to measure: the tool goes, so that Esc closes the view)
   $effect.pre(() => {

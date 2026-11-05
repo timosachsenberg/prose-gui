@@ -413,6 +413,7 @@ export class ResultsView {
       text: '',
       maxQ: m.psmFdr,
       proteinFilter: 'protein' in what ? index : undefined,
+      sdrf: undefined,
       charges: undefined,
       ranges: undefined,
       peptideFilter: 'peptide' in what ? index : undefined,

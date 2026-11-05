@@ -25,10 +25,10 @@ describe('the database', () => {
     )
   })
 
-  test('decoys of its own while the setting generates more: a warning with the fix', () => {
+  test('decoys of its own while the setting (the default) generates: a note with the way to keep them', () => {
     let set = ''
     const [c] = databaseChecks(summary({ decoys: 20000, decoyMarker: 'DECOY_…' }), 'generate', [], (v) => (set = v))
-    expect(c).toMatchObject({ id: 'decoys-twice', level: 'warn' })
+    expect(c).toMatchObject({ id: 'decoys-twice', level: 'info' })
     c.action!.run()
     expect(set).toBe('auto')
     expect(databaseChecks(summary({ decoys: 20000, decoyMarker: 'DECOY_…' }), 'auto', [], () => {})).toEqual([])
