@@ -26,7 +26,7 @@
   import { Button, buttonVariants } from '$lib/components/ui/button'
   import * as DropdownMenu from '$lib/components/ui/dropdown-menu'
   import Marker from '$lib/components/results/Marker.svelte'
-  import { download } from '$lib/download'
+  import { saveText } from '$lib/desktop'
   import { massShift, peptideView, psmProforma, type PeptideView } from '$lib/format/peptide'
   import { annotatePeaks, type ModificationMass } from '$lib/psm/annotate'
   import {
@@ -345,6 +345,8 @@
   }
 
   let mirror = $state<SpectrumMirror | null>(null)
+  /** The m/z that the ion table and the spectrum highlight together. */
+  let hoverMz = $state<number | null>(null)
 
   // the tools: one at a time; what they made, per spectrum (the view keeps it for the session)
   let tool = $state<SpectrumTool>(null)
@@ -354,6 +356,8 @@
   $effect.pre(() => {
     void row
     toolBusy = false
+    // (the m/z the ion table and the spectrum shared was the last PSM's)
+    hoverMz = null
   })
   // (a PSM without stored peaks has nothing to measure: the tool goes, so that Esc closes the view)
   $effect.pre(() => {
@@ -396,7 +400,7 @@
   function exportSvg() {
     const svg = mirror?.svgElement()
     if (!svg) return
-    void download(svgFileName(proforma, ps.nativeId[row]), exportSpectrumSvg(svg), 'image/svg+xml')
+    void saveText(svgFileName(proforma, ps.nativeId[row]), exportSpectrumSvg(svg))
   }
 
   // the Export menu's "Spectrum (SVG)" does what the button does
@@ -464,11 +468,10 @@
   }
 
   const toggle =
-    'inline-flex h-[26px] min-w-[30px] cursor-pointer items-center justify-center rounded-md border bg-background px-2 text-xs text-muted-foreground select-none hover:text-foreground peer-checked:border-primary peer-checked:bg-primary peer-checked:text-primary-foreground peer-focus-visible:ring-2 peer-focus-visible:ring-ring/50 peer-disabled:cursor-not-allowed peer-disabled:opacity-50'
-  /** The tools' buttons: the toggles' look (pressed: the primary colour), with an icon. */
+    'inline-flex h-[26px] min-w-[30px] cursor-pointer items-center justify-center rounded-md border bg-background px-2 text-xs text-muted-foreground select-none hover:text-foreground peer-checked:border-primary/50 peer-checked:bg-primary/10 peer-checked:font-medium peer-checked:text-primary peer-focus-visible:ring-2 peer-focus-visible:ring-ring/50 peer-disabled:cursor-not-allowed peer-disabled:opacity-50'
   const toolButton =
     'inline-flex h-[26px] cursor-pointer items-center justify-center gap-1 rounded-md border bg-background px-2 text-xs text-muted-foreground select-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:text-muted-foreground'
-  const toolOn = 'border-primary bg-primary text-primary-foreground hover:text-primary-foreground'
+  const toolOn = 'border-primary/50 bg-primary/10 font-medium text-primary hover:text-primary'
   const crumb = 'rounded-sm hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none'
 </script>
 
@@ -612,7 +615,7 @@
     </p>
   {/if}
 
-  <div class="rounded-lg border bg-background px-3.5 pt-3 pb-2">
+  <div class="rounded-lg border px-3.5 pt-3 pb-2">
     <div class="mb-1 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
       <div class="flex items-center gap-1" role="group" aria-labelledby="{uid}-ions">
         <span id="{uid}-ions" class="mr-1 text-muted-foreground">Ions</span>
@@ -752,6 +755,7 @@
         title={spectrumTitle}
         description={spectrumDescription}
         errors={displaySettings.massErrors ? { matches: shown, tolerance } : null}
+        bind:hover={hoverMz}
         onTheoretical={() => (view.psmOptions.bottom = 'theoretical')}
         {tool}
         {marks}
@@ -814,18 +818,19 @@
     </div>
   {/if}
 
-  <!-- below the spectrum (and its mass errors, and the table): the ion table and the features side by side; what does not fit wraps -->
-  <div class="mt-3 flex flex-wrap items-start gap-3">
-    <div class="max-w-full min-w-0 flex-none rounded-lg border bg-background px-2 py-2">
+  <!-- below the spectrum (and its mass errors, and the table): the ion table and the features side by side; what does not
+       fit wraps (flat: the spectrum is the one box; the table and the features stand on the page) -->
+  <div class="mt-4 flex flex-wrap items-start gap-x-8 gap-y-4">
+    <div class="max-w-full min-w-0 flex-none">
       {#if table}
-        <IonTable {table} {peptide} label={sequence} />
+        <IonTable {table} {peptide} label={sequence} bind:hover={hoverMz} />
       {:else}
         <p class="px-2 py-6 text-center text-xs text-muted-foreground">
           {annotationError ? `No ion table: ${annotationError}` : 'Computing the fragment ions…'}
         </p>
       {/if}
     </div>
-    <div class="min-w-[260px] flex-[1_1_420px] rounded-lg border bg-background px-3.5 py-3">
+    <div class="min-w-[260px] flex-[1_1_420px] pt-1">
       <PsmFeatures model={m} {row} {fixedMods} matched={summary} />
     </div>
   </div>

@@ -78,6 +78,7 @@
     onmarks = () => {},
     measure = null,
     pending = $bindable(false),
+    hover = $bindable(null),
   }: {
     mz: Float32Array
     intensity: Float32Array
@@ -104,6 +105,8 @@
     measure?: DeltaContext | null
     /** Out: a measurement is half made or a label is being written (Esc cancels it). */
     pending?: boolean
+    /** The m/z highlighted together with the ion table (a matched peak under the pointer, or an ion cell's). */
+    hover?: number | null
   } = $props()
 
   const uid = $props.id()
@@ -154,13 +157,13 @@
    * The lower half's label (and the similarity, on its own line when narrow): with the error strip right under the
    * lower half, else under the m/z labels.
    */
-  const bottomLabelY = $derived(errors ? plotBottom + 16 : plotBottom + 36)
+  const bottomLabelY = $derived(errors ? plotBottom + 16 : plotBottom + 36 + line)
   /** The error strip: its header (one line or more), then its plot (errorTop to errorBottom). */
   const errorTop = $derived.by(() => bottomLabelY + bottomExtra + 30 + (errorLines.length - 1) * line)
   const errorBottom = $derived(errorTop + 84)
-  /** The m/z labels sit below the lowest part: the lower half, or the error strip. */
+  /** The m/z labels sit below the lowest part: the lower half, or the error strip; the axis title a line under them. */
   const axisBase = $derived(errors ? errorBottom : plotBottom)
-  const H = $derived(errors ? axisBase + 24 : axisBase + 42 + bottomExtra)
+  const H = $derived(errors ? axisBase + 24 + line : axisBase + 42 + line + bottomExtra)
   let svg = $state<SVGSVGElement | null>(null)
 
   /** The SVG (for "Export spectrum (SVG)"). */
@@ -169,7 +172,15 @@
   }
 
   const bottomIons = $derived(bottom.kind === 'ions' ? bottom.ions : [])
-  const domain = $derived(mzDomain([mz, bottomIons.map((b) => b.mz)]))
+  const fullDomain = $derived(mzDomain([mz, bottomIons.map((b) => b.mz)]))
+  // zoom (survey P0-6): drag across the plot (with no tool on) to zoom into an m/z range; a double click (not on a
+  // label of the user's) or "Reset zoom" goes back. The y scale stays that of the whole spectrum.
+  let zoom = $state<[number, number] | null>(null)
+  let brush = $state<{ from: number; to: number } | null>(null)
+  /** A drag just zoomed: the click that ends it is not the tools'. */
+  let dragged = false
+  const domain = $derived(zoom ?? fullDomain)
+  const inView = (v: number) => v >= domain[0] && v <= domain[1]
   /** The right end of the m/z axis. */
   const xEnd = $derived(Math.max(M.left + 10, width - M.right))
   const x = $derived(scale(domain, [M.left, xEnd]))
@@ -214,7 +225,7 @@
    * matched peaks, the most intense first, clear of the user's, those without room left out.
    */
   const placedLabels = $derived.by(() => {
-    const order = [...groups].sort((p, q) => q.intensity - p.intensity)
+    const order = groups.filter((g) => inView(g.mz)).sort((p, q) => q.intensity - p.intensity)
     /** A box around a label (its baseline `y`, `height` above it). */
     const boxOf = (l: { x: number; y: number; width: number }, height: number): Box => ({ x0: l.x - l.width / 2, x1: l.x + l.width / 2, y0: l.y - height, y1: l.y })
     const own = marks.labels.map((l) => ({ x: x(l.mz), y: labelBase(l), width: textWidth(l.text, 11) * 1.1 + 12 }))
@@ -318,7 +329,7 @@
 
   // the tools: the peak a measurement starts at, the peak the pointer would snap to, what is selected, the text field
   let start = $state<number | null>(null)
-  let hover = $state<number | null>(null)
+  let snap = $state<number | null>(null)
   let selected = $state<{ kind: 'measurement' | 'label'; index: number } | null>(null)
   let editor = $state<{ mz: number; intensity: number; text: string } | null>(null)
   /** What the tools did, for screen readers. */
@@ -333,13 +344,17 @@
     void [mz, tool]
     untrack(() => {
       start = null
-      hover = null
+      snap = null
       editor = null
     })
   })
   $effect.pre(() => {
     void mz
-    untrack(() => (selected = null))
+    untrack(() => {
+      selected = null
+      zoom = null
+      brush = null
+    })
   })
   $effect(() => {
     pending = start !== null || editor !== null
@@ -358,7 +373,7 @@
   }
   /** The user label whose text is at (`at`, `py`), or -1. */
   function userLabelAt(at: number, py: number): number {
-    return userLabels.findIndex((l) => at >= l.x - l.width / 2 && at <= l.x + l.width / 2 && py >= l.y - 13 && py <= l.y + 3)
+    return userLabels.findIndex((l) => inView(l.mz) && at >= l.x - l.width / 2 && at <= l.x + l.width / 2 && py >= l.y - 13 && py <= l.y + 3)
   }
 
   /** Whether (`at`, `py`) is at the top of the peak `i` (within 8 px on screen): a click there is the tool's. */
@@ -367,6 +382,7 @@
   }
 
   function onclick(event: MouseEvent) {
+    if (dragged) return void (dragged = false)
     const { at, py } = pointer(event)
     // a label or a bracket first (not while a measurement is half made: its second peak may be under one; nor a
     // bracket at the top of a peak with a tool on: a tall peak may reach into it)
@@ -415,6 +431,24 @@
     const { at, py } = pointer(event)
     const l = userLabelAt(at, py)
     if (l >= 0) openEditor(marks.labels[l])
+    else zoom = null
+  }
+
+  // the zoom's brush: only with no tool on (with one, the clicks are the tool's)
+  function onpointerdown(event: PointerEvent) {
+    dragged = false
+    const { at, py } = pointer(event)
+    if (tool || event.button !== 0 || at < M.left || at > xEnd || py < plotTop || py > plotBottom) return
+    brush = { from: at, to: at }
+    svg?.setPointerCapture(event.pointerId)
+  }
+
+  function onpointerup() {
+    if (brush && Math.abs(brush.to - brush.from) > 5) {
+      zoom = [mzAt(Math.min(brush.from, brush.to)), mzAt(Math.max(brush.from, brush.to))]
+      dragged = true
+    }
+    brush = null
   }
 
   /** The text field at a peak: its label's text, if it has one. */
@@ -487,14 +521,19 @@
     const box = svg.getBoundingClientRect()
     const px0 = event.clientX - box.left
     const py = event.clientY - box.top
+    if (brush) {
+      brush.to = Math.min(xEnd, Math.max(M.left, px0))
+      tip = null
+      return
+    }
     if (tool) {
       const i = snapAt(px0, py)
-      hover = i < 0 ? null : i
+      snap = i < 0 ? null : i
       // (a measurement half made: the live Δm/z says it, no tooltip over the brackets)
-      if (start !== null) return void (tip = null)
+      if (start !== null) return void ((tip = null), (hover = null))
     }
-    if (px0 < M.left - 4 || px0 > width - M.right + 4 || py < plotTop - 4 || py > plotBottom) return void (tip = null)
-    const at = domain[0] + ((px0 - M.left) / (width - M.left - M.right)) * (domain[1] - domain[0])
+    if (px0 < M.left - 4 || px0 > width - M.right + 4 || py < plotTop - 4 || py > plotBottom) return void ((tip = null), (hover = null))
+    const at = mzAt(px0)
     if (py <= mid) {
       const i = strongestNear(mz, intensity, at)
       if (i < 0) return void (tip = null)
@@ -502,6 +541,7 @@
       const share = (intensity[i] / ref) * 100
       const lines = [`m/z ${mz[i].toFixed(4)} · ${share.toFixed(1)} %${share > 100 ? ' (clipped)' : ''}`]
       // (the error in the search's unit, as the strip below gives it)
+      hover = g ? mz[i] : null
       if (g) for (const m of g.matches) lines.push(`${ionLabel(m.ion)} · ${errors ? errorText(errorOf(m)) : `${signedNumber(m.errorPpm, 2)} ppm`}`)
       else lines.push('unmatched')
       tip = { x: x(mz[i]), y: py, lines }
@@ -536,17 +576,26 @@
     viewBox="0 0 {width} {H}"
     font-family={font}
     class="block"
-    style:cursor={tool ? 'crosshair' : undefined}
+    style:cursor="crosshair"
+    style:touch-action="none"
     data-tool={tool ?? undefined}
     data-mz-domain="{domain[0]} {domain[1]}"
     data-x-range="{M.left} {xEnd}"
     {onpointermove}
     {onclick}
     {ondblclick}
+    {onpointerdown}
+    {onpointerup}
+    onpointercancel={() => (brush = null)}
+    onlostpointercapture={() => (brush = null)}
     onpointerleave={() => {
       tip = null
+      snap = null
       hover = null
     }}>
+    <defs>
+      <clipPath id="{uid}-clip"><rect x={M.left} y="0" width={Math.max(0, xEnd - M.left)} height={H} /></clipPath>
+    </defs>
     <title id="{uid}-title">{title}</title>
     <desc id="{uid}-desc">{description}{errorDescription}{marksDescription}</desc>
 
@@ -556,6 +605,8 @@
       {#if errors}<line x1={px(x(t))} x2={px(x(t))} y1={errorTop} y2={errorBottom} stroke="var(--plot-band)" stroke-width="1" />{/if}
     {/each}
 
+    <!-- (zoomed: what lies outside the m/z range is clipped) -->
+    <g clip-path="url(#{uid}-clip)">
     <!-- the observed peaks: unmatched light grey and thin, matched in their series' colour -->
     {#each sticks as s (s.color)}
       {@const matched = s.color !== COLORS.unmatched}
@@ -592,6 +643,7 @@
         data-testid="bottom-status"
         data-no-export="">{bottom.message}</text>
     {/if}
+    </g>
 
     <!-- the fragment mass errors, under their peaks -->
     {#if errors}
@@ -614,6 +666,7 @@
           <text x={M.left - 6} y={px(ey(t) + 3.5)} text-anchor="end" font-size="10" fill={muted}>{errorTick(t)}</text>
         {/each}
         <text x={M.left - 6} y={errorTop - 10} text-anchor="end" font-size="10" fill={muted} data-testid="error-unit">{unit}</text>
+        <g clip-path="url(#{uid}-clip)">
         {#each dots as d, i (i)}
           <circle
             cx={px(x(mz[d.m.peak]))}
@@ -629,7 +682,16 @@
             data-mz={mz[d.m.peak]}
             ><title>{ionLabel(d.m.ion)} · m/z {mz[d.m.peak].toFixed(4)} · {errorText(d.error)}</title></circle>
         {/each}
+        </g>
       </g>
+    {/if}
+
+    <!-- the m/z highlighted with the ion table, and the zoom brush (page only) -->
+    {#if hover !== null && inView(hover)}
+      <line x1={px(x(hover))} x2={px(x(hover))} y1={plotTop} y2={axisBase} stroke="var(--color-ring)" stroke-width="2" stroke-dasharray="3 2" data-no-export="" data-testid="hover-line" />
+    {/if}
+    {#if brush}
+      <rect x={Math.min(brush.from, brush.to)} y={plotTop} width={Math.abs(brush.to - brush.from)} height={plotBottom - plotTop} fill="var(--color-ring)" fill-opacity="0.15" data-no-export="" />
     {/if}
 
     <!-- the axis: the halves' baseline, the m/z labels below everything -->
@@ -637,7 +699,8 @@
     {#each xTicks as t (t)}
       {#if x(t) < width - M.right - 30}<text x={px(x(t))} y={axisBase + 15} text-anchor="middle" font-size="11" fill={muted}>{t}</text>{/if}
     {/each}
-    <text x={width - M.right} y={axisBase + 15} text-anchor="end" font-size="11" fill={muted}>m/z</text>
+    <!-- (the axis title centred under the tick labels) -->
+    <text x={px((M.left + width - M.right) / 2)} y={axisBase + 15 + line} text-anchor="middle" font-size="11" fill={muted} data-testid="mz-axis-title">m/z</text>
 
     <!-- relative intensity, of each half's 100 % -->
     <g font-size="10" fill={muted} text-anchor="end">
@@ -651,6 +714,7 @@
       {/each}
     </g>
 
+    <g clip-path="url(#{uid}-clip)">
     <!-- direct labels of the matched peaks -->
     {#each labels as l (l.key)}
       <text
@@ -747,12 +811,14 @@
       </g>
     {/each}
 
+    </g>
+
     <!-- the tools under the pointer (the page's only): the peak it would snap to, the start of a measurement, the
          live Δm/z to the peak under the pointer -->
-    {#if tool && hover !== null && hover < mz.length}
+    {#if tool && snap !== null && snap < mz.length}
       <circle
-        cx={px(x(mz[hover]))}
-        cy={px(topOf(pointOf(hover)))}
+        cx={px(x(mz[snap]))}
+        cy={px(topOf(pointOf(snap)))}
         r="4.5"
         fill="none"
         stroke={tool === 'measure' ? 'var(--plot-measure)' : 'var(--plot-user-label)'}
@@ -764,9 +830,9 @@
       {@const sx = x(mz[start])}
       {@const sy = topOf(pointOf(start))}
       <circle cx={px(sx)} cy={px(sy)} r="4" fill="var(--plot-measure)" stroke={halo} stroke-width="1" data-testid="measure-start" data-no-export="" />
-      {#if hover !== null && hover !== start && hover < mz.length}
-        {@const hx = x(mz[hover])}
-        {@const hy = topOf(pointOf(hover))}
+      {#if snap !== null && snap !== start && snap < mz.length}
+        {@const hx = x(mz[snap])}
+        {@const hy = topOf(pointOf(snap))}
         <g data-testid="measure-preview" data-no-export="">
           <line x1={px(sx)} y1={px(sy)} x2={px(hx)} y2={px(hy)} stroke="var(--plot-measure)" stroke-width="1.25" stroke-dasharray="3 3" />
           <text
@@ -779,7 +845,7 @@
             stroke={halo}
             stroke-width="3"
             stroke-linejoin="round"
-            paint-order="stroke">{deltaText(Math.abs(mz[hover] - mz[start]))}</text>
+            paint-order="stroke">{deltaText(Math.abs(mz[snap] - mz[start]))}</text>
         </g>
       {/if}
     {/if}
@@ -812,6 +878,14 @@
         data-stacked={stacked ? '' : undefined}>{similarity}</text>
     {/if}
   </svg>
+
+  {#if zoom}
+    <button
+      type="button"
+      class="absolute top-0 right-3 rounded-md border bg-background px-2 py-0.5 text-xs hover:bg-muted"
+      data-testid="reset-zoom"
+      onclick={() => (zoom = null)}>Reset zoom (m/z {zoom[0].toFixed(0)}–{zoom[1].toFixed(0)})</button>
+  {/if}
 
   {#if bottom.kind === 'status' && bottom.failed && onTheoretical}
     <button

@@ -10,7 +10,7 @@ import type { PsmOptionState } from '../psm/psm'
 import type { PsmMarks } from '../psm/measure'
 import type { OpenResult } from '../search/session.svelte'
 import { columnDef } from './columns'
-import { toCsv, toTsv } from './csv'
+import { toCsv, toTsv, toXlsx } from './csv'
 import { cleanNote, curationChanged, NONE, readCuration, writeCuration, type CuratedPsm, type Mark } from './curation'
 import { levelTotal } from './figures'
 import { applyFilters, initialFilters, sortRows, type FilterState } from './filters'
@@ -131,6 +131,11 @@ export class LevelState {
   /** The CSV of the view: the visible columns, the filtered and sorted rows (peptides in ProForma). */
   csv(): string {
     return toCsv(this.#view.model, this.level, this.rows, csvColumns(this.visible), this.filters)
+  }
+
+  /** The view as an Excel workbook: the columns and rows of `csv`. */
+  xlsx(): Uint8Array {
+    return toXlsx(this.#view.model, this.level, this.rows, csvColumns(this.visible), this.filters, this.level)
   }
 
   /** The same as a tab-separated table (`toTsv`). */
@@ -408,6 +413,8 @@ export class ResultsView {
       text: '',
       maxQ: m.psmFdr,
       proteinFilter: 'protein' in what ? index : undefined,
+      charges: undefined,
+      ranges: undefined,
       peptideFilter: 'peptide' in what ? index : undefined,
       hideContaminants: contaminant ? false : f.hideContaminants,
       showDecoys: decoy ? true : f.showDecoys,
@@ -433,6 +440,8 @@ export class ResultsView {
         maxQ: m.psmFdr,
         proteinFilter: undefined,
         peptideFilter: undefined,
+        charges: undefined,
+        ranges: undefined,
         hideContaminants: m.peptide.contaminant[ps.peptide[i]] ? false : f.hideContaminants,
         showDecoys: ps.decoy[i] ? true : f.showDecoys,
       }
@@ -462,6 +471,8 @@ export class ResultsView {
       maxQ: m.psmFdr,
       proteinFilter: protein,
       peptideFilter: peptide ?? undefined,
+      charges: undefined,
+      ranges: undefined,
       hideContaminants: m.peptide.contaminant[ps.peptide[i]] ? false : restore.hideContaminants,
       showDecoys: ps.decoy[i] ? true : restore.showDecoys,
     }

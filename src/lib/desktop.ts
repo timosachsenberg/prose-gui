@@ -328,6 +328,12 @@ export function downloadProteome(proteome: string, reviewed: boolean): Promise<s
   return invoke<string>('download_proteome', { proteome, reviewed })
 }
 
+/** Binary contents (an .xlsx) written where the user chooses, suggesting `name`; the path, or null if cancelled. */
+export function saveBytes(name: string, contents: Uint8Array): Promise<string | null> {
+  if (!isDesktop()) return Promise.resolve(browserDownload(name, new Blob([contents as Uint8Array<ArrayBuffer>], { type: 'application/octet-stream' })))
+  return oneDialog(null, () => invoke<string | null>('save_bytes', contents, { headers: { 'x-file-name': encodeURIComponent(name) } }))
+}
+
 /**
  * The PSM curation of search `searchId`: its folder's `curation.json` (results/curation.ts), read with
  * read_search_file and written with save_curation. Null outside the desktop app (the marks then last the session).

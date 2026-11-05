@@ -52,7 +52,7 @@ libglvnd-gles` (Fedora).
 - The searches (History): a folder per search in the app's data folder, `searches/<id>/`: ProSE's outputs, the
   record `search.json`, `proteins.fasta` (the proteins of the result, so that the search opens without its
   database), `prose.ini` (the parameters ProSE was given; ProSE's defaults of the recorded version for the rest),
-  `command.txt` (its command line, the paths as placeholders: "Command line" in History copies it) and links to the inputs. The app's data folder is
+  `command.txt` (its command line, the paths as placeholders: "Copy command line" in Overview and "Command line" in History copy it) and links to the inputs. The app's data folder is
   - Linux: `~/.local/share/org.openms.prose.desktop/` (`$XDG_DATA_HOME`)
   - macOS: `~/Library/Application Support/org.openms.prose.desktop/`
   - Windows: `%APPDATA%\org.openms.prose.desktop\`
@@ -73,7 +73,7 @@ rejects or unmarks every PSM the table shows (e.g. all PSMs of a peptide after "
 The Peptides table counts the accepted (✓) and rejected (✗) PSMs of each peptide and filters by them (With an
 accepted PSM, ...).
 
-Export › TSV (current view) saves the table as shown (Export › CSV for spreadsheets), and Export › Curated PSMs (TSV)
+Export › TSV (current view) saves the table as shown (Export › CSV or Excel for spreadsheets), and Export › Curated PSMs (TSV)
 every marked or noted PSM, whatever the filters, with its mark and note. The marks and notes are saved in the
 search's folder as `curation.json` (`src/lib/results/curation.ts`: each PSM by its file, native ID, peptide and
 charge), so they stay with the search in History and go with its results archive.
