@@ -43,11 +43,11 @@ describe('columnSpecs', () => {
 
   it('peptides: the best PSM q-value, counts per sample; PSMs: no sample counts', () => {
     expect(ids(columnSpecs(model(), 'peptides', { openSearch: false }))).toEqual([
-      'peptide', 'proteins', 'psms', 'sample:0', 'sample:1', 'foundIn', 'bestQ', 'length',
+      'peptide', 'proteins', 'psms', 'sample:0', 'sample:1', 'foundIn', 'bestQ', 'curation', 'length',
     ])
     expect(ids(columnSpecs(model(), 'psms', { openSearch: false }))).toEqual([
       'peptide', 'proteins', 'sample', 'scan', 'charge', 'mz', 'rt', 'precursorError', 'score', 'qValue',
-      'pep', 'deltaMass', 'file', 'isotopeError',
+      'curation', 'note', 'pep', 'deltaMass', 'file', 'isotopeError',
     ])
   })
 
@@ -64,8 +64,8 @@ describe('defaultHidden', () => {
   it('hides the less common columns, and the mass shift of a closed search', () => {
     const m = model()
     expect(defaultHidden(columnSpecs(m, 'proteins', { openSearch: false }), m)).toEqual(['gene', 'qValue', 'score', 'length', 'group'])
-    expect(defaultHidden(columnSpecs(m, 'psms', { openSearch: false }), m)).toEqual(['pep', 'deltaMass', 'file', 'isotopeError'])
-    expect(defaultHidden(columnSpecs(m, 'psms', { openSearch: true }), m)).toEqual(['pep', 'file', 'isotopeError'])
+    expect(defaultHidden(columnSpecs(m, 'psms', { openSearch: false }), m)).toEqual(['note', 'pep', 'deltaMass', 'file', 'isotopeError'])
+    expect(defaultHidden(columnSpecs(m, 'psms', { openSearch: true }), m)).toEqual(['note', 'pep', 'file', 'isotopeError'])
   })
 
   it('shows the gene when the descriptions name one', () => {
@@ -93,7 +93,7 @@ describe('visibleSpecs and csvColumns', () => {
     const specs = columnSpecs(model(), 'psms', { openSearch: true })
     expect(csvColumns(visibleSpecs(specs, []))).toEqual([
       'peptide', 'proteins', 'sample', 'nativeId', 'charge', 'mz', 'rt', 'precursorErrorPpm', 'score', 'qValue',
-      'pep', 'deltaMass', 'file', 'isotopeError',
+      'curation', 'curationNote', 'pep', 'deltaMass', 'file', 'isotopeError',
     ])
   })
 })

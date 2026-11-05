@@ -5,7 +5,7 @@
 // Commands (src-tauri/src/lib.rs): tool_info, start_search, cancel_search, read_search_file,
 // inspect_files, cpu_count, example_files, save_text, save_search_file, history_list, history_save_record,
 // history_save_proteins, history_rename, history_delete, history_files, history_import, open_project_file,
-// save_project_file, answer_close. Events: search://progress, search://done, search://failed,
+// save_project_file, save_curation, answer_close. Events: search://progress, search://done, search://failed,
 // project://progress, app://close-requested. The system's dialogs open one at a time (`oneDialog`). The window's
 // theme (`windowTheme`, `onWindowThemeChanged`, `setWindowTheme`).
 
@@ -224,6 +224,25 @@ export async function onFileDrop(handlers: { over: (on: boolean) => void; drop: 
  */
 export function saveText(name: string, contents: string): Promise<string | null> {
   return oneDialog(null, () => invoke<string | null>('save_text', { name, contents }))
+}
+
+/**
+ * The PSM curation of search `searchId`: its folder's `curation.json` (results/curation.ts), read with
+ * read_search_file and written with save_curation. Null outside the desktop app (the marks then last the session).
+ */
+export function curationStoreFor(searchId: string): { load(): Promise<string | null>; save(text: string): Promise<void> } | null {
+  if (!isDesktop()) return null
+  return {
+    async load() {
+      try {
+        return new TextDecoder('utf-8', { fatal: true }).decode(await readSearchFile(searchId, 'curation.json'))
+      } catch (e) {
+        if ((e as { notFound?: boolean })?.notFound) return null
+        throw new Error(errorText(e))
+      }
+    },
+    save: (curation) => invoke('save_curation', { searchId, curation }),
+  }
 }
 
 /** Copies a file of a search (e.g. `merged.idXML`) to where the user chooses, suggesting `suggested`. */

@@ -3,6 +3,7 @@
   // is marked after its sequence, as the Proteins table marks a decoy protein.
   import PeptideSequence from '$lib/components/PeptideSequence.svelte'
   import { peptideView } from '$lib/format/peptide'
+  import { peptideMarks } from '$lib/results/curation'
   import { formatCount, formatQValue } from '$lib/results/display'
   import type { LevelState, ResultsView } from '$lib/results/view.svelte'
   import { tableColumns, sampleIndex, type CellDef } from './cells'
@@ -17,6 +18,13 @@
   const nS = $derived(m.samples.length)
   const nBio = $derived(new Set(m.columnSample).size)
   const fixedMods = $derived(view.result.settings.fixedMods)
+
+  /** The accepted and rejected PSMs of peptide `k` (read with the count of changes: the marks change in place). */
+  function marksOf(k: number): { accepted: number; rejected: number } {
+    void view.curationVersion
+    const marks = peptideMarks(m)
+    return { accepted: marks.accepted[k], rejected: marks.rejected[k] }
+  }
 
   function cells(id: string): CellDef {
     const counts = level.counts
@@ -38,6 +46,14 @@
         return { cell: (k) => formatQValue(m.peptide.bestQ[k]) }
       case 'length':
         return { cell: (k) => String(pt.sequence[k].length) }
+      case 'curation':
+        return {
+          cell: () => curationCell,
+          cellTitle: (k) => {
+            const { accepted, rejected } = marksOf(k)
+            return accepted + rejected === 0 ? 'No curated PSM' : `${accepted} accepted, ${rejected} rejected PSMs`
+          },
+        }
       default:
         return { cell: () => '' }
     }
@@ -45,6 +61,15 @@
 
   const columns = $derived(tableColumns(level.visible, cells))
 </script>
+
+{#snippet curationCell(k: number)}
+  {@const marks = marksOf(k)}
+  {#if marks.accepted > 0}<span class="text-emerald-700 tabular-nums dark:text-emerald-400"
+      ><span aria-hidden="true">✓</span>{marks.accepted}<span class="sr-only"> accepted</span></span
+    >{/if}{#if marks.rejected > 0}<span class="ml-2 text-destructive tabular-nums"
+      ><span aria-hidden="true">✗</span>{marks.rejected}<span class="sr-only"> rejected</span></span
+    >{/if}
+{/snippet}
 
 {#snippet peptideCell(k: number)}
   <PeptideSequence view={peptideView(pt, k, fixedMods)} />{#if pt.decoy[k]}<Marker text="decoy" />{/if}

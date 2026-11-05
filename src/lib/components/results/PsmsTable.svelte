@@ -4,10 +4,12 @@
   // PSM view (`onOpen`); while it is open, the table stands under its spectrum (`follow`: the arrow keys
   // go through the PSMs, the view showing each). `compact` makes it a narrow list (peptide, charge, sample,
   // q-value and precursor error). A decoy PSM and that of a co-isolated
-  // precursor (a search with chimeric:enabled) are marked after the peptide.
+  // precursor (a search with chimeric:enabled) are marked after the peptide. The Curation column shows the user's
+  // mark (accepted ✓, rejected ✗; the compact list too).
   import PeptideSequence from '$lib/components/PeptideSequence.svelte'
   import { massShift, peptideView } from '$lib/format/peptide'
   import { COISOLATED_TITLE, isCoisolated } from '$lib/results/coisolated'
+  import { ACCEPTED, MARK_NAMES, REJECTED } from '$lib/results/curation'
   import { baseName } from '$lib/results/model'
   import { formatQCompact, formatQValue, formatScore, spectrumLabel } from '$lib/results/display'
   import type { LevelState, ResultsView } from '$lib/results/view.svelte'
@@ -34,8 +36,24 @@
     return marks.length > 0 ? `${text} (${marks.join(', ')})` : text
   }
 
+  /** The PSM's curation mark (read with the count of changes: the marks change in place). */
+  function markOf(i: number): number {
+    void view.curationVersion
+    return m.curation[i]
+  }
+
+  /** The PSM's note ('' none; read with the count of changes, as the marks). */
+  function noteOf(i: number): string {
+    void view.curationVersion
+    return m.curationNotes.get(i) ?? ''
+  }
+
   function cells(id: string): CellDef {
     switch (id) {
+      case 'curation':
+        return { cell: () => curationCell, cellTitle: (i) => MARK_NAMES[markOf(i)] || 'Not curated' }
+      case 'note':
+        return { cell: (i) => noteOf(i), cellTitle: (i) => noteOf(i) || undefined }
       case 'peptide':
         return { cell: () => peptideCell, cellTitle: (i) => withMarks(m.tables.peptides.proforma[ps.peptide[i]], i) }
       case 'proteins':
@@ -80,6 +98,7 @@
     sample: { width: 88 },
     qValue: { width: 64, header: 'q' },
     precursorError: { width: 58, header: 'Δ ppm', title: 'Precursor mass error (ppm)' },
+    curation: { width: 28, header: '✓', title: 'Curation: accepted (✓) or rejected (✗)' },
   }
 
   const columns = $derived.by(() => {
@@ -112,6 +131,14 @@
       >[{shift}]?</span
     >{/if}<PeptideSequence view={peptideView(m.tables.peptides, ps.peptide[i], fixedMods)} />{#if ps.decoy[i]}<Marker
       text="decoy" />{/if}{#if isCoisolated(ps, i)}<Marker text="co-isolated" title={COISOLATED_TITLE} />{/if}
+{/snippet}
+
+{#snippet curationCell(i: number)}
+  {@const mark = markOf(i)}
+  {#if mark === ACCEPTED || mark === REJECTED}
+    <span title={m.curationNotes.get(i)} class={mark === ACCEPTED ? 'text-emerald-700 dark:text-emerald-400' : 'text-destructive'}
+      ><span aria-hidden="true">{mark === ACCEPTED ? '✓' : '✗'}</span><span class={compact ? 'sr-only' : 'ml-1'}>{MARK_NAMES[mark]}</span></span>
+  {/if}
 {/snippet}
 
 {#snippet proteinsCell(i: number)}
