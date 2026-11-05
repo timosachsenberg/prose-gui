@@ -178,7 +178,8 @@ pub const QPX_DIR: &str = "qpx";
 pub const PEAK_WINDOW: f64 = 100.0;
 pub const PEAK_TOP: u32 = 100;
 
-/// The idXML of a search of several inputs (`-out_merged`), and of one input (`-out`; `-out_idxml` before OpenMS 3.7), in the search
+/// The idXML of a search of several inputs (`-out_merged`), and of one input (`-out`; `-out_idxml` before OpenMS 3.7:
+/// [`with_idxml_option`]), in the search
 /// folder (the Export menu's idXML: `src/lib/results/exports.ts`).
 pub const MERGED_IDXML: &str = "merged.idXML";
 pub const SINGLE_IDXML: &str = "search.idXML";
@@ -564,6 +565,15 @@ pub fn is_open_search(params: &Map<String, Value>) -> bool {
     let lower = number_or(params, "precursor:mass_tolerance_lower", 10.0);
     let upper = number_or(params, "precursor:mass_tolerance_upper", 10.0);
     lower.max(upper) > if ppm { 1000.0 } else { 1.0 }
+}
+
+/// `args` (of [`build_args`]) with `option` for a one-input search's idXML in place of `-out`: `-out_idxml` for a ProSE
+/// older than OpenMS 3.7 (`tool::idxml_option_of`).
+pub fn with_idxml_option(mut args: Vec<OsString>, option: &str) -> Vec<OsString> {
+    if let Some(arg) = args.iter_mut().find(|a| *a == "-out") {
+        *arg = option.into();
+    }
+    args
 }
 
 /// The command line of a search whose folder is `out_dir`, with this platform's [`InputLinks`].
