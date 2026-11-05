@@ -170,6 +170,10 @@ export const CASES = {
   },
 }
 
+// (branch claude/compare-defaults only, not for main: the comparison of the tool's defaults with the web app's settings)
+CASES['suitability-defaults'] = { ...CASES.suitability, parameters: { ...ORBITRAP, 'FDR:protein': 0.05 } }
+CASES['example-web'] = { ...CASES.example, parameters: { ...CASES.example.parameters, ...WEB_APP_ALGORITHM } }
+
 export function getCase(name) {
   const c = CASES[name]
   if (!c) throw new Error(`no fixture case ${name} (${Object.keys(CASES).join(', ')})`)
