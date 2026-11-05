@@ -85,9 +85,27 @@ describe('the PSM view', () => {
     return { view, target, text: (id: string) => target.querySelector(`[data-testid="${id}"]`)?.textContent?.replace(/\s+/g, ' ').trim() ?? null }
   }
 
+  it("marks the precursor at the PSM's m/z, and shows its peaks unless switched off", async () => {
+    const { view, target } = await show(RICH)
+    const row = view.psm!.row
+    const mark = target.querySelector('[data-testid="precursor-mark"]')
+    expect(Number(mark?.getAttribute('data-mz'))).toBeCloseTo(view.model.tables.psms.mz[row], 6)
+    expect(target.querySelector('[data-testid="precursor-label"]')?.textContent).toBe(`precursor ${view.model.tables.psms.charge[row]}+`)
+    const toggle = target.querySelector<HTMLInputElement>('[data-testid="precursor-toggle"]')!
+    expect(toggle.checked).toBe(true)
+    toggle.click()
+    flushSync()
+    expect(view.psmOptions.precursor).toBe(false)
+    // (the mark stays: it is where the precursor is, whatever is annotated)
+    expect(target.querySelector('[data-testid="precursor-mark"]')).not.toBeNull()
+  })
+
   it('gives the mass errors of every annotated ion shown: all ion types, charges and losses, in their colours', async () => {
     const { view, target, text } = await show(RICH)
     const dotsOf = () => Array.from(target.querySelectorAll('[data-testid="error-dot"]'))
+    // (the b and y ions alone: the precursor peaks are shown unless switched off)
+    view.psmOptions.precursor = false
+    flushSync()
     const plain = dotsOf()
     expect(plain.length).toBeGreaterThan(0)
     expect([...new Set(plain.map((d) => d.getAttribute('data-type')))].every((t) => t === 'b' || t === 'y')).toBe(true)
