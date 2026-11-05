@@ -6,7 +6,7 @@
 // colon-separated), and ProSE loads its own closure with one OpenMP runtime.
 import { existsSync, readdirSync, readFileSync, readlinkSync } from 'node:fs'
 import { join } from 'node:path'
-import { appReady, clearSearches, dataHome, invoke, openFirstPsm, runExample } from './lib.ts'
+import { appReady, clearSearches, dataHome, EXAMPLE_PSMS, invoke, openFirstPsm, runExample } from './lib.ts'
 
 const forbidden = (process.env.SMOKE_FORBIDDEN ?? '').split(':').filter(Boolean)
 
@@ -121,7 +121,7 @@ describe('the AppImage', () => {
     } finally {
       clearInterval(poll)
     }
-    await expect($('[data-testid="psm-count"]')).toHaveText(expect.stringContaining('132'))
+    await expect($('[data-testid="psm-count"]')).toHaveText(expect.stringContaining(EXAMPLE_PSMS))
     await openFirstPsm()
     await expect($('[data-testid="bottom-label"]')).toHaveText(expect.stringContaining('PeptDeep'))
     expect((await $$('[data-testid="bottom-peaks"]')).length).toBeGreaterThan(0)

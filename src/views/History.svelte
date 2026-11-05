@@ -1,7 +1,7 @@
 <script lang="ts">
   // History: the searches kept on this computer, each a folder of the app's data (the tool's outputs and a
   // record of the settings and the design; the mzML files stay where they are). Open, rename and delete;
-  // "Open project…" unpacks a .prose file into History. It stays usable while a search runs, and reads the
+  // "Import results archive (.prose)…" unpacks a .prose file into History. It stays usable while a search runs, and reads the
   // list again when it is shown. Beside each name: the search's database and, for searches of the same name,
   // what tells them apart (history/details.ts). A folder that is no search (no record, or a name that is not one
   // of a search) is listed with what is wrong, and can be deleted.
@@ -13,7 +13,7 @@
   import * as Table from '$lib/components/ui/table'
   import { formatBytes } from '$lib/format/bytes'
   import { formatCount } from '$lib/results/display'
-  import { history, openFromHistory, openProjectFile, refreshHistory, removeFromHistory, rename } from '$lib/history/history.svelte'
+  import { history, openFromHistory, openArchiveFile, refreshHistory, removeFromHistory, rename } from '$lib/history/history.svelte'
   import type { HistoryEntry } from '$lib/history/history'
   import { distinguishing, entryFacts } from '$lib/history/details'
   import { searchForm } from '$lib/search/form.svelte'
@@ -22,9 +22,9 @@
 
   onMount(() => void refreshHistory())
 
-  /** What went wrong with the last action: open (a stored search or a project file), rename or delete. */
+  /** What went wrong with the last action: open (a stored search or a results archive), rename or delete. */
   let problem = $state<{ title: string; text: string } | null>(null)
-  /** The search being read from storage, or 'project'. */
+  /** The search being read from storage, or 'archive'. */
   let busy = $state<string | null>(null)
   /** The row being renamed and the name typed so far. */
   let renaming = $state<string | null>(null)
@@ -67,11 +67,11 @@
 
   async function openFile() {
     problem = null
-    busy = 'project'
+    busy = 'archive'
     try {
-      await openProjectFile()
+      await openArchiveFile()
     } catch (e) {
-      problem = { title: 'Could not open', text: `The project file could not be opened: ${message(e)}` }
+      problem = { title: 'Could not open', text: `The results archive could not be imported: ${message(e)}` }
     } finally {
       busy = null
     }
@@ -118,13 +118,13 @@
     <div>
       <h1 class="mb-1 text-xl font-semibold tracking-tight">History</h1>
       <p class="text-muted-foreground">
-        Finished searches are saved on this computer with their results and the spectra of their PSMs. Your mzML files
-        stay where they are.
+        Finished searches are saved on this computer with their results and the spectra of their PSMs. Your spectrum
+        files stay where they are.
       </p>
     </div>
     <div>
-      <Button variant="outline" size="sm" disabled={busy !== null} onclick={openFile} data-testid="open-project">
-        {busy === 'project' ? 'Opening project…' : 'Open project…'}
+      <Button variant="outline" size="sm" disabled={busy !== null} onclick={openFile} data-testid="import-archive">
+        {busy === 'archive' ? 'Importing…' : 'Import results archive (.prose)…'}
       </Button>
     </div>
   </div>
@@ -154,8 +154,8 @@
     <div class="rounded-lg border border-dashed bg-background px-6 py-10 text-center" data-testid="history-empty">
       <p class="text-sm font-medium">No saved searches yet</p>
       <p class="mx-auto mt-1 max-w-md text-xs text-muted-foreground">
-        Finished searches are saved here with their spectra, so you can reopen them later. To open a project file
-        (saved with Export › Project, here or on another computer), use Open project above.
+        Finished searches are saved here with their spectra, so you can reopen them later. To open a results archive
+        (saved with Export › Results archive, here or on another computer), use Import results archive above.
       </p>
     </div>
   {:else}
@@ -250,8 +250,8 @@
     <Dialog.Header>
       <Dialog.Title>Delete this search?</Dialog.Title>
       <Dialog.Description>
-        This removes “{deleting?.name ?? deleting?.id}” and its results from this computer. Your mzML files and any project
-        file you saved from it are kept.
+        This removes “{deleting?.name ?? deleting?.id}” and its results from this computer. Your spectrum files and any results
+        archive you saved from it are kept.
       </Dialog.Description>
     </Dialog.Header>
     <Dialog.Footer>

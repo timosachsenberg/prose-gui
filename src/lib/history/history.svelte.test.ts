@@ -1,5 +1,5 @@
 // The state of History against a disk in memory: the list, rename and delete, what a finished search
-// leaves, opening, and the project file through the store. (The Rust commands have their own tests.)
+// leaves, opening, and the results archive through the store. (The Rust commands have their own tests.)
 
 import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
 import type { Route } from '../route'
@@ -12,17 +12,17 @@ import {
   dismissSaveStatus,
   history,
   openFromHistory,
-  openProjectFile,
+  openArchiveFile,
   refreshHistory,
   removeFromHistory,
   rename,
   restoreFromHistory,
   retrySave,
   saveFinished,
-  saveProjectFile,
+  saveArchiveFile,
   useBackend,
 } from './history.svelte'
-import { ProjectError, ProjectVersionError } from './history'
+import { ArchiveError, ArchiveVersionError } from './history'
 
 // (the router reads the window's location: here only where the app goes)
 const router = vi.hoisted(() => ({ route: { view: 'search' } as Route, forgotten: [] as string[] }))
@@ -83,7 +83,7 @@ describe('History', () => {
   test('history lists an incomplete folder with its message', async () => {
     await finished('1-0', 'good', '2026-10-20T09:00:00.000Z')
     disk.addFolder('2-0', { 'search.json': '{ broken' })
-    disk.addFolder('3-0', { 'search.json': JSON.stringify({ schema: 2, id: '3-0', name: 'future' }) })
+    disk.addFolder('3-0', { 'search.json': JSON.stringify({ schema: 3, id: '3-0', name: 'future' }) })
     // a finished search that was not saved (no record): listed as such, so that it can be deleted
     disk.addFolder('4-0', { 'qpx/quantms.psm.parquet': 'x' })
     await refreshHistory()
@@ -93,9 +93,9 @@ describe('History', () => {
     expect(history.entries.find((e) => e.id === '4-0')?.error).toMatch(/This search was not saved/)
     expect(history.entries.find((e) => e.id === '1-0')?.error).toBeNull()
     // opening a broken one says why; opening the good one works
-    await expect(openFromHistory('2-0')).rejects.toBeInstanceOf(ProjectError)
-    await expect(openFromHistory('3-0')).rejects.toBeInstanceOf(ProjectVersionError)
-    await expect(openFromHistory('4-0')).rejects.toBeInstanceOf(ProjectError)
+    await expect(openFromHistory('2-0')).rejects.toBeInstanceOf(ArchiveError)
+    await expect(openFromHistory('3-0')).rejects.toBeInstanceOf(ArchiveVersionError)
+    await expect(openFromHistory('4-0')).rejects.toBeInstanceOf(ArchiveError)
     // a broken folder can be deleted
     await removeFromHistory('2-0')
     await removeFromHistory('4-0')
@@ -196,51 +196,51 @@ describe('History', () => {
     expect(await restoreFromHistory('9-9')).toBe(false)
   })
 
-  test('a project saves from a search and opens again as a new search of History', async () => {
+  test('an archive saves from a search and opens again as a new search of History', async () => {
     await finished('1-0', 'first', '2026-10-20T09:00:00.000Z')
     const open = { ...result, id: '1-0', stored: { name: 'first', appVersion: '0.1.0', moduleVersion: '3.6.0' } }
-    expect(await saveProjectFile(open)).toBe('/saved/first.prose')
+    expect(await saveArchiveFile(open)).toBe('/saved/first.prose')
     const bytes = disk.saved[0].bytes
     // open it (the same disk: a second copy of the search)
-    disk.projects.set('/p/first.prose', bytes)
+    disk.archives.set('/p/first.prose', bytes)
     disk.chosen = '/p/first.prose'
-    expect(await openProjectFile()).toBe(true)
+    expect(await openArchiveFile()).toBe(true)
     expect(history.entries).toHaveLength(2)
     const copy = history.entries.find((e) => e.id !== '1-0')!
     expect(openResult.current?.id).toBe(copy.id)
     expect(router.route).toEqual({ view: 'results', id: copy.id })
-    // (the project names the searched files, it does not place them)
+    // (the archive names the searched files, it does not place them)
     expect(openResult.current?.outcome.tables).toEqual({
       ...result.outcome.tables,
       files: result.outcome.tables.files.map((f) => f.split('/').pop()),
     })
     // a cancelled dialog opens nothing
     disk.chosen = null
-    expect(await openProjectFile()).toBe(false)
+    expect(await openArchiveFile()).toBe(false)
     disk.cancelSave = true
-    expect(await saveProjectFile(open)).toBeNull()
+    expect(await saveArchiveFile(open)).toBeNull()
   })
 
-  test('the project of a search that failed to save is saved to History first; if that fails, it says so', async () => {
+  test('the archive of a search that failed to save is saved to History first; if that fails, it says so', async () => {
     disk.addFolder('5-0', fixture)
-    expect(await saveProjectFile({ ...result, id: '5-0' })).toBe('/saved/Ecoli.prose')
+    expect(await saveArchiveFile({ ...result, id: '5-0' })).toBe('/saved/Ecoli.prose')
     expect(history.entries.map((e) => e.id)).toContain('5-0')
     disk.addFolder('6-0', fixture)
     disk.failures.save = 'read-only'
-    await expect(saveProjectFile({ ...result, id: '6-0' })).rejects.toThrow(/Not saved to History \(read-only\)/)
+    await expect(saveArchiveFile({ ...result, id: '6-0' })).rejects.toThrow(/Not saved to History \(read-only\)/)
   })
 
-  test('a project of a newer version is refused with its message', async () => {
+  test('an archive of a newer version is refused with its message', async () => {
     const { strToU8, zipSync } = await import('fflate')
-    disk.projects.set('/p/new.prose', zipSync({ 'search.json': strToU8(JSON.stringify({ schema: 3 })) }))
+    disk.archives.set('/p/new.prose', zipSync({ 'search.json': strToU8(JSON.stringify({ schema: 3 })) }))
     disk.chosen = '/p/new.prose'
-    await expect(openProjectFile()).rejects.toThrow(/saved by a newer version of ProSE \(schema 3\)/)
+    await expect(openArchiveFile()).rejects.toThrow(/saved by a newer version of ProSE \(schema 3\)/)
     expect(history.entries).toEqual([])
   })
 
-  test('a disk error while opening a project is a ProjectError with its text', async () => {
+  test('a disk error while opening an archive is an ArchiveError with its text', async () => {
     disk.chosen = '/p/absent.prose'
-    await expect(openProjectFile()).rejects.toBeInstanceOf(ProjectError)
-    await expect(openProjectFile()).rejects.toThrow(/cannot be read/)
+    await expect(openArchiveFile()).rejects.toBeInstanceOf(ArchiveError)
+    await expect(openArchiveFile()).rejects.toThrow(/cannot be read/)
   })
 })

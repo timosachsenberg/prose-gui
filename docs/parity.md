@@ -127,7 +127,7 @@ not at all: then the sequences are '' (no coverage), the descriptions those of t
 `search.json` (schema 1: `schema, id, name, createdAt, appVersion, toolVersion, files, database, design, settings,
 psms, psmFdr, proteinFdr, seconds`, see `src/lib/history/history.ts`; `psms` from the run view
 `qpx/quantms.run.parquet`, the sum of `identified_spectra_count`). A folder with `search.json` is a saved search; a
-project file (`.prose`) is a zip of the folder's regular files (not the links to the inputs, not `database.fasta`, not
+results archive (`.prose`) is a zip of the folder's regular files (not the links to the inputs, not `database.fasta`, not
 `database.json`; `inputs.json` with the file names only). An imported search has `imported: true` in `search.json`:
 it reads only the files of its folder (no absolute path is served). A running search or import holds an exclusive
 lock on `<id>.partial/.lock`, which the startup sweep honours.

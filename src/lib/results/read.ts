@@ -141,6 +141,10 @@ export interface SearchResult {
    * write proteins.fasta for this search (it does when this is false: history.ts, `openSearch`).
    */
   proteinsSaved: boolean
+  /** ProSE's parameters of the search as its provenance view records them (step peptide_search), by key. */
+  provenance?: Record<string, string>
+  /** The version of ProSE that searched, as its provenance view records it (step peptide_search); absent: not recorded. */
+  toolVersion?: string
 }
 
 /** Runs `read` on the file `name`; an error names the file. */
@@ -847,7 +851,15 @@ export async function readSearch(files: SearchFiles): Promise<SearchResult> {
     return false
   })
   const summary = toSummary(meta, paths, modificationAnalysis, hasQValues)
-  return { summary, tables, spectra, warnings, proteinsSaved }
+  return {
+    summary,
+    tables,
+    spectra,
+    warnings,
+    proteinsSaved,
+    provenance: Object.fromEntries(meta.search),
+    ...(meta.toolVersion ? { toolVersion: meta.toolVersion } : {}),
+  }
 }
 
 /** The modifications of QPX row `r`, by position (−1 N-terminal, the length C-terminal, else 0-based). */

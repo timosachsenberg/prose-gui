@@ -2,7 +2,7 @@
 // bytes, with the semantics of the Rust commands that the tests rely on (src-tauri/src/history.rs).
 
 import { zipSync, type Zippable } from 'fflate'
-import { LEFT_OUT, LEVEL, RECORD_FILE, STORE, withoutPaths, type HistoryBackend, type HistoryEntry } from './history'
+import { LEFT_OUT, LEVEL, RECORD_FILE, SCHEMA_VERSION, STORE, withoutPaths, type HistoryBackend, type HistoryEntry } from './history'
 import { bytesOfRange, type ByteRange } from '../results/read'
 
 export class NotFound extends Error {
@@ -32,7 +32,7 @@ export function unframe(body: Uint8Array): { name: string; data: Uint8Array }[] 
 export class MemoryBackend implements HistoryBackend {
   folders = new Map<string, Map<string, Uint8Array>>()
   /** The `.prose` files "on disk", by path, and the one the open dialog gives (null: cancelled). */
-  projects = new Map<string, Uint8Array>()
+  archives = new Map<string, Uint8Array>()
   chosen: string | null = null
   /** What the save dialog got (the zip as the Rust side writes it), and whether the user cancels it. */
   saved: { name: string; bytes: Uint8Array }[] = []
@@ -83,7 +83,7 @@ export class MemoryBackend implements HistoryBackend {
       try {
         const json = JSON.parse(new TextDecoder().decode(record))
         if (typeof json?.schema !== 'number') throw new Error('search.json has no schema: it is not a ProSE search record.')
-        if (json.schema > 1) throw new Error(`This search was saved by a newer version of ProSE (schema ${json.schema}).`)
+        if (json.schema > SCHEMA_VERSION) throw new Error(`This search was saved by a newer version of ProSE (schema ${json.schema}).`)
         Object.assign(entry, {
           name: json.name ?? null,
           createdAt: json.createdAt ?? null,
@@ -151,12 +151,12 @@ export class MemoryBackend implements HistoryBackend {
   }
 
   /**
-   * As `save_project_file` (src-tauri/src/project.rs): the dialog, then the folder's files but `LEFT_OUT` as a
+   * As `save_archive_file` (src-tauri/src/archive.rs): the dialog, then the folder's files but `LEFT_OUT` as a
    * zip, `search.json` first, `inputs.json` without paths, Parquet stored (here in memory, with fflate).
    */
-  async saveProject(id: string, name: string, onProgress?: (fraction: number) => void): Promise<string | null> {
+  async saveArchive(id: string, name: string, onProgress?: (fraction: number) => void): Promise<string | null> {
     const folder = this.folder(id)
-    if (!folder.has(RECORD_FILE)) throw new Error(`The search is not saved to History (it has no ${RECORD_FILE}), so there is no project to make.`)
+    if (!folder.has(RECORD_FILE)) throw new Error(`The search is not saved to History (it has no ${RECORD_FILE}), so there is no archive to make.`)
     if (this.cancelSave) return null
     const names = [...folder.keys()]
       .filter((n) => !LEFT_OUT.has(n))
@@ -171,9 +171,9 @@ export class MemoryBackend implements HistoryBackend {
     return `/saved/${name}`
   }
 
-  async openProject(): Promise<Uint8Array | null> {
+  async openArchive(): Promise<Uint8Array | null> {
     if (this.chosen === null) return null
-    const bytes = this.projects.get(this.chosen)
+    const bytes = this.archives.get(this.chosen)
     if (!bytes) throw new Error(`${this.chosen} cannot be read.`)
     return bytes
   }
@@ -182,7 +182,7 @@ export class MemoryBackend implements HistoryBackend {
     const id = `${1000 + ++this.imported}-i0`
     const files = new Map(unframe(body).map((e) => [e.name, e.data]))
     const record = files.get('search.json')
-    if (!record) throw new Error('The project has no search.json.')
+    if (!record) throw new Error('The archive has no search.json.')
     const json = JSON.parse(new TextDecoder().decode(record))
     json.id = id
     json.imported = true

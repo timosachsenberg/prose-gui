@@ -137,7 +137,7 @@ fn the_app_outputs_are_always_requested() {
     assert!(!has(&args, "-Search:peptdeep:enable"));
     // one input: its own idXML (the Export menu's), no pooled output; a closed search: no modification analysis
     assert_eq!(
-        values_of(&args, "-out_idxml"),
+        values_of(&args, "-out"),
         vec![out.join("search.idXML").into_os_string()]
     );
     assert!(!has(&args, "-out_merged"));
@@ -158,7 +158,7 @@ fn several_inputs_ask_for_the_merged_output_and_open_search_for_the_modification
         values_of(&args, "-out_merged"),
         vec![out.join("merged.idXML").into_os_string()]
     );
-    assert!(!has(&args, "-out_idxml"));
+    assert!(!has(&args, "-out"));
     assert_eq!(
         values_of(&args, "-out_mod_analysis_dir"),
         vec![out.join("mods").into_os_string()]
@@ -507,7 +507,7 @@ fn input_paths_are_validated() {
     let out = i.dir.path().join("o");
     let missing = i.dir.path().join("data/missing.mzML");
     let folder = i.dir.path().join("data");
-    let raw = i.dir.write("data/a.raw", "x");
+    let raw = i.dir.write("data/a.wiff", "x");
     let text = i.dir.write("data/db.txt", ">a\nMK\n");
     assert!(
         build_args(&request(&[&missing], &i.fasta, false, json!({})), &out)
@@ -521,7 +521,20 @@ fn input_paths_are_validated() {
     assert!(
         build_args(&request(&[&raw], &i.fasta, false, json!({})), &out)
             .unwrap_err()
-            .contains("a.raw")
+            .contains("a.wiff")
+    );
+    // Thermo .raw and mzPeak files and Bruker .d folders are inputs ProSE reads
+    let thermo = i.dir.write("data/b.raw", "x");
+    assert!(build_args(&request(&[&thermo], &i.fasta, false, json!({})), &out).is_ok());
+    let bruker = i.dir.path().join("data/c.d");
+    std::fs::create_dir_all(&bruker).unwrap();
+    assert!(build_args(&request(&[&bruker], &i.fasta, false, json!({})), &out).is_ok());
+    // a regular file named .d is no Bruker folder
+    let fake = i.dir.write("data/fake.d", "x");
+    assert!(
+        build_args(&request(&[&fake], &i.fasta, false, json!({})), &out)
+            .unwrap_err()
+            .contains("Bruker .d folder")
     );
     assert!(
         build_args(&request(&[&i.mzml], &text, false, json!({})), &out)
@@ -1480,7 +1493,7 @@ fn probe_written_script(script: &Path) -> Result<tool::ToolInfo, String> {
 #[test]
 fn probing_a_tool_reports_its_version_path_and_onnx_support() {
     let dir = TempDir::new("probe");
-    // a script on Unix; on Windows the fake tool, which answers --help the same way
+    // a script on Unix; on Windows the fake tool, which answers --helphelp (what probe asks) the same way
     #[cfg(unix)]
     let script = executable(&dir, "ProSE");
     #[cfg(unix)]
@@ -1555,6 +1568,30 @@ fn the_tool_runs_with_one_blas_thread_unless_set() {
         let removed = cmd.get_envs().any(|(k, v)| k == *name && v.is_none());
         assert_eq!(removed, cfg!(target_os = "macos"), "{name}");
     }
+}
+
+#[test]
+fn the_tool_runs_on_its_bundled_dotnet_if_it_has_one() {
+    let dir = TempDir::new("dotnet");
+    let tool_path = dir.write("prose/bin/ProSE", "");
+    let dotnet_root = |cmd: &std::process::Command| {
+        cmd.get_envs()
+            .find(|(k, _)| *k == "DOTNET_ROOT")
+            .map(|(_, v)| v.map(PathBuf::from))
+    };
+    // no bundled runtime: DOTNET_ROOT is left as it is (a system .NET is found by the Thermo bridge)
+    assert_eq!(tool::bundled_dotnet(&tool_path), None);
+    assert_eq!(dotnet_root(&tool::command_with(&tool_path, None)), None);
+    // a folder without host/fxr is no runtime
+    fs::create_dir_all(dir.path().join("prose/dotnet/shared")).unwrap();
+    assert_eq!(tool::bundled_dotnet(&tool_path), None);
+    fs::create_dir_all(dir.path().join("prose/dotnet/host/fxr/10.0.14")).unwrap();
+    let root = dir.path().join("prose/dotnet");
+    assert_eq!(tool::bundled_dotnet(&tool_path), Some(root.clone()));
+    assert_eq!(
+        dotnet_root(&tool::command_with(&tool_path, None)),
+        Some(Some(root))
+    );
 }
 
 #[test]

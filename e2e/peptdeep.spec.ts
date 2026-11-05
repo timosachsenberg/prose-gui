@@ -1,10 +1,10 @@
 // The example searched with PeptDeep, and what the app does with its result: the PSM view with PeptDeep's
-// mirror, the ion toggles, and a project file that opens again with the same PSMs. Every test searches
+// mirror, the ion toggles, and a results archive that opens again with the same PSMs. Every test searches
 // the example itself (beforeEach), so each runs alone.
 // Gated: runs only with PROSE_BIN set (the app inherits it).
 import { readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
-import { appReady, clearSearches, dataHome, goTo, jsClick, openFirstPsm, runExample, searchFolders, textOf, waitForResults } from './lib.ts'
+import { appReady, clearSearches, dataHome, EXAMPLE_PSMS, goTo, jsClick, openFirstPsm, runExample, searchFolders, textOf, waitForResults } from './lib.ts'
 
 const enabled = Boolean(process.env.PROSE_BIN)
 
@@ -31,7 +31,7 @@ describe('the example with PeptDeep', () => {
   })
 
   it('the example with PeptDeep: 132 PSMs, a PSM shows the PeptDeep mirror', async () => {
-    await expect($('[data-testid="psm-count"]')).toHaveText(expect.stringContaining('132'))
+    await expect($('[data-testid="psm-count"]')).toHaveText(expect.stringContaining(EXAMPLE_PSMS))
 
     await openFirstPsm()
     // the lower half is PeptDeep's prediction, with peaks, not the theoretical spectrum or a "no prediction" note
@@ -85,25 +85,25 @@ describe('the example with PeptDeep', () => {
     await expect(hint).not.toBeExisting()
   })
 
-  it('a project opens again with the same PSMs', async () => {
-    // Export > Project (.prose): the app writes it where the specs' dialog seam says (app.sh)
+  it('an archive opens again with the same PSMs', async () => {
+    // Export > Results archive (.prose): the app writes it where the specs' dialog seam says (app.sh)
     const count = await textOf('[data-testid="psm-count"]')
-    expect(count).toContain('132')
+    expect(count).toContain(EXAMPLE_PSMS)
     const file = join(dataHome(), 'chosen.prose')
     rmSync(file, { force: true })
     await $('header').$('button*=Export').click()
-    await $('[role="menuitem"]*=Project (.prose)').click()
+    await $('[role="menuitem"]*=Results archive (.prose)').click()
     await browser.waitUntil(() => {
       try {
         return readFileSync(file).length > 0
       } catch {
         return false
       }
-    }, { timeoutMsg: 'no project file was written' })
+    }, { timeoutMsg: 'no results archive was written' })
     // a zip
     expect(readFileSync(file).subarray(0, 2).toString('latin1')).toBe('PK')
 
-    // History is cleared of the search, then the project is opened: it comes back as a search of its own
+    // History is cleared of the search, then the archive is opened: it comes back as a search of its own
     await goTo('History')
     const rows = $$('[data-testid="history-row"]')
     await browser.waitUntil(async () => (await rows.length) === 1)
@@ -112,11 +112,11 @@ describe('the example with PeptDeep', () => {
     await $('[data-testid="history-empty"]').waitForDisplayed()
     expect(searchFolders().finished).toEqual([])
 
-    await $('[data-testid="open-project"]').click()
+    await $('[data-testid="import-archive"]').click()
     await waitForResults(30000)
     await $('[data-testid="psm-count"]').waitForDisplayed({ timeout: 30000 })
     expect(await textOf('[data-testid="psm-count"]')).toBe(count)
-    // the PSM view opens as before: the spectrum and the prediction are in the project
+    // the PSM view opens as before: the spectrum and the prediction are in the archive
     await openFirstPsm()
     await expect($('[data-testid="bottom-label"]')).toHaveText(expect.stringContaining('PeptDeep'))
     expect((await $$('[data-testid="bottom-peaks"]')).length).toBeGreaterThan(0)
