@@ -92,6 +92,7 @@ export function columnSpecs(m: ResultModel, level: Level, search: { openSearch: 
     col('precursorError', 'Error (ppm)', 106, 'right', { sortKey: 'precursorErrorPpm', csv: ['precursorErrorPpm'], title: 'Precursor mass error' }),
     col('score', columnDef(m, 'psms', 'score')!.header, 130, 'right'),
     col('qValue', 'q-value', 90, 'right'),
+    col('curation', 'Curation', 96, 'left', { optional: 'shown', title: 'Your mark of the PSM: accepted or rejected (the PSM view, keys A and R)' }),
     col('pep', 'PEP', 70, 'right', { optional: 'hidden', title: 'Posterior error probability (Percolator)' }),
     col('deltaMass', 'Δ mass (Da)', 104, 'right', { optional: search.openSearch ? 'shown' : 'hidden', title: 'Unassigned mass shift of an open search' }),
     col('file', 'File', 160, 'left', { optional: 'hidden' }),

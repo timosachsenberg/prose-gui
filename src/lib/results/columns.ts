@@ -7,6 +7,7 @@
 // (see `peptideCounts`): the getters get the counts to read as their third argument.
 
 import { psmProforma } from '../format/peptide'
+import { MARK_NAMES } from './curation'
 import { parseAccession, parseDescription } from './display'
 import { baseName, type Level, type PeptideCounts, type ResultModel } from './model'
 
@@ -99,6 +100,8 @@ const psms: Record<string, ColumnDef> = {
   isotopeError: num('Isotope error', (m, i) => m.tables.psms.isotopeError[i]),
   deltaMass: num('Delta mass (Da)', (m, i) => m.tables.psms.deltaMass[i]),
   decoy: num('Decoy', (m, i) => m.tables.psms.decoy[i]),
+  // the user's mark (curation.ts): sorts accepted, rejected, then the PSMs without a mark; prints its name
+  curation: label('Curation', (m, i) => m.curation[i] || NaN, (m, i) => MARK_NAMES[m.curation[i]] ?? ''),
 }
 
 const tables: Record<Level, Record<string, ColumnDef>> = { proteins, peptides, psms }

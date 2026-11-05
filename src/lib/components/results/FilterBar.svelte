@@ -1,12 +1,13 @@
 <script lang="ts">
   // The one filter row of a level: text, the q-value cutoff (tightening the search's only), and on
-  // proteins the minimum peptides and "found in"; contaminants and decoys as chips; "n of total".
+  // proteins the minimum peptides and "found in", on PSMs the curation; contaminants and decoys as chips; "n of total".
   import FdrInput from '$lib/components/FdrInput.svelte'
   import ChoiceSelect from '$lib/components/search/ChoiceSelect.svelte'
   import * as DropdownMenu from '$lib/components/ui/dropdown-menu'
   import * as Popover from '$lib/components/ui/popover'
   import * as Tooltip from '$lib/components/ui/tooltip'
   import { formatPercent, formatQ } from '$lib/format/fdr'
+  import { CURATION_FILTERS, type CurationFilter } from '$lib/results/curation'
   import { formatCount, parseAccession } from '$lib/results/display'
   import type { LevelState, ResultsView } from '$lib/results/view.svelte'
   import { cn } from '$lib/utils'
@@ -160,6 +161,15 @@
         options={foundChoices}
         onChange={(v) => (level.filters.minReplicatesInCondition = Number(v))} />
     {/if}
+  {/if}
+
+  {#if level.level === 'psms'}
+    <ChoiceSelect
+      class="w-auto"
+      ariaLabel="Curation"
+      value={level.filters.curation}
+      options={CURATION_FILTERS}
+      onChange={(v) => (level.filters.curation = v as CurationFilter)} />
   {/if}
 
   {#if protein}

@@ -3,6 +3,7 @@
 // copy of any such array. No row is ever turned into an object.
 
 import { columnDef } from './columns'
+import { passesCuration, type CurationFilter } from './curation'
 import { naturalKey, parseAccession, scanNumber } from './display'
 import { passesQ, peptideCounts, qLimit, type Level, type ResultModel } from './model'
 
@@ -27,6 +28,8 @@ export type FilterState = {
   proteinFilter?: number
   /** PSMs: only those of this peptide. */
   peptideFilter?: number
+  /** PSMs: by their curation mark (`ResultModel.curation`). */
+  curation: CurationFilter
 }
 
 /**
@@ -39,7 +42,7 @@ export function initialFilters(m: ResultModel, level: Level): FilterState {
 
 /** No filter, at the search's own FDR, decoys hidden. */
 export function defaultFilters(): FilterState {
-  return { text: '', maxQ: 1, minPeptides: 0, minReplicatesInCondition: 0, hideContaminants: false, showDecoys: false }
+  return { text: '', maxQ: 1, minPeptides: 0, minReplicatesInCondition: 0, hideContaminants: false, showDecoys: false, curation: 'any' }
 }
 
 /**
@@ -135,7 +138,7 @@ function peptideMask(m: ResultModel, f: FilterState): Uint8Array {
  *   q-value (there is no peptide-level FDR; limited by `psmFdr`), `hideContaminants` (peptides that
  *   map only to contaminants), `showDecoys`, `proteinFilter`.
  * - PSMs: `text` and `hideContaminants` through the peptide, `maxQ` (PSM q-value, limited by `psmFdr`),
- *   `showDecoys`, `proteinFilter` and `peptideFilter`.
+ *   `showDecoys`, `proteinFilter`, `peptideFilter` and `curation` (the marks of `ResultModel.curation`).
  *
  * A row without a q-value passes `maxQ` at the search's cutoff only (`passesQ`): the search did not apply that FDR
  * to it, and a tighter cutoff cannot be shown to pass. A protein without PSMs within the PSM FDR never passes. The
@@ -183,6 +186,7 @@ export function applyFilters(m: ResultModel, level: Level, f: FilterState): Uint
     const k = ps.peptide[i]
     if (!mask[k] || (!f.showDecoys && ps.decoy[i]) || !passesQ(ps.qValue[i], limit, m.psmFdr)) continue
     if (only !== undefined && k !== only) continue // an index that is no peptide matches nothing
+    if (f.curation !== 'any' && !passesCuration(m.curation[i], f.curation)) continue
     out[kept++] = i
   }
   return out.slice(0, kept)

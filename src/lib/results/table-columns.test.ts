@@ -47,7 +47,7 @@ describe('columnSpecs', () => {
     ])
     expect(ids(columnSpecs(model(), 'psms', { openSearch: false }))).toEqual([
       'peptide', 'proteins', 'sample', 'scan', 'charge', 'mz', 'rt', 'precursorError', 'score', 'qValue',
-      'pep', 'deltaMass', 'file', 'isotopeError',
+      'curation', 'pep', 'deltaMass', 'file', 'isotopeError',
     ])
   })
 
@@ -93,7 +93,7 @@ describe('visibleSpecs and csvColumns', () => {
     const specs = columnSpecs(model(), 'psms', { openSearch: true })
     expect(csvColumns(visibleSpecs(specs, []))).toEqual([
       'peptide', 'proteins', 'sample', 'nativeId', 'charge', 'mz', 'rt', 'precursorErrorPpm', 'score', 'qValue',
-      'pep', 'deltaMass', 'file', 'isotopeError',
+      'curation', 'pep', 'deltaMass', 'file', 'isotopeError',
     ])
   })
 })
