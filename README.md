@@ -5,7 +5,7 @@ native `ProSE` command-line tool as the only native code, and the screens of the
 shadcn-svelte components and colours). Design and plan: `docs/superpowers/`.
 
 The packages come from CI (`.github/workflows/desktop.yml`); they bundle ProSE with its libraries and the PeptDeep
-models (`native/README.md`). Everything runs on the computer: the app makes no network connection except when you ask for one: a proteome download from UniProt, with an organism-name search at NCBI Taxonomy (New search › Protein database), a data-file download from PRIDE and ontology lookups at EBI OLS (SDRF), and links you open from Help (ProSE's
+models (`native/README.md`). Everything runs on the computer: the app makes no network connection except when you ask for one: a proteome download from UniProt, with an organism-name search at NCBI Taxonomy (New search › Protein database), and links you open from Help (ProSE's
 update check is off, `native/README.md`).
 
 ## Install
@@ -94,8 +94,7 @@ holds:
 - `database` (`path`, `name`, `size`, `proteome`: the UniProt proteome id of a downloaded FASTA), `contaminants`,
   `decoys`
 - `presetId` and `parameters` (every ProSE `Search:` parameter the form sets), `rescore`, `peptdeep`, `threads`
-- `sdrf` (`path`; an SDRF made with Create SDRF…, which has no file, is written beside the project as
-  `<name>.sdrf.tsv` when it is saved, asking first if that file is there already), and `search` (`id`, `name`: the History search it ran as, once it has run)
+- `sdrf` (`path`), and `search` (`id`, `name`: the History search it ran as, once it has run)
 - `ui`: the view, the Help page, the settings' toggles, and for Results the tab and per table (proteins, peptides,
   PSMs) the filters, sort, hidden columns and selected row, the open protein and PSM
 
@@ -206,8 +205,7 @@ build) opens a result of `src/lib/results/fixtures` through an in-memory History
 screens, light and dark, to `e2e-web/screenshots/` (gitignored). Beyond rendering, `oracle.spec.ts` checks the numbers
 Results shows against the same numbers recomputed from the fixture's QPX files (`e2e-web/oracle/`), and
 `metamorphic.spec.ts` relations that must hold whatever the numbers are (a tighter cutoff never shows more rows,
-filters commute, Re-run brings back the settings). The vision checks (`vision.spec.ts`: one question per screenshot to a
-vision model, compared with the oracle) run only with `npm run test:ui:vision` and `VISION_API_KEY`.
+filters commute, Re-run brings back the settings).
 
 ```bash
 npx playwright install chromium   # once

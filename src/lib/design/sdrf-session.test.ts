@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fileStatus } from './sdrf-session.svelte'
+import { convertCommand, fileStatus } from './sdrf-session.svelte'
 
 describe('fileStatus', () => {
   const none = { exact: null, mzml: null }
@@ -16,24 +16,9 @@ describe('fileStatus', () => {
   })
 })
 
-describe('designChanges', () => {
-  it('reports the design fields an SDRF edit changed, per file', async () => {
-    const { designChanges } = await import('./sdrf-session.svelte')
-    const { parseSdrfTable, setCell, column } = await import('./sdrf-table')
-    const text =
-      'source name\tcharacteristics[biological replicate]\tcomment[data file]\tcomment[fraction identifier]\tcomment[label]\tfactor value[treatment]\n' +
-      's1\t1\ta.mzML\t1\tlabel free sample\tcontrol\n' +
-      's2\t2\tb.mzML\t1\tlabel free sample\tcontrol\n'
-    const before = parseSdrfTable(text)
-    const after = parseSdrfTable(text)
-    setCell(after, 0, column(after, 'factor value[treatment]'), 'EGF')
-    setCell(after, 1, column(after, 'comment[fraction identifier]'), '2')
-    setCell(after, 1, column(after, 'characteristics[biological replicate]'), 'not available')
-    expect(designChanges(before, after)).toEqual([
-      { fileName: 'a.mzML', fields: { condition: 'EGF' } },
-      { fileName: 'b.mzML', fields: { replicate: undefined, fraction: 2 } },
-    ])
-    // no edit, no change
-    expect(designChanges(before, before)).toEqual([])
+describe('convertCommand', () => {
+  it('names the converter of the vendor file', () => {
+    expect(convertCommand('/x/a.raw')).toBe('ThermoRawFileParser -i "/x/a.raw" -f 2')
+    expect(convertCommand('/x/a.wiff')).toBe('msconvert --mzML --zlib "/x/a.wiff"')
   })
 })

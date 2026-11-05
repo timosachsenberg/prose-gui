@@ -1,7 +1,7 @@
 <script lang="ts">
-  // Help: seven pages (`HELP_PAGES`, #/help/<page>) beside a navigation, troubleshooting first for someone whose search
+  // Help: six pages (`HELP_PAGES`, #/help/<page>) beside a navigation, troubleshooting first for someone whose search
   // just went wrong: what to do about each check (`settings/faq.ts`), how to read the results, decoys and the FDR,
-  // the settings, the file formats, how a search works (with drawings and animations), and where to learn more. The pages are in
+  // the settings, the file formats, and how a search works (with drawings). The pages are in
   // `views/help/`; their shared look is here (`:global` under `.help`).
   import { helpTarget } from '$lib/help-link.svelte'
   import { HELP_PAGES, type HelpPage } from '$lib/route'
@@ -12,7 +12,6 @@
   import HelpBasics from './help/HelpBasics.svelte'
   import HelpFdr from './help/HelpFdr.svelte'
   import HelpFormats from './help/HelpFormats.svelte'
-  import HelpLearn from './help/HelpLearn.svelte'
   import HelpResults from './help/HelpResults.svelte'
   import HelpSettings from './help/HelpSettings.svelte'
   import HelpTroubleshooting from './help/HelpTroubleshooting.svelte'
@@ -24,7 +23,6 @@
     settings: 'The settings',
     formats: 'File formats',
     basics: 'How a search works',
-    learn: 'Videos and links',
   }
 
   const page = $derived<HelpPage>(router.route.view === 'help' ? (router.route.page ?? 'troubleshooting') : 'troubleshooting')
@@ -97,10 +95,8 @@
       <HelpSettings />
     {:else if page === 'formats'}
       <HelpFormats />
-    {:else if page === 'basics'}
-      <HelpBasics />
     {:else}
-      <HelpLearn />
+      <HelpBasics />
     {/if}
   </div>
 </article>

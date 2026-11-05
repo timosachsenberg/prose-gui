@@ -11,5 +11,5 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true
   },
-  "include": ["*.ts", "oracle/*.ts", "vision/*.ts"]
+  "include": ["*.ts", "oracle/*.ts"]
 }

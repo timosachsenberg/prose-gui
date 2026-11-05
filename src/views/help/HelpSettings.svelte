@@ -92,10 +92,8 @@
   <p>
     An SDRF (Sample and Data Relationship Format) file is a table that describes an experiment: its samples, their organism,
     the data files, labels, modifications and the design (fractions, replicates, conditions). Added in New search with Add files
-    (or dropped on the window), it fills the design table and finds the data files (“Locate folder…” for those not found;
-    “Download missing…” fetches them from PRIDE). In its panel, “Metadata…” shows what it says about the study, “Edit
-    metadata…” changes it, and “Save SDRF…” saves it. For files added without one, “Create SDRF…” above the design table starts
-    one. The app then compares it with the search: the
+    (or dropped on the window), it fills the design table and finds the data files (“Locate folder…” for those not found,
+    or “Locate…” for one file). The app then compares it with the search: the
     modifications and labels it lists against the chosen ones, and its organism against the database. It does not set the
     search chemistry for you; when it warns, either add what it lists or correct the SDRF.
   </p>

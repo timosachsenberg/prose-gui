@@ -19,17 +19,15 @@ import type { HistoryBackend, HistoryEntry } from './history/history'
 import type { ByteRange, SearchFiles } from './results/read'
 import { errorText } from './format/error'
 
-/** The ProSE tool the app runs: its version, where it is, and whether it has ONNX Runtime (PeptDeep). */
-/** `sdrf`: the tool has -sdrf (the QPX run and sample views from an SDRF). */
-/** `inspect`: the tool has -inspect_out (ProSE's own spectrum inspector; the app reads the mzML flags itself until then). */
-export type ToolInfo = { version: string; path: string; onnx: boolean; sdrf?: boolean; inspect?: boolean }
-
 /**
- * What the first MS2 spectra of an mzML say, by their flags (src-tauri/src/spectra.rs; guidance G1): not
- * verified against the peaks. `source` 'prose' is for ProSE's own inspector (-inspect_out) once the tool has it.
+ * The ProSE tool the app runs: its version, where it is, whether it has ONNX Runtime (PeptDeep), and `sdrf`: whether
+ * it has -sdrf (the QPX run and sample views from an SDRF).
  */
+export type ToolInfo = { version: string; path: string; onnx: boolean; sdrf?: boolean }
+
+/** What the first MS2 spectra of an mzML say, by their flags (src-tauri/src/spectra.rs): not verified against the peaks. */
 export type SpectraFacts = {
-  source?: 'flags' | 'prose'
+  source?: 'flags'
   peakPicking: boolean
   analyzers: string[]
   /** Spectra read per MS level ("1", "2", ...). */
@@ -472,48 +470,6 @@ export function chooseFile(title: string): Promise<string | null> {
 }
 
 /**
- * Ontology terms for the SDRF editor: from the shim's on-disk cache, and only with `online` from OLS4 (then cached;
- * rejects offline without a cached answer).
- */
-export function olsSearch(query: string, ontologies: string[], online: boolean): Promise<{ label: string; accession: string }[]> {
-  return invoke('ols_search', { query, ontologies, online })
-}
-
-/** sdrf-pipelines' validator on an SDRF's text (`available` false when parse_sdrf is not installed). */
-export function validateSdrf(text: string, template: string | null): Promise<{ available: boolean; ok: boolean; output: string }> {
-  return invoke('validate_sdrf', { text, template })
-}
-
-/** The files of a ProteomeXchange project in PRIDE. */
-export function prideFiles(pxd: string): Promise<{ name: string; size: number; url: string }[]> {
-  return invoke('pride_files', { pxd })
-}
-
-export type DownloadProgress = { file: number; files: number; name: string; received: number; size: number }
-
-/** The system's folder dialog for a download; the shim keeps the folder (the page cannot name another). Null if cancelled. */
-export function chooseDownloadFolder(title: string): Promise<string | null> {
-  return oneDialog(null, () => invoke<string | null>('choose_download_folder', { title }))
-}
-
-/**
- * Downloads `files` into the folder of `chooseDownloadFolder` (resumed, checked against their sizes); `onProgress`
- * while it runs. -> the paths.
- */
-export async function downloadDataFiles(files: { name: string; size: number; url: string }[], onProgress: (p: DownloadProgress) => void): Promise<string[]> {
-  const unlisten = await listen<DownloadProgress>('download://progress', (e) => onProgress(e.payload))
-  try {
-    return await invoke<string[]>('download_data_files', { files })
-  } finally {
-    unlisten()
-  }
-}
-
-export function cancelDownload(): Promise<void> {
-  return invoke('cancel_download')
-}
-
-/**
  * Saves a project file (`contents`, its JSON): to the project opened or saved last unless `ask` (Save As, or no
  * project yet), else where the user chooses in the save dialog (suggesting `name`). The page's browser mode
  * downloads it. -> `{ path, name }` of the file written, or null if cancelled.
@@ -524,16 +480,6 @@ export function saveProjectSetup(name: string, contents: string, ask: boolean): 
     return Promise.resolve({ path: saved, name: saved })
   }
   return oneDialog(null, () => invoke<{ path: string; name: string } | null>('save_project_setup', { name, contents, ask }))
-}
-
-/**
- * Writes the project's SDRF (one made with "Create SDRF…", which has no file yet) beside the current project file as
- * `<name>.sdrf.tsv`; a file already there only if `overwrite`. -> `{ path, exists }` (`exists`: nothing written,
- * the page asks first); null in the page's browser mode, which has no folder to write into.
- */
-export function saveProjectSdrf(contents: string, overwrite: boolean): Promise<{ path: string; exists: boolean } | null> {
-  if (!isDesktop()) return Promise.resolve(null)
-  return invoke<{ path: string; exists: boolean }>('save_project_sdrf', { contents, overwrite })
 }
 
 /**

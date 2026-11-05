@@ -42,6 +42,8 @@ vi.mock('../desktop', () => ({
     spectra: ['/data/example/Ecoli_1.mzML', '/data/example/Ecoli_2.mzML'],
     database: '/app/resources/example/Ecoli_K12_proteome.fasta',
   })),
+  // (an SDRF's data files: beside it)
+  locateDataFiles: vi.fn(async (sdrf: string, names: string[]) => names.map((n) => ({ exact: `/r/${n}`, mzml: null }))),
   errorText: (e: unknown) => String(e),
 }))
 
@@ -141,7 +143,7 @@ describe('the search request', () => {
     const { sdrfSession } = await import('../design/sdrf-session.svelte')
     await form.addFiles(['/r/a.mzML', '/r/b.mzML', '/db/db.fasta'])
     await settle()
-    sdrfSession.create()
+    await sdrfSession.load('/r/exp.sdrf.tsv', 'source name\tcomment[data file]\tfactor value[x]\ns1\ta.mzML\tp\ns2\tb.mzML\tq\n')
     toolState.info = { version: '3.7', path: '/p', onnx: false, sdrf: false }
     expect(searchRequest()!.sdrf).toBeUndefined()
     toolState.info = { version: '3.7', path: '/p', onnx: false, sdrf: true }

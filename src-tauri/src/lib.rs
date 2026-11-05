@@ -16,11 +16,6 @@
 //! - `open_design_file()` -> `{ path, text }` of an SDRF or design.tsv chosen (null if cancelled);
 //!   `read_design_file(path)` -> the text of one given by path (Add files, drop);
 //!   `locate_data_files(sdrf, names, folder?)` -> `[{ exact?, mzml? }]` (`locate`)
-//! - `ols_search(query, ontologies, online)` -> `[{ label, accession }]` (the cache only unless `online`); `validate_sdrf(text, template?)` ->
-//!   `{ available, ok, output }` (`sdrf_tools`)
-//! - `pride_files(pxd)` -> `[{ name, size, url }]`; `choose_download_folder(title)` -> the folder (the system's
-//!   dialog; kept in Rust); `download_data_files(files)` -> paths into it, events
-//!   `download://progress` `{ file, files, name, received, size }`; `cancel_download()` (`pride`)
 //! - `save_text(name, contents)` and `save_search_file(searchId, name, suggested)`: a save dialog of
 //!   the system, then the file written where the user chose (-> the path, or null if cancelled)
 //! - History (`history`): `history_list()` -> entries (a folder with a broken record, or none, has
@@ -38,8 +33,7 @@
 //!   project was opened or saved before: then that file again) -> `{ path, name }` or null;
 //!   `open_project_setup(recent?)` (the open dialog, or the `recent`-th entry of File › Open Recent) -> `{ path,
 //!   text }` or null; both refuse other files than `.prose-setup.json` and more than 4 MB, and put the file first in
-//!   the recent projects; `save_project_sdrf(contents, overwrite)` writes the project's SDRF beside its file (`<name>.sdrf.tsv`;
-//!   one already there only if `overwrite`) -> `{ path, exists }`; `forget_project_setup()` detaches the current one (New Search). `menu_state({ result, table, theme })`: which menu items apply (`menu`); a click on one
+//!   the recent projects; `forget_project_setup()` detaches the current one (New Search). `menu_state({ result, table, theme })`: which menu items apply (`menu`); a click on one
 //!   of the page's items is the event `menu://action` with its id.
 //! - closing the window while a search runs: the window stays and `app://close-requested` asks the page,
 //!   which answers with `answer_close(close)` ([`close_requested`])
@@ -55,11 +49,9 @@ pub mod history;
 pub mod locate;
 pub mod menu;
 pub mod net;
-pub mod pride;
 pub mod progress;
 pub mod project;
 pub mod run;
-pub mod sdrf_tools;
 pub mod setup_file;
 pub mod spectra;
 pub mod taxonomy;
@@ -672,94 +664,6 @@ async fn locate_data_files(
     .map_err(|e| e.to_string())
 }
 
-/// Ontology terms for the SDRF editor (`sdrf_tools::ols_search`), cached in the app's data folder.
-#[tauri::command]
-async fn ols_search(
-    app: AppHandle,
-    query: String,
-    ontologies: Vec<String>,
-    online: bool,
-) -> Result<Vec<sdrf_tools::Term>, String> {
-    let cache = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?
-        .join("ols-cache");
-    tauri::async_runtime::spawn_blocking(move || {
-        sdrf_tools::ols_search(&cache, &query, &ontologies, online)
-    })
-    .await
-    .map_err(|e| e.to_string())?
-}
-
-/// The SDRF `text` checked by sdrf-pipelines' `parse_sdrf validate-sdrf` (`available` false without it).
-#[tauri::command]
-async fn validate_sdrf(
-    app: AppHandle,
-    text: String,
-    template: Option<String>,
-) -> Result<sdrf_tools::Validation, String> {
-    let tmp = app.path().app_cache_dir().map_err(|e| e.to_string())?;
-    tauri::async_runtime::spawn_blocking(move || {
-        sdrf_tools::validate(&tmp, &text, template.as_deref())
-    })
-    .await
-    .map_err(|e| e.to_string())?
-}
-
-/// The files of a ProteomeXchange project in PRIDE (`pride::project_files`).
-#[tauri::command]
-async fn pride_files(pxd: String) -> Result<Vec<pride::RemoteFile>, String> {
-    tauri::async_runtime::spawn_blocking(move || pride::project_files(&pxd))
-        .await
-        .map_err(|e| e.to_string())?
-}
-
-/// The system's folder dialog for downloads; the folder is kept here (`pride::FOLDER`) for
-/// `download_data_files`. -> the folder, or null if cancelled.
-#[tauri::command]
-async fn choose_download_folder(app: AppHandle, title: String) -> Result<Option<String>, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        let chosen = match test_dialog_path() {
-            Some(path) => Some(path),
-            None => match app.dialog().file().set_title(title).blocking_pick_folder() {
-                None => None,
-                Some(p) => Some(p.into_path().map_err(|e| e.to_string())?),
-            },
-        };
-        *pride::FOLDER.lock().map_err(|e| e.to_string())? = chosen.clone();
-        Ok(chosen.map(|p| p.to_string_lossy().into_owned()))
-    })
-    .await
-    .map_err(|e| e.to_string())?
-}
-
-/// Downloads `files` into the folder of `choose_download_folder` (`pride::download`); events
-/// `download://progress`. -> the paths.
-#[tauri::command]
-async fn download_data_files(
-    app: AppHandle,
-    files: Vec<pride::RemoteFile>,
-) -> Result<Vec<String>, String> {
-    let folder = pride::chosen_folder()?;
-    tauri::async_runtime::spawn_blocking(move || {
-        let paths = pride::download(&folder, &files, |p| {
-            let _ = app.emit("download://progress", p);
-        })?;
-        Ok(paths
-            .iter()
-            .map(|p| p.to_string_lossy().into_owned())
-            .collect())
-    })
-    .await
-    .map_err(|e| e.to_string())?
-}
-
-#[tauri::command]
-fn cancel_download() {
-    pride::CANCEL.store(true, std::sync::atomic::Ordering::SeqCst);
-}
-
 /// A QPX results folder (ProSE run by hand or on a cluster): the folder dialog, then its runs' stems
 /// (`history::qpx_stems`) -> `{ folder, stems }`, or null if cancelled.
 #[tauri::command]
@@ -958,30 +862,6 @@ async fn save_project_setup(
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
     Ok(Some(serde_json::json!({ "path": path, "name": name })))
-}
-
-/// Writes the SDRF of the project (`contents`: one made with "Create SDRF…", which has no file yet) beside the
-/// current project file as `<name>.sdrf.tsv` (`setup_file::write_sdrf_beside`); a file already there is replaced
-/// only if `overwrite`. -> `{ path, exists }` (`exists`: not written, the page asks first).
-#[tauri::command]
-async fn save_project_sdrf(
-    app: AppHandle,
-    contents: String,
-    overwrite: bool,
-) -> Result<serde_json::Value, String> {
-    let setup = app.state::<AppState>().setup_path.lock().unwrap().clone();
-    let Some(setup) = setup else {
-        return Err("Save the project first: its SDRF is written beside it.".into());
-    };
-    let written = tauri::async_runtime::spawn_blocking(move || {
-        setup_file::write_sdrf_beside(&setup, &contents, overwrite)
-    })
-    .await
-    .map_err(|e| e.to_string())??;
-    Ok(match written {
-        Ok(path) => serde_json::json!({ "path": path, "exists": false }),
-        Err(path) => serde_json::json!({ "path": path, "exists": true }),
-    })
 }
 
 /// Opens a project file: the open dialog, or with `recent` the `recent`-th entry of File › Open Recent (the page
@@ -1192,16 +1072,9 @@ pub fn run() {
             open_design_file,
             read_design_file,
             locate_data_files,
-            ols_search,
-            validate_sdrf,
-            pride_files,
-            choose_download_folder,
-            download_data_files,
-            cancel_download,
             history_import_qpx,
             save_project_file,
             save_project_setup,
-            save_project_sdrf,
             open_project_setup,
             forget_project_setup,
             menu_state,

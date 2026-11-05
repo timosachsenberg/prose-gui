@@ -1,42 +1,16 @@
-// The SDRF loaded into New search: the file as it is (`SdrfTable`, written back with the table's edits by
-// "Save SDRF…"), where each of its data files is, and the rows of the design table they became. A data file
-// is looked for beside the SDRF, then below a folder the user chose ("Locate folder…", remembered per SDRF),
-// or picked by hand ("Locate…"). Found files join the table as if added; the search waits for the others.
+// The SDRF loaded into New search: the file as it is (`SdrfTable`; ProSE gets it with the design table's edits,
+// `text`), where each of its data files is, and the rows of the design table they became. A data file is looked for
+// beside the SDRF, then below a folder the user chose ("Locate folder…", remembered per SDRF), or picked by hand
+// ("Locate…"). Found files join the table as if added; the search waits for the others.
 
-import {
-  cancelDownload,
-  chooseDownloadFolder,
-  chooseFile,
-  chooseFolder,
-  downloadDataFiles,
-  errorText,
-  locateDataFiles,
-  openDesignFile,
-  prideFiles,
-  readDesignFile,
-  type DownloadProgress,
-} from '../desktop'
+import { chooseFile, chooseFolder, errorText, locateDataFiles, openDesignFile, readDesignFile } from '../desktop'
 import { brukerFolder, isDesign, isSpectrum } from '../search/files'
 import { fileName, searchForm as form } from '../search/form.svelte'
 import { parseDesignTsv } from './design-tsv'
 import type { DesignInput } from './model'
 import { applyDesign } from './paste'
 import { parseSdrf } from './sdrf'
-import { accessionOf, downloadPlan } from './sdrf-download'
-import { exportSdrf, SAMPLE_COLUMNS } from './sdrf-export'
-import { APP_VERSION } from '../history/history'
-import {
-  cell,
-  column,
-  dataRows,
-  noValue,
-  parseSdrfTable,
-  syncDesign,
-  validateSdrf,
-  writeSdrfTable,
-  type SdrfIssue,
-  type SdrfTable,
-} from './sdrf-table'
+import { cell, column, dataRows, noValue, parseSdrfTable, syncDesign, validateSdrf, writeSdrfTable, type SdrfIssue, type SdrfTable } from './sdrf-table'
 
 /**
  * found: the file named; mzml: an mzML of the same stem (the vendor file named is not there, or ProSE cannot read
@@ -63,21 +37,9 @@ export function fileStatus(name: string, located: { exact: string | null; mzml: 
   return { status: uri !== '' && !noValue(uri) ? 'remote' : 'missing', path: null }
 }
 
-const FIELDS = ['condition', 'replicate', 'fraction', 'techReplicate'] as const
-type Fields = Partial<Pick<DesignInput, (typeof FIELDS)[number]>>
-
-/**
- * The design fields (`parseSdrf`: condition from the factor values, replicates, fraction) that differ between two
- * versions of an SDRF, per data file; a field no longer given is `undefined`.
- */
-export function designChanges(before: SdrfTable, after: SdrfTable): { fileName: string; fields: Fields }[] {
-  const old = new Map(parseSdrf(writeSdrfTable(before)).inputs.map((i) => [i.fileName!, i]))
-  return parseSdrf(writeSdrfTable(after)).inputs.flatMap((now) => {
-    const was = old.get(now.fileName!) ?? {}
-    const fields: Fields = {}
-    for (const f of FIELDS) if (now[f] !== was[f]) (fields as Record<string, unknown>)[f] = now[f]
-    return Object.keys(fields).length > 0 ? [{ fileName: now.fileName!, fields }] : []
-  })
+/** The command that converts a vendor file ProSE cannot read into mzML. */
+export function convertCommand(path: string): string {
+  return /\.raw$/i.test(path) ? `ThermoRawFileParser -i "${path}" -f 2` : `msconvert --mzML --zlib "${path}"`
 }
 
 const FOLDERS = 'prose.sdrf.folders'
@@ -100,9 +62,6 @@ function rememberFolder(sdrf: string, folder: string) {
   }
 }
 
-/** The name of an SDRF made with "Create SDRF…" until it is saved with a project (it has no file). */
-export const CREATED_SDRF = 'experiment.sdrf.tsv'
-
 class SdrfSession {
   /** The SDRF's path; null: none loaded. */
   path = $state<string | null>(null)
@@ -114,25 +73,14 @@ class SdrfSession {
   busy = $state(false)
   /** The user chose to search without the files that are not found. */
   skipMissing = $state(false)
-  /** The ProteomeXchange accession the missing files are looked up under (from the SDRF, or typed). */
-  pxd = $state('')
-  /** The running download; its error. */
-  download = $state<DownloadProgress | null>(null)
-  downloadError = $state<string | null>(null)
-  /** Columns still to fill in (a created SDRF's sample columns, "not available" until then). */
-  toFill = $state<string[]>([])
   /** The design fields of each data file as loaded, by its name. */
   #loaded = new Map<string, Partial<DesignInput>>()
-  /** The SDRF loaded (counted up by load, create and clear): a look-up of an earlier one changes nothing. */
+  /** The SDRF loaded (counted up by load, restore and clear): a look-up of an earlier one changes nothing. */
   #generation = 0
   /** The rows of the design table that got their fields from this SDRF (by path); later look-ups leave them. */
   #seeded = new Set<string>()
 
   name = $derived(this.path ? fileName(this.path) : '')
-  /** The `toFill` columns that some row still has as "not available". */
-  stillToFill = $derived(
-    this.table ? this.toFill.filter((h) => dataRows(this.table!).some((r) => noValue(cell(this.table!, r, column(this.table!, h))))) : [],
-  )
   unresolved = $derived(this.files.filter((f) => f.status === 'vendor' || f.status === 'remote' || f.status === 'missing'))
 
   /** Why the search cannot start (the plan line): data files that are not found. */
@@ -150,16 +98,15 @@ class SdrfSession {
     return this.files.find((f) => f.path === path)
   }
 
-  /** One entry per distinct data file of `table`; entries of `keep` (by name) keep where they were found. */
-  #filesOf(table: SdrfTable, keep: SdrfFile[] = []): SdrfFile[] {
+  /** One entry per distinct data file of `table`. */
+  #filesOf(table: SdrfTable): SdrfFile[] {
     const fileCol = column(table, 'comment[data file]')
     const uriCol = column(table, 'comment[file uri]')
     const files: SdrfFile[] = []
     for (const r of dataRows(table)) {
       const name = cell(table, r, fileCol)
       if (name === '' || files.some((f) => f.name === name)) continue
-      const known = keep.find((f) => f.name === name)
-      files.push(known ? { ...known, uri: cell(table, r, uriCol) } : { name, status: 'missing', path: null, uri: cell(table, r, uriCol) })
+      files.push({ name, status: 'missing', path: null, uri: cell(table, r, uriCol) })
     }
     return files
   }
@@ -172,112 +119,12 @@ class SdrfSession {
     this.table = table
     this.issues = validateSdrf(table)
     this.skipMissing = false
-    this.toFill = []
     this.#loaded = new Map(parseSdrf(text).inputs.map((i) => [i.fileName!, i]))
     this.files = this.#filesOf(table)
     const notices = parseSdrf(text).notices.map((n) => `${this.name}: ${n.message}`)
     form.notices.push(...notices)
     this.folder = rememberedFolder(path)
-    this.pxd = accessionOf(table, fileName(path))
-    this.downloadError = null
     await this.#resolve()
-  }
-
-  /**
-   * "Create SDRF…": an SDRF of the files in the table (`exportSdrf` of the design, with the technical columns
-   * of the settings), opened as if loaded; its sample columns are to be filled in.
-   */
-  create() {
-    const instruments = Object.fromEntries(form.files.filter((r) => r.instrument).map((r) => [r.file.name, r.instrument!]))
-    const text = exportSdrf(null, form.design, { values: $state.snapshot(form.values) as Record<string, unknown>, appVersion: APP_VERSION, instruments })
-    const table = parseSdrfTable(text)
-    this.#generation++
-    this.path = CREATED_SDRF
-    this.table = table
-    this.issues = validateSdrf(table)
-    this.skipMissing = false
-    this.folder = null
-    this.toFill = [...SAMPLE_COLUMNS]
-    this.#loaded = new Map(parseSdrf(text).inputs.map((i) => [i.fileName!, i]))
-    this.files = form.files.map((r) => ({ name: r.file.name, status: 'found', path: r.file.path, uri: '' }))
-    this.#seeded = new Set(form.files.map((r) => r.file.path))
-  }
-
-  /** The SDRF was made with "Create SDRF…" and has no file yet (a project saves it beside its own file). */
-  get unsaved(): boolean {
-    return this.path === CREATED_SDRF && this.table !== null
-  }
-
-  /** The SDRF, written to `path` (beside a project): read from there when the project opens again. */
-  savedAs(path: string) {
-    this.path = path
-  }
-
-  /** Changes the SDRF (the metadata editor): `change` edits a copy, which is then checked again. */
-  update(change: (t: SdrfTable) => void) {
-    if (!this.table) return
-    const table = structuredClone(this.table)
-    change(table)
-    // the design fields the edit changed go to the design table (the SDRF is the reference for both)
-    for (const { fileName: name, fields } of designChanges(this.table, table)) {
-      const row = form.files.find((r) => r.file.path === this.files.find((f) => f.name === name)?.path)
-      if (!row) continue
-      for (const [field, value] of Object.entries(fields)) form.setField(row.id, field as keyof typeof fields, value as never)
-    }
-    this.#loaded = new Map(parseSdrf(writeSdrfTable(table)).inputs.map((i) => [i.fileName!, i]))
-    this.table = table
-    this.issues = validateSdrf(table)
-    // a data file renamed in the editor is looked for under its new name
-    const names = (files: SdrfFile[]) => files.map((f) => f.name).join('\0')
-    const files = this.#filesOf(table, this.files)
-    if (names(files) !== names(this.files)) {
-      this.files = files
-      if (files.some((f) => f.path === null)) void this.#resolve()
-    }
-  }
-
-  /** The design table's edits written into the SDRF itself (before the metadata editor shows it). */
-  commitDesign() {
-    if (!this.table) return
-    const table = parseSdrfTable(this.text())
-    this.#loaded = new Map(parseSdrf(writeSdrfTable(table)).inputs.map((i) => [i.fileName!, i]))
-    this.table = table
-    this.issues = validateSdrf(table)
-  }
-
-  /**
-   * "Download missing": the data files that are not here (and their associated files), from their file URIs or the
-   * project's files in PRIDE, into a folder the user chooses; then the files are looked for again.
-   */
-  async downloadMissing() {
-    if (!this.table || !this.path || this.download) return
-    this.downloadError = null
-    const names = this.unresolved.filter((f) => f.status !== 'vendor').map((f) => f.name)
-    try {
-      const pride = /^(PXD|MSV)\d+$/.test(this.pxd.trim()) ? await prideFiles(this.pxd.trim()) : []
-      const plan = downloadPlan(this.table, names, pride)
-      if (plan.files.length === 0) {
-        this.downloadError = `No download address for ${plan.notFound.join(', ')}. ${this.pxd ? `PRIDE's ${this.pxd} does not list them.` : 'Enter the ProteomeXchange accession (PXD…).'}`
-        return
-      }
-      const folder = await chooseDownloadFolder(`Download ${plan.files.length} ${plan.files.length === 1 ? 'file' : 'files'} into…`)
-      if (!folder) return
-      this.download = { file: 0, files: plan.files.length, name: plan.files[0].name, received: 0, size: plan.files[0].size }
-      await downloadDataFiles(plan.files, (p) => (this.download = p))
-      if (plan.notFound.length > 0) this.downloadError = `Not found anywhere: ${plan.notFound.join(', ')}.`
-      this.folder = folder
-      rememberFolder(this.path, folder)
-      this.download = null
-      await this.#resolve()
-    } catch (e) {
-      this.downloadError = errorText(e)
-    } finally {
-      this.download = null
-    }
-  }
-
-  cancelDownload() {
-    void cancelDownload()
   }
 
   /** "Locate folder…": looks for the data files below a folder the user chooses. */
@@ -306,14 +153,14 @@ class SdrfSession {
   snapshot() {
     return {
       path: this.path, table: this.table, issues: this.issues, files: $state.snapshot(this.files), folder: this.folder,
-      skipMissing: this.skipMissing, pxd: this.pxd, toFill: [...this.toFill], loaded: this.#loaded, seeded: this.#seeded,
+      skipMissing: this.skipMissing, loaded: this.#loaded, seeded: this.#seeded,
     }
   }
 
   /** The SDRF of `snapshot` back, as it was (no look-up of its files again). */
   restore(s: ReturnType<SdrfSession['snapshot']>) {
     this.#generation++
-    ;({ path: this.path, table: this.table, issues: this.issues, files: this.files, folder: this.folder, skipMissing: this.skipMissing, pxd: this.pxd, toFill: this.toFill } = s)
+    ;({ path: this.path, table: this.table, issues: this.issues, files: this.files, folder: this.folder, skipMissing: this.skipMissing } = s)
     this.#loaded = s.loaded
     this.#seeded = s.seeded
   }
@@ -324,7 +171,6 @@ class SdrfSession {
     this.table = null
     this.issues = []
     this.files = []
-    this.toFill = []
     this.#loaded = new Map()
     this.#generation++
     this.#seeded = new Set()

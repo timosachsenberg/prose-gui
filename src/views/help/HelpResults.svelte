@@ -50,7 +50,7 @@
     <li><b>Modification positions</b> are where the search placed them, not localized with a site score.</li>
     <li>
       <b>Export</b> (top right): CSV or Excel of the table you see; the spectrum shown as SVG; the identifications as idXML for other
-      OpenMS tools; the design (design.tsv) and an SDRF with the search’s settings for a quantification workflow; or a results archive
+      OpenMS tools; the design (design.tsv) for a quantification workflow; a methods section for a publication; or a results archive
       (.prose) for colleagues. A results archive holds the
       results and the search record, the sequences of the proteins in the results and the spectra of its PSMs, not the spectrum
       files, the full searched FASTA or the log: to repeat the search, they need those too. To set the same search up again, save a project (File › Save

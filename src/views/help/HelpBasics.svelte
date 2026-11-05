@@ -1,8 +1,6 @@
 <script lang="ts">
-  // Help › How a search works: fragmentation into b and y ions (animated), the pipeline from the FASTA and the
-  // spectra to scored matches, matching candidates against a spectrum (animated), and rescoring.
-  import FragmentationAnimation from '$lib/components/help/FragmentationAnimation.svelte'
-  import MatchingAnimation from '$lib/components/help/MatchingAnimation.svelte'
+  // Help › How a search works: fragmentation into b and y ions, the pipeline from the FASTA and the spectra to
+  // scored matches, and rescoring.
 
   const b = 'var(--color-blue-600, #2563eb)'
   const y = 'var(--color-orange-500, #f97316)'
@@ -20,8 +18,6 @@
     modification on it); for fragments of charge z, the m/z spacing is that mass divided by z.
     Not every rung is observed in a real spectrum.
   </p>
-
-  <FragmentationAnimation />
 
   <p>
     A <em>database search</em> turns this around. ProSE digests every protein of the FASTA file in the computer, the same way the
@@ -45,8 +41,6 @@
     </svg>
     <figcaption>ProSE compares each measured spectrum with the predicted fragments of the peptides whose mass fits. The spectra can be mzML, mzPeak, Thermo .raw or Bruker timsTOF .d files.</figcaption>
   </figure>
-
-  <MatchingAnimation />
 
   <p>
     Explaining more measured peaks, above all intense ones, gives a higher score. The Results view shows every PSM this way:

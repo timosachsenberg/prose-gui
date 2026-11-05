@@ -91,7 +91,7 @@ const screens: { name: string; open: (page: Page) => Promise<void> }[] = [
   { name: 'results-qc', open: async (p) => (await p.setViewportSize({ width: 1400, height: 1300 }), await openFixture(p), await p.getByRole('tab', { name: 'QC' }).click(), await expect(p.getByTestId('qc-content')).toBeVisible()) },
   { name: 'history', open: async (p) => (await openFixture(p), await p.getByRole('navigation', { name: 'Main' }).getByRole('link', { name: 'History' }).click(), await expect(p.getByTestId('history-row')).toBeVisible()) },
   { name: 'history-unavailable', open: async (p) => (await p.goto('/#/history'), await expect(p.getByTestId('history-unavailable')).toBeVisible()) },
-  ...['troubleshooting', 'results', 'fdr', 'settings', 'formats', 'basics', 'learn'].map((page) => ({
+  ...['troubleshooting', 'results', 'fdr', 'settings', 'formats', 'basics'].map((page) => ({
     name: `help-${page}`,
     open: async (p: Page) => (await p.goto(`/#/help/${page}`), await expect(p.getByTestId(`help-page-${page}`)).toHaveAttribute('aria-current', 'page')),
   })),
@@ -99,7 +99,6 @@ const screens: { name: string; open: (page: Page) => Promise<void> }[] = [
 
 for (const scheme of ['light', 'dark'] as const) {
   test.describe(`${scheme} theme`, () => {
-    // (reduced motion: the animations of Help hold still for the screenshots)
     test.use({ colorScheme: scheme, reducedMotion: 'reduce' })
     for (const s of screens) {
       test(s.name, async ({ page }) => {

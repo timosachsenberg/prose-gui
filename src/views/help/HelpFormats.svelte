@@ -65,9 +65,8 @@
     <li>
       <b>SDRF</b> (<code>.sdrf.tsv</code>, Sample and Data Relationship Format of SDRF-Proteomics): one row per sample and data
       file, with the organism, instrument, labels, enzyme, modifications and the factors of the experiment. It is the format
-      PRIDE uses. The app adds the files it names (and can download missing ones from PRIDE), fills the design table from it,
-      and checks its modifications, labels and organism against the search. <b>Metadata…</b> in its panel shows what it
-      says.
+      PRIDE uses. The app adds the files it names, fills the design table from it, and checks its modifications, labels and
+      organism against the search.
     </li>
     <li><b>design.tsv</b>: OpenMS's experimental design (files with fraction group, fraction, sample, condition). Its fields fill the design table.</li>
   </ul>
@@ -115,8 +114,7 @@
   <ul>
     <li>the spectrum files by their full paths, with their names and sizes, and the design table's fields;</li>
     <li>the database (its path, or the UniProt proteome a downloaded one is), contaminants and decoys;</li>
-    <li>the preset and every setting, the Percolator and PeptDeep switches, the threads, and the SDRF's path (an SDRF made
-      with “Create SDRF…” is saved beside the project as <code>&lt;name&gt;.sdrf.tsv</code>; the app asks before it replaces a file of that name);</li>
+    <li>the preset and every setting, the Percolator and PeptDeep switches, the threads, and the SDRF's path;</li>
     <li>the views: the view shown, the Results tab, the filters, sort and columns of each table, the open protein and PSM, the Help page;</li>
     <li>the ProSE and app versions, and the History search it ran as, if it has run.</li>
   </ul>

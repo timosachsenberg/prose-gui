@@ -1,18 +1,16 @@
 import { describe, expect, test } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { parseSdrfTable } from '../design/sdrf-table'
-import { modificationParameter } from '../design/sdrf-export'
 import { parseSdrfModification, sdrfChemistryChecks } from './chemistry'
 
 // The SDRF's chemistry against the search (G2).
 
 describe("the SDRF's modifications and labels", () => {
-  test('SDRF modification strings as ProSE names them, also what the export writes', () => {
+  test('SDRF modification strings as ProSE names them', () => {
     expect(parseSdrfModification('NT=Phospho;AC=UNIMOD:21;TA=S,T,Y;MT=Variable')).toMatchObject({ names: ['Phospho (S)', 'Phospho (T)', 'Phospho (Y)'], type: 'variable' })
     expect(parseSdrfModification('NT=Acetyl;AC=UNIMOD:1;PP=Protein N-term;MT=variable')!.names).toEqual(['Acetyl (Protein N-term)'])
-    for (const mod of ['Carbamidomethyl (C)', 'Acetyl (Protein N-term)', 'TMT6plex (N-term)', 'Oxidation (M)']) {
-      expect(parseSdrfModification(modificationParameter(mod, 'Fixed'))!.names).toEqual([mod])
-    }
+    expect(parseSdrfModification('NT=Carbamidomethyl;AC=UNIMOD:4;TA=C;MT=Fixed')).toMatchObject({ names: ['Carbamidomethyl (C)'], type: 'fixed' })
+    expect(parseSdrfModification('NT=Oxidation;AC=UNIMOD:35;TA=M;MT=Variable')!.names).toEqual(['Oxidation (M)'])
     expect(parseSdrfModification('not available')).toBeNull()
   })
 

@@ -1,4 +1,4 @@
-// Help: its seven pages, a deep link, the search of the questions, "What to do ›" from a finding, the animations.
+// Help: its six pages, a deep link, the search of the questions, "What to do ›" from a finding.
 import { expect, openFixture, test } from './fixtures'
 
 const pages = [
@@ -8,10 +8,9 @@ const pages = [
   ['settings', 'The settings'],
   ['formats', 'File formats'],
   ['basics', 'How a search works'],
-  ['learn', 'Videos and links'],
 ] as const
 
-test('the seven pages of Help', async ({ page }) => {
+test('the six pages of Help', async ({ page }) => {
   await page.goto('/#/help')
   const nav = page.locator('[data-testid^="help-page-"]')
   await expect(nav).toHaveText(pages.map(([, label]) => label))
@@ -59,39 +58,4 @@ test('"What to do ›" beside a finding opens its entry in Troubleshooting', asy
   await expect(entry).toHaveCount(1)
   await expect(entry).toBeInViewport()
   await expect(entry.locator('summary')).toBeFocused()
-})
-
-test('the animations play and pause', async ({ page }) => {
-  await page.goto('/#/help/basics')
-  const controls = page.getByRole('group', { name: /animation controls$/ })
-  await expect(controls).toHaveCount(2)
-  const fragmentation = page.getByRole('group', { name: 'Fragmentation: animation controls' })
-  const toggle = fragmentation.getByRole('button', { name: /^(Play|Pause)$/ })
-  await expect(toggle).toHaveText('Pause')
-  await expect(toggle).toHaveAttribute('aria-pressed', 'true')
-  await toggle.click()
-  await expect(toggle).toHaveText('Play')
-  const step = fragmentation.getByText(/^Step \d+ of \d+$/)
-  const at = await step.textContent()
-  await page.waitForTimeout(2000)
-  await expect(step).toHaveText(at!)
-  await fragmentation.getByRole('button', { name: 'Next step' }).click()
-  await expect(step).not.toHaveText(at!)
-})
-
-test.describe('with reduced motion', () => {
-  test.use({ reducedMotion: 'reduce' })
-  test('the animations start paused', async ({ page }) => {
-    await page.goto('/#/help/basics')
-    for (const name of ['Fragmentation', 'Matching']) {
-      const group = page.getByRole('group', { name: `${name}: animation controls` })
-      const toggle = group.getByRole('button', { name: /^(Play|Pause)$/ })
-      await expect(toggle).toHaveText('Play')
-      await expect(toggle).toHaveAttribute('aria-pressed', 'false')
-      const step = group.getByText(/^Step \d+ of \d+$/)
-      const at = await step.textContent()
-      await page.waitForTimeout(2200)
-      await expect(step).toHaveText(at!)
-    }
-  })
 })

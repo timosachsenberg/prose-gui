@@ -271,7 +271,7 @@ export const FAQ: FaqEntry[] = [
       'The SDRF lists a file the app cannot read.',
     ],
     fixes: [
-      'In the SDRF panel, use “Locate folder…” for the folder that holds the files, or “Locate…” for each missing file. For a PRIDE dataset, “Download missing…” fetches them (the PRIDE project is taken from the SDRF or its file name; otherwise type its PXD accession).',
+      'In the SDRF panel, use “Locate folder…” for the folder that holds the files, or “Locate…” for each missing file. Files of a public dataset (e.g. PRIDE) have to be downloaded first.',
       'For a file the app cannot read, convert it to mzML and locate it again.',
       'Tick “Search without them” only when you mean to leave those files out; the search then describes a different experiment than the SDRF.',
       'Correct the design cell to a whole number of at least 1, or empty it.',
@@ -631,7 +631,7 @@ export const FAQ: FaqEntry[] = [
       'When reporting a problem, give the app and ProSE versions, the command line, the log, and, if you can, a small input that shows it.',
     ],
     checks: [],
-    outside: 'Report problems of the app or of ProSE on the prose-gui GitHub issues page (linked under Videos and links).',
+    outside: 'Report problems of the app or of ProSE on the prose-gui GitHub issues page (github.com/timosachsenberg/prose-gui).',
   },
 ]
 

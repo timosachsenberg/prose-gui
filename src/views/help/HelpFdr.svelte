@@ -1,7 +1,6 @@
 <script lang="ts">
-  // Help › Decoys and the FDR: the target-decoy idea (a drawing, and a cutoff to drag), the levels of the FDR, what
-  // it is computed over, and when there is none.
-  import FdrExplorer from '$lib/components/help/FdrExplorer.svelte'
+  // Help › Decoys and the FDR: the target-decoy idea (a drawing), the levels of the FDR, what it is computed over,
+  // and when there is none.
 
   const b = 'var(--color-blue-600, #2563eb)'
   const y = 'var(--color-orange-500, #f97316)'
@@ -34,9 +33,6 @@
       PSM matched a decoy. ProSE chooses the cutoff that gives the FDR you set (e.g. 1 %).
     </figcaption>
   </figure>
-
-  <h3 id="fdr-explore">Try it: move the cutoff</h3>
-  <FdrExplorer />
 
   <ul class="prose-list">
     <li>

@@ -1,35 +1,18 @@
 <script lang="ts">
-  // The loaded SDRF in the Spectra card: how many of its data files were found, "Locate folder…", "Save SDRF…",
-  // what its rules check reports, and the data files that are not found, each with "Locate…".
+  // The loaded SDRF in the Spectra card: how many of its data files were found, "Locate folder…", what its rules
+  // check reports, and the data files that are not found, each with "Locate…".
   import FaqLink from '$lib/components/help/FaqLink.svelte'
   import CircleXIcon from '@lucide/svelte/icons/circle-x'
-  import CloudDownloadIcon from '@lucide/svelte/icons/cloud-download'
+  import CloudOffIcon from '@lucide/svelte/icons/cloud-off'
   import FileCogIcon from '@lucide/svelte/icons/file-cog'
   import XIcon from '@lucide/svelte/icons/x'
   import { Button } from '$lib/components/ui/button'
-  import { sdrfSession as sdrf, STATUS_TEXT } from '$lib/design/sdrf-session.svelte'
-  import { convertCommand } from '$lib/design/sdrf-download'
-  import { saveText } from '$lib/desktop'
-  import { formatBytes } from '$lib/format/bytes'
-  import SdrfEditor from './SdrfEditor.svelte'
-  import SdrfMetadata from './SdrfMetadata.svelte'
+  import { convertCommand, sdrfSession as sdrf, STATUS_TEXT } from '$lib/design/sdrf-session.svelte'
 
-  let saveError = $state<string | null>(null)
-  let editing = $state(false)
-  let metadata = $state(false)
   const found = $derived(sdrf.files.length - sdrf.unresolved.length)
   const errors = $derived(sdrf.issues.filter((i) => i.level === 'error'))
   const warnings = $derived(sdrf.issues.filter((i) => i.level === 'warning'))
   const where = (row: number) => (row < 0 ? 'header' : `row ${row + 2}`)
-
-  async function save() {
-    saveError = null
-    try {
-      await saveText(sdrf.name || 'sdrf.tsv', sdrf.text())
-    } catch (e) {
-      saveError = String((e as Error)?.message ?? e)
-    }
-  }
 </script>
 
 {#if sdrf.path}
@@ -41,19 +24,8 @@
       </span>
       <div class="flex-1"></div>
       <Button variant="outline" size="sm" class="h-6 px-2 text-xs" disabled={sdrf.busy} onclick={() => sdrf.locateFolder()}>Locate folder…</Button>
-      <Button variant="outline" size="sm" class="h-6 px-2 text-xs" onclick={() => {
-          sdrf.commitDesign()
-          editing = true
-        }}>Edit metadata…</Button>
-      <Button variant="outline" size="sm" class="h-6 px-2 text-xs" onclick={() => (metadata = true)} data-testid="sdrf-metadata-button">Metadata…</Button>
-      <Button variant="outline" size="sm" class="h-6 px-2 text-xs" onclick={save}>Save SDRF…</Button>
       <Button variant="ghost" size="icon-xs" class="text-muted-foreground" aria-label="Forget the SDRF" title="Forget the SDRF (its files stay)" onclick={() => sdrf.clear()}><XIcon /></Button>
     </div>
-    {#if sdrf.stillToFill.length > 0}
-      <p class="text-amber-700 dark:text-amber-400" data-testid="sdrf-to-fill">
-        To fill in before sharing (Edit metadata…): {sdrf.stillToFill.join(', ')} (now “not available”).
-      </p>
-    {/if}
     {#if errors.length + warnings.length > 0}
       <details>
         <summary class="cursor-pointer text-muted-foreground">
@@ -72,7 +44,7 @@
       <ul class="flex flex-col gap-1" data-testid="sdrf-unresolved">
         {#each sdrf.unresolved as file (file.name)}
           <li class="flex items-center gap-2">
-            {#if file.status === 'remote'}<CloudDownloadIcon class="size-3.5 text-muted-foreground" />
+            {#if file.status === 'remote'}<CloudOffIcon class="size-3.5 text-muted-foreground" />
             {:else if file.status === 'vendor'}<FileCogIcon class="size-3.5 text-amber-600" />
             {:else}<CircleXIcon class="size-3.5 text-destructive" />{/if}
             <span class="font-mono">{file.name}</span>
@@ -89,28 +61,9 @@
           <Button variant="ghost" size="sm" class="h-5 px-1.5 text-xs" onclick={() => navigator.clipboard?.writeText(command)}>Copy</Button>
         </p>
       {/each}
-      {#if sdrf.unresolved.some((f) => f.status !== 'vendor')}
-        <div class="flex flex-wrap items-center gap-2" data-testid="sdrf-download">
-          <label for="sdrf-pxd" class="text-muted-foreground">PRIDE project</label>
-          <input id="sdrf-pxd" class="h-6 w-28 rounded border bg-background px-1.5 font-mono" placeholder="PXD…" bind:value={sdrf.pxd} />
-          {#if sdrf.download}
-            {@const d = sdrf.download}
-            <span>Downloading {d.name} ({d.file + 1} of {d.files}): {formatBytes(d.received)}{d.size ? ` of ${formatBytes(d.size)}` : ''}</span>
-            <Button variant="ghost" size="sm" class="h-6 px-2 text-xs" onclick={() => sdrf.cancelDownload()}>Cancel</Button>
-          {:else}
-            <Button variant="outline" size="sm" class="h-6 px-2 text-xs" onclick={() => sdrf.downloadMissing()}>Download missing…</Button>
-          {/if}
-        </div>
-      {/if}
-      {#if sdrf.downloadError}<p class="text-destructive">{sdrf.downloadError}</p>{/if}
       <label class="flex items-center gap-1.5 text-muted-foreground">
         <input type="checkbox" bind:checked={sdrf.skipMissing} /> Search without them
       </label>
     {/if}
-    {#if saveError}<p class="text-destructive">{saveError}</p>{/if}
   </div>
 {/if}
-
-<SdrfMetadata bind:open={metadata} />
-
-<SdrfEditor bind:open={editing} />

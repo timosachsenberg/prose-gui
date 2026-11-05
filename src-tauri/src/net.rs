@@ -1,19 +1,15 @@
 //! The app's one way to the network: curl, HTTPS only, also after a redirect (`--proto =https --proto-redir =https`).
-//! Texts (PRIDE's file lists, OLS answers), sizes (a HEAD request) and files (PRIDE downloads, UniProt proteomes),
-//! the files resumed from the bytes already there and checked against their size.
+//! Texts (NCBI Taxonomy and UniProt answers) and files (UniProt proteomes), a file resumed from the bytes already
+//! there and checked against its size when the size is known.
 
 use std::path::Path;
 use std::process::{Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
-
-/// Set by `cancel`: the running download stops after killing curl.
-pub static CANCEL: AtomicBool = AtomicBool::new(false);
 
 /// The protocols curl may use, also after a redirect: HTTPS only (the unit tests' local server speaks HTTP).
 const PROTO: &str = if cfg!(test) { "=http,https" } else { "=https" };
 
-/// An address the app downloads from: HTTPS (PRIDE's FTP addresses are made HTTPS by `pride::https_of`).
+/// An address the app downloads from: HTTPS.
 pub fn allowed_url(url: &str) -> bool {
     url.starts_with("https://") || (cfg!(test) && url.starts_with("http://127.0.0.1:"))
 }
@@ -43,28 +39,6 @@ pub fn get_text(url: &str, max_seconds: u32, what: &str) -> Result<String, Strin
         ));
     }
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
-}
-
-/// The size the server gives for `url` (the Content-Length of a HEAD request, after redirects); None if it says none.
-pub fn remote_size(url: &str) -> Option<u64> {
-    let out = curl(url)
-        .ok()?
-        .args(["-sIL", "--connect-timeout", "30", "--max-time", "60", url])
-        .output()
-        .ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    let head = String::from_utf8_lossy(&out.stdout);
-    // (the last response's: a redirect has its own)
-    let last = head
-        .rsplit("\r\n\r\n")
-        .find(|block| !block.trim().is_empty())?;
-    last.lines()
-        .filter_map(|l| l.split_once(':'))
-        .find(|(k, _)| k.trim().eq_ignore_ascii_case("content-length"))
-        .and_then(|(_, v)| v.trim().parse().ok())
-        .filter(|&n: &u64| n > 0)
 }
 
 /// Attempts at one file; each resumes from the size the partial file actually has.
@@ -104,11 +78,6 @@ pub fn fetch(url: &str, partial: &Path, size: u64, progress: impl Fn(u64)) -> Re
             .map_err(|e| format!("curl cannot be started ({e})."))?;
         let mut overrun = false;
         let status = loop {
-            if CANCEL.load(Ordering::SeqCst) {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err("download cancelled. Starting it again resumes it.".to_string());
-            }
             let received = len(partial);
             if size > 0 && received > size {
                 let _ = child.kill();
@@ -168,7 +137,6 @@ mod tests {
                 get_text(url, 1, "x").unwrap_err().contains("HTTPS"),
                 "{url}"
             );
-            assert_eq!(remote_size(url), None);
         }
         let args: Vec<String> = curl("https://example.org/")
             .unwrap()
@@ -182,18 +150,10 @@ mod tests {
             .contains("HTTPS"));
     }
 
-    /// Against the real servers (network; `cargo test -- --ignored`): OLS answers, and a UniProt stream of unknown
-    /// size arrives whole.
+    /// Against the real server (network; `cargo test -- --ignored`): a UniProt stream of unknown size arrives whole.
     #[test]
     #[ignore]
-    fn live_ols_and_uniprot_over_https() {
-        let ols = get_text(
-            "https://www.ebi.ac.uk/ols4/api/search?q=liver&ontology=uberon&rows=1",
-            30,
-            "OLS",
-        )
-        .unwrap();
-        assert!(ols.contains("UBERON"));
+    fn live_uniprot_over_https() {
         let dir = std::env::temp_dir().join(format!("prose-net-live-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let partial = dir.join("p.fasta.partial");
