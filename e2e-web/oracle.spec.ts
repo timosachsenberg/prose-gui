@@ -65,7 +65,7 @@ test.describe('example', () => {
       expect(parseCount(cells[col('Decoy PSMs')])).toBe(psms.filter((p) => p.decoy).length)
     }
     const all = (await lines.filter({ hasText: 'All files' }).locator('td, th').allInnerTexts()).map((t) => t.trim()).filter(Boolean)
-    expect(all.slice(0, 4)).toEqual(['All files', count(keyFigures(f).ms2), count(keyFigures(f).psms.length), '0'])
+    expect(all.slice(0, 4)).toEqual(['All files', count(keyFigures(f).ms2), count(keyFigures(f).psms.length), count(f.psms.filter((p) => p.decoy && p.q <= FIXTURE_PSM_FDR).length)])
   })
 
   test('the Mass accuracy table: what ProSE measured per file', async ({ page }) => {
@@ -252,8 +252,9 @@ test.describe('example', () => {
   })
 })
 
-/** The PSMs of the example whose ions the tests recompute: plain, Met-oxidised, carbamidomethylated, 3+ and 4+. */
-const IONS: { sequence: string; charge?: number }[] = [{ sequence: 'RFYDAVSTFK' }, { sequence: 'YDYGMFK' }, { sequence: 'CTQELLFGK' }, { sequence: 'AREALGLPHSDVFR', charge: 3 }, { sequence: 'AREALGLPHSDVFR', charge: 4 }]
+/** The PSMs of the example whose ions the tests recompute: plain, carbamidomethylated, 3+ and 4+ (its PSMs at the
+ * current pin have no variable modification). */
+const IONS: { sequence: string; charge?: number }[] = [{ sequence: 'RFYDAVSTFK' }, { sequence: 'CTQELLFGK' }, { sequence: 'AREALGLPHSDVFR', charge: 3 }, { sequence: 'AREALGLPHSDVFR', charge: 4 }]
 
 function modsOf(p: OraclePsm): Map<number, number> {
   const out = new Map<number, number>()

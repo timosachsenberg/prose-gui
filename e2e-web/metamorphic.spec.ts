@@ -83,7 +83,7 @@ test('filters commute: charge then text equals text then charge, as rows and as 
   // undo both, then the other order
   await charge.click()
   await filterText(page, '')
-  expect(await rowCount(page)).toEqual({ shown: 154, total: 154 })
+  expect(await rowCount(page)).toEqual({ shown: 132, total: 132 })
   await filterText(page, 'VIMSS14264')
   await charge.click()
   const b = await csvRows(page)
