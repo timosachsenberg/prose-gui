@@ -101,7 +101,7 @@
       onSelect={() => guard(() => view.spectrumExporter?.())}>Spectrum (SVG)</DropdownMenu.Item>
     <DropdownMenu.Item
       disabled={view.exporting}
-      title="Saves the search's results as one archive file that you can import in ProSE elsewhere (History › Import results archive). It contains ProSE's outputs, which name folders on this computer, such as those of the database and the search. The mzML files and the log are not included."
+      title="Saves the search's results as one archive file that you can import in ProSE elsewhere (History › Import results archive). Not a project (File › Save Project, the setup). It contains ProSE's outputs, which name folders on this computer, such as those of the database and the search. The mzML files and the log are not included."
       onSelect={archive}>Results archive (.prose)</DropdownMenu.Item>
     <DropdownMenu.Separator />
     <DropdownMenu.Item onSelect={idXML}>{idXMLFile(view.result).label}</DropdownMenu.Item>
