@@ -45,7 +45,7 @@ ProSE -in <files…> -database <fasta (+ cRAP)> -threads <n> -Search:… (form)
       -out_qpx <dir>/qpx -qpx_extended -qpx_peak_window 100 -qpx_peak_top 100
       -keep_decoys
       [-out_merged <dir>/merged.idXML]                  (two or more inputs: the pooled inference, and the Export menu's idXML)
-      [-out_idxml <dir>/search.idXML]                   (one input: the Export menu's idXML)
+      [-out <dir>/search.idXML]                          (one input: the Export menu's idXML; -out_idxml for a ProSE before OpenMS 3.7)
       [-out_mod_analysis_dir <dir>/mods]                 (open search)
 ```
 
