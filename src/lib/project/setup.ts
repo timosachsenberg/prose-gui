@@ -1,4 +1,4 @@
-// Projects: the setup of a search and the state of the views as one JSON file, `<name>.prose-setup.json`, from
+// Projects: the setup of a search and the state of the views as one JSON file, `<name>.prose-project.json`, from
 // which the search can be set up again and the app shows what it showed (File › Save Project, Open Project). Not the
 // results archive (`.prose`, Export › Results archive: a zip of a finished search's outputs, history.ts): a project
 // holds no results, only paths, settings and view state, and names the History search it ran as, if any.
@@ -6,12 +6,12 @@
 // The format (schema 1). Every path is absolute, as on the computer that saved it; the sizes are bytes, to tell a
 // file that changed since. Fields not listed are ignored when read; a field left out takes its default.
 //
-//   format        "prose-setup" (what the file is)
+//   format        "prose-project" (what the file is; "prose-setup" in the branch's first files, still read)
 //   schema        1 (a newer schema is refused: made by a newer ProSE)
 //   savedAt       ISO time of the save
 //   appVersion    the version of the app that saved it
 //   proseVersion  the version of the ProSE tool it had (null: unknown)
-//   name          the project's name (its file name without .prose-setup.json)
+//   name          the project's name (its file name without .prose-project.json)
 //   inputs        the spectrum files in the design table's order: { path, name, size, condition?, replicate?,
 //                 fraction?, techReplicate? } (the design fields as entered; left out: not entered)
 //   database      the FASTA: { path, name, size, proteome } (proteome: the UniProt proteome id of a downloaded one,
@@ -35,9 +35,12 @@ import type { FilterState } from '../results/filters'
 import type { Level } from '../results/model'
 import type { PanelTab, SortState, Tab } from '../results/view.svelte'
 
-export const SETUP_FORMAT = 'prose-setup'
+export const SETUP_FORMAT = 'prose-project'
+/** The format and extension of the first project files (before they were named after the project): still read. */
+export const OLD_SETUP_FORMAT = 'prose-setup'
 export const SETUP_SCHEMA = 1
-export const SETUP_EXTENSION = '.prose-setup.json'
+export const SETUP_EXTENSION = '.prose-project.json'
+export const OLD_SETUP_EXTENSION = '.prose-setup.json'
 
 export type SetupInput = {
   path: string
@@ -103,10 +106,11 @@ export function proteomeOf(name: string): string | null {
   return /^(UP\d{9})(?:_reviewed)?\.fasta$/.exec(name)?.[1] ?? null
 }
 
-/** The project's name from a file name (`exp.prose-setup.json` -> `exp`). */
+/** The project's name from a file name (`exp.prose-project.json`, or an older `exp.prose-setup.json` -> `exp`). */
 export function setupName(fileName: string): string {
   const base = fileName.split(/[\\/]/).pop() ?? fileName
-  return base.toLowerCase().endsWith(SETUP_EXTENSION) ? base.slice(0, -SETUP_EXTENSION.length) : base.replace(/\.json$/i, '')
+  const ext = [SETUP_EXTENSION, OLD_SETUP_EXTENSION].find((e) => base.toLowerCase().endsWith(e))
+  return ext ? base.slice(0, -ext.length) : base.replace(/\.json$/i, '')
 }
 
 /** The JSON of a setup, two-space indented (NaN and infinite numbers, which JSON has not, as null). */
@@ -163,7 +167,7 @@ function resultsUiOf(v: unknown): ResultsUi | null {
 }
 
 /**
- * The setup of a project file's text, checked: JSON, `format` "prose-setup", a schema this app reads, inputs with a
+ * The setup of a project file's text, checked: JSON, `format` "prose-project" (or the older "prose-setup"), a schema this app reads, inputs with a
  * path each. Throws a SetupError that says what is wrong; a newer schema is refused, not guessed at.
  */
 export function parseSetup(text: string): ProjectSetup {
@@ -173,7 +177,7 @@ export function parseSetup(text: string): ProjectSetup {
   } catch (e) {
     throw new SetupError(`This is not a project file: it is not JSON (${(e as Error).message}).`)
   }
-  if (!isObject(raw) || raw.format !== SETUP_FORMAT) throw new SetupError('This is not a ProSE project file (no "format": "prose-setup").')
+  if (!isObject(raw) || (raw.format !== SETUP_FORMAT && raw.format !== OLD_SETUP_FORMAT)) throw new SetupError('This is not a ProSE project file (no "format": "prose-project").')
   const schema = raw.schema
   if (typeof schema !== 'number' || !Number.isInteger(schema) || schema < 1) throw new SetupError('This project file has no valid schema version.')
   if (schema > SETUP_SCHEMA) {

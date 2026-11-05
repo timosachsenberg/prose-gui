@@ -71,20 +71,20 @@
       </div>
       <p class="text-muted-foreground">Spectra and database stay on this computer.</p>
     </div>
-    <!-- a project: the setup of this search and of the views, as a .prose-setup.json (src/lib/project) -->
+    <!-- a project: the setup of this search and of the views, as a .prose-project.json (src/lib/project) -->
     <div class="flex items-center gap-2">
       <Button
         variant="outline"
         size="sm"
         disabled={project.busy}
-        title="Opens a project (.prose-setup.json): its files, design, database and settings here, and its search in Results if History has it"
+        title="Opens a project (.prose-project.json): its files, design, database and settings here, and its search in Results if History has it"
         data-testid="open-setup"
         onclick={() => projectAction(() => openProject(), 'Open project')}>{project.busy ? 'Opening project…' : 'Open project…'}</Button>
       <Button
         variant="outline"
         size="sm"
         disabled={project.busy}
-        title="Saves this setup and the state of the views as a project (.prose-setup.json), to set up the same search again"
+        title="Saves this setup and the state of the views as a project (.prose-project.json), to set up the same search again"
         data-testid="save-setup"
         onclick={() => projectAction(() => saveProject(project.name === null), 'Save project')}
         >{project.name === null ? 'Save project…' : 'Save project'}</Button>

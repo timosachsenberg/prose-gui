@@ -112,7 +112,7 @@ describe('projects in New search', () => {
   test('saved and opened again: the same form, nothing to report', async () => {
     await saveProject(false)
     // (no project yet: Save asks where)
-    expect(saved[0]).toMatchObject({ name: 'prose-results.prose-setup.json', ask: true })
+    expect(saved[0]).toMatchObject({ name: 'prose-results.prose-project.json', ask: true })
     expect(project.name).toBe('prose-results')
     await saveProject(false)
     expect(saved[1].ask).toBe(false)
@@ -121,7 +121,7 @@ describe('projects in New search', () => {
     form.threads = null
     form.peptdeep = false
     form.setParam('precursor:mass_tolerance', 20)
-    toOpen = { path: '/projects/prose-results.prose-setup.json', text: saved[0].contents }
+    toOpen = { path: '/projects/prose-results.prose-project.json', text: saved[0].contents }
     expect(await openProject()).toBe(true)
     await settle()
     expect(form.files.map((r) => [r.file.path, r.condition, r.replicate])).toEqual([
@@ -208,7 +208,7 @@ describe('projects in New search', () => {
   test('New Search: a new, unsaved setup, cleared as Start over clears it; it asks first about unsaved changes', async () => {
     // an opened project, unchanged: no question
     await saveProject(false)
-    toOpen = { path: '/projects/exp.prose-setup.json', text: saved[0].contents }
+    toOpen = { path: '/projects/exp.prose-project.json', text: saved[0].contents }
     await openProject()
     await settle()
     expect(project.name).toBe('exp')

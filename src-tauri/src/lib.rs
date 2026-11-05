@@ -22,18 +22,18 @@
 //!   `error`), `history_save_record(searchId, record)` (a finished search gets its `search.json`, right
 //!   after `search://done`), `history_save_proteins(searchId, proteins)` (its `proteins.fasta`, once the
 //!   results are read; the folder's `database.fasta` goes), `history_rename(searchId, name)`,
-//!   `history_delete(searchId)`, `history_files(searchId)` (the regular files of the folder, for a project
-//!   file), `save_project_file(searchId, name)` (a save dialog, then the search's project zip written there
-//!   entry by entry: `project`; events `project://progress` `{ searchId, written, total }`),
-//!   `open_project_file()` (the open dialog, then the bytes of the file chosen; empty if
-//!   cancelled) and `history_import(body)` (the entries of a project in a fresh folder -> the new id),
+//!   `history_delete(searchId)`, `history_files(searchId)` (the regular files of the folder, for a results
+//!   archive), `save_archive_file(searchId, name)` (a save dialog, then the search's archive zip written there
+//!   entry by entry: `archive`; events `archive://progress` `{ searchId, written, total }`),
+//!   `open_archive_file()` (the open dialog, then the bytes of the file chosen; empty if
+//!   cancelled) and `history_import(body)` (the entries of an archive in a fresh folder -> the new id),
 //!   `save_curation(searchId, curation)` (the user's marks of the PSMs: the folder's `curation.json`). At
 //!   startup the partial folders of interrupted searches are swept (`history::sweep`).
 //!
 //! - Projects (`setup_file`): `save_project_setup(name, contents, ask)` (the save dialog unless `ask` is false and a
 //!   project was opened or saved before: then that file again) -> `{ path, name }` or null;
 //!   `open_project_setup(recent?)` (the open dialog, or the `recent`-th entry of File › Open Recent) -> `{ path,
-//!   text }` or null; both refuse other files than `.prose-setup.json` and more than 4 MB, and put the file first in
+//!   text }` or null; both refuse other files than `.prose-project.json` (or the older `.prose-setup.json`) and more than 4 MB, and put the file first in
 //!   the recent projects; `forget_project_setup()` detaches the current one (New Search). `menu_state({ result, table, theme })`: which menu items apply (`menu`); a click on one
 //!   of the page's items is the event `menu://action` with its id.
 //! - closing the window while a search runs: the window stays and `app://close-requested` asks the page,
@@ -42,6 +42,7 @@
 //! `--smoke-test` on the command line is the packaged app's start test ([`SMOKE_TEST`]); `--watch-search`
 //! makes the executable the watchdog of a search (macOS: [`watchdog`]).
 
+pub mod archive;
 pub mod args;
 pub mod content;
 pub mod decoys;
@@ -51,7 +52,6 @@ pub mod locate;
 pub mod menu;
 pub mod net;
 pub mod progress;
-pub mod project;
 pub mod run;
 pub mod setup_file;
 pub mod spectra;
@@ -73,7 +73,7 @@ use tauri_plugin_dialog::DialogExt;
 struct AppState {
     searches: Arc<Searches>,
     closing: std::sync::Mutex<Closing>,
-    /// The project file opened or saved last (`<name>.prose-setup.json`): Save writes there again.
+    /// The project file opened or saved last (`<name>.prose-project.json`): Save writes there again.
     setup_path: std::sync::Mutex<Option<PathBuf>>,
 }
 
@@ -564,40 +564,40 @@ async fn history_files(
     on_searches(&app, move |dir| history::folder_files(&dir, &search_id)).await
 }
 
-/// The entries of a project file (see `history::frame`; the raw body of the call) as a new search.
+/// The entries of a results archive (see `history::frame`; the raw body of the call) as a new search.
 #[tauri::command]
 async fn history_import(
     app: AppHandle,
     request: tauri::ipc::Request<'_>,
 ) -> Result<String, String> {
     let tauri::ipc::InvokeBody::Raw(body) = request.body() else {
-        return Err("The project's entries are missing.".to_string());
+        return Err("The archive's entries are missing.".to_string());
     };
     let body = body.clone();
     on_searches(&app, move |dir| history::import(&dir, &body)).await
 }
 
-/// A project file: the open dialog (in Rust: the page never names a path) and the bytes of the file the
-/// user chose, as raw bytes. Cancelled: an empty body (a project file is never empty; it is refused). The
+/// A results archive: the open dialog (in Rust: the page never names a path) and the bytes of the file the
+/// user chose, as raw bytes. Cancelled: an empty body (a results archive is never empty; it is refused). The
 /// dialog offers `.prose` files first and any file second (the page checks what the file holds).
 #[tauri::command]
-async fn open_project_file(app: AppHandle) -> Result<Response, String> {
+async fn open_archive_file(app: AppHandle) -> Result<Response, String> {
     tauri::async_runtime::spawn_blocking(move || {
         if let Some(path) = test_dialog_path() {
-            return history::read_chosen_project(&path);
+            return history::read_chosen_archive(&path);
         }
         let chosen = app
             .dialog()
             .file()
-            .add_filter("ProSE project", &["prose"])
+            .add_filter("ProSE results archive", &["prose"])
             .add_filter("All files", &["*"])
-            .set_title("Open a project file")
+            .set_title("Open a results archive")
             .blocking_pick_file();
         match chosen {
             None => Ok(Vec::new()),
             Some(path) => {
                 let path = path.into_path().map_err(|e| e.to_string())?;
-                history::read_chosen_project(&path)
+                history::read_chosen_archive(&path)
             }
         }
     })
@@ -723,24 +723,24 @@ async fn history_import_qpx(
     .await
 }
 
-/// The title of the save dialog of a project file: what it holds, beyond the results.
-pub const PROJECT_DIALOG_TITLE: &str =
-    "Save the project: the search's results, including folder paths of this computer";
+/// The title of the save dialog of a results archive: what it holds, beyond the results.
+pub const ARCHIVE_DIALOG_TITLE: &str =
+    "Save the results archive: the search's results, including folder paths of this computer";
 
-/// How far the writing of a project file is (`project://progress`): the bytes of the search's files read.
+/// How far the writing of a results archive is (`archive://progress`): the bytes of the search's files read.
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ProjectProgress {
+struct ArchiveProgress {
     search_id: String,
     written: u64,
     total: u64,
 }
 
-/// A project file of search `search_id`: what it would hold is checked first, then the system's save
-/// dialog (suggesting `name`, a file name), then the zip written there entry by entry (`project`), with
-/// `project://progress` as it goes (at most once per percent). -> the path, or null if cancelled.
+/// A results archive of search `search_id`: what it would hold is checked first, then the system's save
+/// dialog (suggesting `name`, a file name), then the zip written there entry by entry (`archive`), with
+/// `archive://progress` as it goes (at most once per percent). -> the path, or null if cancelled.
 #[tauri::command]
-async fn save_project_file(
+async fn save_archive_file(
     app: AppHandle,
     search_id: String,
     name: String,
@@ -752,10 +752,10 @@ async fn save_project_file(
         .unwrap_or_else(|| "prose.prose".to_string());
     let dir = searches_dir(&app)?;
     tauri::async_runtime::spawn_blocking(move || {
-        project::project_files(&dir, &search_id)?;
+        archive::archive_files(&dir, &search_id)?;
         // (the path as chosen: the dialog's filter and the suggested name carry the extension; the title says
-        // what a project holds, as README.md does)
-        let Some(path) = ask_save_path_titled(&app, &name, Some(PROJECT_DIALOG_TITLE))? else {
+        // what an archive holds, as README.md does)
+        let Some(path) = ask_save_path_titled(&app, &name, Some(ARCHIVE_DIALOG_TITLE))? else {
             return Ok(None);
         };
         let mut shown = None;
@@ -765,8 +765,8 @@ async fn save_project_file(
                 shown = Some(percent);
                 let search_id = search_id.clone();
                 let _ = app.emit(
-                    "project://progress",
-                    ProjectProgress {
+                    "archive://progress",
+                    ArchiveProgress {
                         search_id,
                         written,
                         total,
@@ -774,7 +774,7 @@ async fn save_project_file(
                 );
             }
         };
-        project::write_project(
+        archive::write_archive(
             &dir,
             &search_id,
             &path,
@@ -808,6 +808,7 @@ fn use_setup_path(app: &AppHandle, state: &AppState, path: &Path) {
         .unwrap_or_default();
     let name = name
         .strip_suffix(setup_file::SETUP_EXTENSION)
+        .or_else(|| name.strip_suffix(setup_file::OLD_SETUP_EXTENSION))
         .unwrap_or(&name)
         .to_string();
     if let Some(window) = app.get_webview_window("main") {
@@ -897,7 +898,7 @@ async fn open_project_setup(
             None => match handle
                 .dialog()
                 .file()
-                .set_title("Open a project (.prose-setup.json)")
+                .set_title("Open a project (.prose-project.json)")
                 .add_filter("ProSE project", &["json"])
                 .blocking_pick_file()
             {
@@ -1077,13 +1078,13 @@ pub fn run() {
             history_files,
             history_import,
             save_curation,
-            open_project_file,
+            open_archive_file,
             open_qpx_folder,
             open_design_file,
             read_design_file,
             locate_data_files,
             history_import_qpx,
-            save_project_file,
+            save_archive_file,
             save_project_setup,
             open_project_setup,
             forget_project_setup,

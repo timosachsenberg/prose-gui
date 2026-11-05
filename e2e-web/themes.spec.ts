@@ -23,12 +23,12 @@ const screens: { name: string; open: (page: Page) => Promise<void> }[] = [
       const chooser = p.waitForEvent('filechooser')
       await p.getByTestId('open-setup').click()
       const setup = {
-        format: 'prose-setup', schema: 1, name: 'exp',
+        format: 'prose-project', schema: 1, name: 'exp',
         inputs: [{ path: '/data/run_1.mzML', name: 'run_1.mzML', size: 1000, condition: 'a' }],
         database: { path: '/db/ecoli.fasta', name: 'ecoli.fasta', size: 5000, proteome: null },
         presetId: 'orbitrap-hcd-tryptic', parameters: {}, ui: { view: 'search', showSettings: false, advanced: false },
       }
-      await (await chooser).setFiles({ name: 'exp.prose-setup.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(setup)) })
+      await (await chooser).setFiles({ name: 'exp.prose-project.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(setup)) })
       await expect(p.getByTestId('project-name')).toHaveText('Project: exp')
     },
   },

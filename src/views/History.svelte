@@ -3,7 +3,7 @@
   import CommandLine from '$lib/components/results/CommandLine.svelte'
   // History: the searches kept on this computer, each a folder of the app's data (the tool's outputs and a
   // record of the settings and the design; the mzML files stay where they are). Open, rename and delete;
-  // "Import results archive (.prose)…" unpacks a .prose file into History (a project, .prose-setup.json, is opened from
+  // "Import results archive (.prose)…" unpacks a .prose file into History (a project, .prose-project.json, is opened from
   // File › Open Project or New search). It stays usable while a search runs, and reads the
   // list again when it is shown. Beside each name: the search's database and, for searches of the same name,
   // what tells them apart (history/details.ts). A folder that is no search (no record, or a name that is not one
@@ -16,7 +16,7 @@
   import * as Table from '$lib/components/ui/table'
   import { formatBytes } from '$lib/format/bytes'
   import { formatCount } from '$lib/results/display'
-  import { history, openFromHistory, openProjectFile, openQpxFolderFile, refreshHistory, removeFromHistory, rename, reopenInNewSearch } from '$lib/history/history.svelte'
+  import { history, openFromHistory, openArchiveFile, openQpxFolderFile, refreshHistory, removeFromHistory, rename, reopenInNewSearch } from '$lib/history/history.svelte'
   import type { HistoryEntry } from '$lib/history/history'
   import { distinguishing, entryFacts } from '$lib/history/details'
   import { searchForm } from '$lib/search/form.svelte'
@@ -25,9 +25,9 @@
 
   onMount(() => void refreshHistory())
 
-  /** What went wrong with the last action: open (a stored search or a project file), rename or delete. */
+  /** What went wrong with the last action: open (a stored search or a results archive), rename or delete. */
   let problem = $state<{ title: string; text: string } | null>(null)
-  /** The search being read from storage, or 'project'. */
+  /** The search being read from storage, or 'archive'. */
   let busy = $state<string | null>(null)
   /** The row being renamed and the name typed so far. */
   let renaming = $state<string | null>(null)
@@ -70,9 +70,9 @@
 
   async function openFile() {
     problem = null
-    busy = 'project'
+    busy = 'archive'
     try {
-      await openProjectFile()
+      await openArchiveFile()
     } catch (e) {
       problem = { title: 'Could not open', text: `The results archive could not be imported: ${message(e)}` }
     } finally {
@@ -160,8 +160,8 @@
         data-testid="open-qpx">
         {busy === 'qpx' ? 'Opening folder…' : 'Open QPX folder…'}
       </Button>
-      <Button variant="outline" size="sm" disabled={busy !== null} onclick={openFile} data-testid="open-project">
-        {busy === 'project' ? 'Importing…' : 'Import results archive (.prose)…'}
+      <Button variant="outline" size="sm" disabled={busy !== null} onclick={openFile} data-testid="import-archive">
+        {busy === 'archive' ? 'Importing…' : 'Import results archive (.prose)…'}
       </Button>
     </div>
   </div>
@@ -303,7 +303,7 @@
       <Dialog.Title>Delete this search?</Dialog.Title>
       <Dialog.Description>
         This removes “{deleting?.name ?? deleting?.id}” and its results from this computer. Your mzML files, any results archive
-        and any project you saved from it are kept.
+        and any results archive you saved from it are kept.
       </Dialog.Description>
     </Dialog.Header>
     <Dialog.Footer>

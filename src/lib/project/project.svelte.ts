@@ -1,5 +1,5 @@
 // The project of this window (File › Open Project, Save Project, Save Project As): the setup of New search and the
-// state of the views saved as a `.prose-setup.json` (setup.ts has the format), and opened again: New search gets the
+// state of the views saved as a `.prose-project.json` (setup.ts has the format), and opened again: New search gets the
 // files, design, database, settings and SDRF back (`SearchForm.restoreSearch`, the SDRF loader); if the search the
 // setup ran as is in History, Results opens it with its tab, filters, columns and selection. Whatever cannot be
 // brought back (a file moved or changed, the database gone, the search not in History) is said in New search's

@@ -1,6 +1,6 @@
-// History without the disk: the record, the folder a saved search leaves, the project file (read with
-// fflate; made by the Rust side, here by the memory backend, and one the Rust side made: fixtures/rust-project.prose),
-// and how a project is refused. Against a search folder of the pinned tool
+// History without the disk: the record, the folder a saved search leaves, the results archive (read with
+// fflate; made by the Rust side, here by the memory backend, and one the Rust side made: fixtures/rust-archive.prose),
+// and how an archive is refused. Against a search folder of the pinned tool
 // (results/fixtures/example) held in memory; the Rust side has its own tests (src-tauri/tests/history.rs).
 
 import { strToU8, zipSync } from 'fflate'
@@ -10,24 +10,24 @@ import { OldLayoutError, RUNS } from '../results/read'
 import type { OpenResult } from '../search/session.svelte'
 import {
   countPsms,
-  exportProject,
+  exportArchive,
   frameEntries,
-  importProject,
-  importProjectBytes,
+  importArchive,
+  importArchiveBytes,
   isPlainName,
   MAX_UNPACKED,
   MAX_ZIP_ENTRIES,
   openSearch,
   parseRecord,
-  ProjectError,
-  ProjectVersionError,
+  ArchiveError,
+  ArchiveVersionError,
   proteinsFasta,
-  projectFileName,
+  archiveFileName,
   psmsOfSearch,
   recordOf,
   resultFromRecord,
   saveSearch,
-  unpackProject,
+  unpackArchive,
 } from './history'
 import { exampleFolder, exampleResult } from './fixtures'
 import { MemoryBackend, unframe } from './memory-backend'
@@ -110,9 +110,9 @@ describe('the record', () => {
 
   test('a newer schema is refused with a message', () => {
     const newer = JSON.stringify({ ...recordOf(result, 'x', '1'), schema: 3 })
-    expect(() => parseRecord(newer)).toThrow(ProjectVersionError)
+    expect(() => parseRecord(newer)).toThrow(ArchiveVersionError)
     expect(() => parseRecord(newer)).toThrow(/saved by a newer version of ProSE \(schema 3\).*reads schema 2/)
-    expect(() => parseRecord(newer, 'project')).toThrow(/This project was saved by a newer version/)
+    expect(() => parseRecord(newer, 'results archive')).toThrow(/This results archive was saved by a newer version/)
     expect(() => parseRecord(newer)).toThrow(/This search was saved by a newer version/)
   })
 })
@@ -210,7 +210,7 @@ describe('a saved search', () => {
     folder.set('search.json', strToU8(JSON.stringify({ ...recordOf(result, 'x', '1'), schema: 7 })))
     await expect(openSearch(backend, '100-0')).rejects.toThrow(/newer version of ProSE \(schema 7\)/)
     folder.delete('search.json')
-    await expect(openSearch(backend, '100-0')).rejects.toThrow(ProjectError)
+    await expect(openSearch(backend, '100-0')).rejects.toThrow(ArchiveError)
   })
 })
 
@@ -225,22 +225,22 @@ function renamed(zip: Uint8Array, from: string, to: string): Uint8Array {
   return out
 }
 
-describe('project files', () => {
-  test('a project round-trips (export, import, same tables)', async () => {
+describe('results archives', () => {
+  test('an archive round-trips (export, import, same tables)', async () => {
     const backend = await savedBackend('100-0', 'My search')
-    expect(await exportProject(backend, '100-0', 'My search')).toBe('/saved/My_search.prose')
+    expect(await exportArchive(backend, '100-0', 'My search')).toBe('/saved/My_search.prose')
     const [{ name, bytes }] = backend.saved
     expect(name).toBe('My_search.prose')
     // a zip of the folder's files, search.json first, no links, no database copy
-    const zipped = unpackProject(bytes)
+    const zipped = unpackArchive(bytes)
     expect(zipped[0].name).toBe('search.json')
     expect(zipped.map((e) => e.name).sort()).toEqual([...backend.folders.get('100-0')!.keys()].filter((n) => n !== 'database.fasta').sort())
 
     // another computer: a fresh backend, the file chosen in the open dialog
     const other = new MemoryBackend()
-    other.projects.set('/home/me/My_search.prose', bytes)
+    other.archives.set('/home/me/My_search.prose', bytes)
     other.chosen = '/home/me/My_search.prose'
-    const id = await importProject(other)
+    const id = await importArchive(other)
     expect(id).not.toBeNull()
     expect(id).not.toBe('100-0')
     const [entry] = await other.list()
@@ -248,7 +248,7 @@ describe('project files', () => {
     // the FASTA was not exported: the sequences come from proteins.fasta
     expect(other.folders.get(id!)!.has('database.fasta')).toBe(false)
     const opened = await openSearch(other, id!)
-    // the same tables; the searched files are named, not placed (the paths of the other computer are not in the project)
+    // the same tables; the searched files are named, not placed (the paths of the other computer are not in the archive)
     const named = (files: string[]) => files.map((f) => f.split('/').pop())
     expect(opened.result.outcome.tables).toEqual({ ...result.outcome.tables, files: named(result.outcome.tables.files) })
     expect(opened.result.outcome.tables.files).toEqual(['Ecoli_1.mzML', 'Ecoli_2.mzML'])
@@ -267,14 +267,14 @@ describe('project files', () => {
     expect(opened.result.outcome.warnings).toEqual(result.outcome.warnings)
   })
 
-  test('a project does not carry the database copy or the paths of this computer', async () => {
+  test('an archive does not carry the database copy or the paths of this computer', async () => {
     const backend = await savedBackend()
     backend.folders.get('100-0')!.set('prose.log', strToU8('$ /home/me/ProSE -in /home/me/data/a.mzML'))
     // (saving the proteins removed database.fasta; a folder still has it before its results are read)
     expect(backend.folders.get('100-0')!.has('database.fasta')).toBe(false)
     backend.folders.get('100-0')!.set('database.fasta', strToU8('>sp|P1|X\nPEPTIDE\n'))
-    await exportProject(backend, '100-0', 'x')
-    const files = Object.fromEntries(unpackProject(backend.saved[0].bytes).map((e) => [e.name, e.data]))
+    await exportArchive(backend, '100-0', 'x')
+    const files = Object.fromEntries(unpackArchive(backend.saved[0].bytes).map((e) => [e.name, e.data]))
     expect(Object.keys(files)).not.toContain('database.fasta')
     expect(Object.keys(files)).not.toContain('prose.log')
     expect(Object.keys(files)).toContain('proteins.fasta')
@@ -287,48 +287,48 @@ describe('project files', () => {
     expect(new TextDecoder().decode(backend.folders.get('100-0')!.get('inputs.json'))).toContain('/data/Ecoli_1.mzML')
     // an inputs.json that is not a list stops the export
     backend.folders.get('100-0')!.set('inputs.json', strToU8('{"a":1}'))
-    await expect(exportProject(backend, '100-0', 'x')).rejects.toThrow(/inputs.json/)
+    await expect(exportArchive(backend, '100-0', 'x')).rejects.toThrow(/inputs.json/)
     backend.folders.get('100-0')!.set('inputs.json', strToU8('nope'))
-    await expect(exportProject(backend, '100-0', 'x')).rejects.toThrow(/inputs.json/)
+    await expect(exportArchive(backend, '100-0', 'x')).rejects.toThrow(/inputs.json/)
   })
 
-  test('a search too large for a project file is refused before anything is read or zipped', async () => {
+  test('a search too large for a results archive is refused before anything is read or zipped', async () => {
     const backend = await savedBackend()
     const read = vi.spyOn(backend, 'read')
     const files = backend.files.bind(backend)
-    // results of more than the 3 GB a project opens with (and so near the 4 GB a zip without zip64 holds)
+    // results of more than the 3 GB an archive opens with (and so near the 4 GB a zip without zip64 holds)
     backend.files = async (id: string) => [...(await files(id)), { name: 'qpx/huge.psm.parquet', size: MAX_UNPACKED }]
-    await expect(exportProject(backend, '100-0', 'x')).rejects.toThrow(
-      /too large for a project file: its results take 3\.\d+ GB, and a project file holds at most 3\.\d+ GB/,
+    await expect(exportArchive(backend, '100-0', 'x')).rejects.toThrow(
+      /too large for a results archive: its results take 3\.\d+ GB, and a results archive holds at most 3\.\d+ GB/,
     )
     expect(read).not.toHaveBeenCalled()
     expect(backend.saved).toEqual([])
-    // the files left out of a project do not count (prose.log, database.fasta)
+    // the files left out of an archive do not count (prose.log, database.fasta)
     backend.files = async (id: string) => [...(await files(id)), { name: 'database.fasta', size: MAX_UNPACKED }]
-    expect(await exportProject(backend, '100-0', 'x')).toBe('/saved/x.prose')
-    // a project of more files than a zip without zip64 holds
+    expect(await exportArchive(backend, '100-0', 'x')).toBe('/saved/x.prose')
+    // an archive of more files than a zip without zip64 holds
     backend.files = async () => Array.from({ length: MAX_ZIP_ENTRIES + 1 }, (_, i) => ({ name: i === 0 ? 'search.json' : `f/${i}`, size: 1 }))
-    await expect(exportProject(backend, '100-0', 'x')).rejects.toThrow(/its results take 65536 files/)
+    await expect(exportArchive(backend, '100-0', 'x')).rejects.toThrow(/its results take 65536 files/)
   })
 
-  test('the project of a search that is not saved is refused', async () => {
+  test('the archive of a search that is not saved is refused', async () => {
     const backend = new MemoryBackend()
     backend.addFolder('1-0', fixture)
-    await expect(exportProject(backend, '1-0', 'x')).rejects.toThrow(/not saved to History/)
+    await expect(exportArchive(backend, '1-0', 'x')).rejects.toThrow(/not saved to History/)
     expect(backend.saved).toEqual([])
   })
 
   test('a cancelled save dialog or open dialog does nothing', async () => {
     const backend = await savedBackend()
     backend.cancelSave = true
-    expect(await exportProject(backend, '100-0', 'x')).toBeNull()
-    expect(await importProject(backend)).toBeNull()
+    expect(await exportArchive(backend, '100-0', 'x')).toBeNull()
+    expect(await importArchive(backend)).toBeNull()
     expect(backend.imported).toBe(0)
   })
 
   test('parquet is stored, the rest deflated', async () => {
     const backend = await savedBackend()
-    await exportProject(backend, '100-0', 'x')
+    await exportArchive(backend, '100-0', 'x')
     const bytes = backend.saved[0].bytes
     // the method of each local entry: 0 stored, 8 deflated
     const view = new DataView(bytes.buffer, bytes.byteOffset)
@@ -348,14 +348,14 @@ describe('project files', () => {
   test('the export says how far it is', async () => {
     const backend = await savedBackend()
     const seen: number[] = []
-    await exportProject(backend, '100-0', 'x', (f) => seen.push(f))
+    await exportArchive(backend, '100-0', 'x', (f) => seen.push(f))
     expect(seen.length).toBeGreaterThan(1)
     expect(seen.at(-1)).toBe(1)
   })
 
-  test("a project the Rust side wrote opens (src-tauri/tests/project.rs makes it, entry by entry)", async () => {
-    const bytes = new Uint8Array(readFileSync(new URL('./fixtures/rust-project.prose', import.meta.url)))
-    const entries = unpackProject(bytes)
+  test("an archive the Rust side wrote opens (src-tauri/tests/archive.rs makes it, entry by entry)", async () => {
+    const bytes = new Uint8Array(readFileSync(new URL('./fixtures/rust-archive.prose', import.meta.url)))
+    const entries = unpackArchive(bytes)
     const files = Object.fromEntries(entries.map((e) => [e.name, new TextDecoder().decode(e.data)]))
     // the record first, the rest by name; without the database copy, its path and the log
     expect(entries.map((e) => e.name)).toEqual([
@@ -367,7 +367,7 @@ describe('project files', () => {
       'qpx/quantms.psm.parquet',
       'qpx/runs/1__a.mz.parquet',
     ])
-    expect(parseRecord(files['search.json'], 'project').name).toBe('Fixture')
+    expect(parseRecord(files['search.json'], 'results archive').name).toBe('Fixture')
     expect(JSON.parse(files['inputs.json']).map((r: { path: string }) => r.path)).toEqual(['a.mzML', 'b.mzML'])
     expect(files['proteins.fasta']).toBe('>P1 first protein\nPEPTIDEKPEPTIDEKPEPTIDEK\n'.repeat(50))
     expect(files['mods/1__a_PTMStats.tsv']).toBe('name\tcount\nOxidation\t3\n')
@@ -377,30 +377,30 @@ describe('project files', () => {
     expect(new DataView(parquet.buffer, parquet.byteOffset).getUint32(4 * 4999, true)).toBe(4999 * 7919)
     // and becomes a search of History
     const backend = new MemoryBackend()
-    const id = await importProjectBytes(backend, bytes)
+    const id = await importArchiveBytes(backend, bytes)
     expect((await backend.list())[0]).toMatchObject({ id, name: 'Fixture', files: ['a.mzML', 'b.mzML'], error: null })
   })
 
   test('a newer schema is refused with a message, and nothing is written', async () => {
     const newer = zipSync({ 'search.json': strToU8(JSON.stringify({ ...recordOf(result, 'x', '1'), schema: 3 })), 'a.txt': strToU8('x') })
     const backend = new MemoryBackend()
-    await expect(importProjectBytes(backend, newer)).rejects.toThrow(/This project was saved by a newer version of ProSE \(schema 3\)/)
-    await expect(importProjectBytes(backend, newer)).rejects.toBeInstanceOf(ProjectVersionError)
+    await expect(importArchiveBytes(backend, newer)).rejects.toThrow(/This results archive was saved by a newer version of ProSE \(schema 3\)/)
+    await expect(importArchiveBytes(backend, newer)).rejects.toBeInstanceOf(ArchiveVersionError)
     expect(backend.imported).toBe(0)
   })
 
   const record = () => JSON.stringify(recordOf(result, 'x', '1'))
 
-  test('something that is not a project is refused with a message', async () => {
+  test('something that is not an archive is refused with a message', async () => {
     const backend = new MemoryBackend()
-    await expect(importProjectBytes(backend, strToU8('hello, this is text and not a zip file at all'))).rejects.toThrow(/not a zip file/)
-    await expect(importProjectBytes(backend, new Uint8Array(0))).rejects.toThrow(/not a zip file/)
+    await expect(importArchiveBytes(backend, strToU8('hello, this is text and not a zip file at all'))).rejects.toThrow(/not a zip file/)
+    await expect(importArchiveBytes(backend, new Uint8Array(0))).rejects.toThrow(/not a zip file/)
     const damaged = zipSync({ 'search.json': strToU8('x'.repeat(1000)) })
     damaged.fill(0xff, damaged.length - 40, damaged.length - 22) // the central directory
-    await expect(importProjectBytes(backend, damaged)).rejects.toThrow(ProjectError)
-    await expect(importProjectBytes(backend, zipSync({ 'a.txt': strToU8('x') }))).rejects.toThrow(/no search.json/)
-    await expect(importProjectBytes(backend, zipSync({ 'search.json': strToU8('{ no') }))).rejects.toThrow(/not valid JSON/)
-    await expect(importProjectBytes(backend, zipSync({ 'search.json': strToU8('{}') }))).rejects.toThrow(/no schema/)
+    await expect(importArchiveBytes(backend, damaged)).rejects.toThrow(ArchiveError)
+    await expect(importArchiveBytes(backend, zipSync({ 'a.txt': strToU8('x') }))).rejects.toThrow(/no search.json/)
+    await expect(importArchiveBytes(backend, zipSync({ 'search.json': strToU8('{ no') }))).rejects.toThrow(/not valid JSON/)
+    await expect(importArchiveBytes(backend, zipSync({ 'search.json': strToU8('{}') }))).rejects.toThrow(/no schema/)
     expect(backend.imported).toBe(0)
   })
 
@@ -409,31 +409,31 @@ describe('project files', () => {
     const bad = ['../escape.txt', 'a/../../escape.txt', '/etc/passwd', 'a//b', './a', 'a/./b', 'a\\b', 'C:evil', 'with\nnewline']
     for (const name of bad) {
       const zip = zipSync({ 'search.json': strToU8(record()), [name]: strToU8('x') })
-      await expect(importProjectBytes(backend, zip), name).rejects.toThrow(/not a plain name/)
+      await expect(importArchiveBytes(backend, zip), name).rejects.toThrow(/not a plain name/)
     }
     // a file that is also a folder
     const clash = zipSync({ 'search.json': strToU8(record()), a: strToU8('x'), 'a/b': strToU8('y') })
-    await expect(importProjectBytes(backend, clash)).rejects.toThrow(/as a file and as a folder/)
+    await expect(importArchiveBytes(backend, clash)).rejects.toThrow(/as a file and as a folder/)
     expect(backend.imported).toBe(0)
     // plain names, folders included, are fine
-    expect(unpackProject(zipSync({ 'search.json': strToU8(record()), 'qpx/a b.parquet': strToU8('x'), 'mods/deep/x.txt': strToU8('y') })).length).toBe(3)
+    expect(unpackArchive(zipSync({ 'search.json': strToU8(record()), 'qpx/a b.parquet': strToU8('x'), 'mods/deep/x.txt': strToU8('y') })).length).toBe(3)
   })
 
   test('a link in the zip is refused', async () => {
     // a zip as `zip -y` makes it: the link's entry is made on Unix with the mode of a symbolic link
     const zip = zipSync({ 'search.json': strToU8(record()), link: [strToU8('/etc/passwd'), { os: 3, attrs: 0o120777 << 16 }] })
-    expect(() => unpackProject(zip)).toThrow(/contains a link/)
+    expect(() => unpackArchive(zip)).toThrow(/contains a link/)
     // a regular file made on Unix is fine
     const fine = zipSync({ 'search.json': [strToU8(record()), { os: 3, attrs: 0o100644 << 16 }] })
-    expect(unpackProject(fine).length).toBe(1)
+    expect(unpackArchive(fine).length).toBe(1)
   })
 
   test('a name twice in the zip is refused', () => {
     const zip = zipSync({ 'search.json': strToU8(record()), 'a1.txt': strToU8('one'), 'a2.txt': strToU8('two') })
     // the second entry renamed to the first's name, in its local and its central header
     const twice = renamed(zip, 'a2.txt', 'a1.txt')
-    expect(() => unpackProject(twice)).toThrow(/twice/)
-    expect(() => unpackProject(zip)).not.toThrow()
+    expect(() => unpackArchive(twice)).toThrow(/twice/)
+    expect(() => unpackArchive(zip)).not.toThrow()
   })
 
   test('a zip64 locator is refused: the two readers could take different directories', () => {
@@ -445,29 +445,29 @@ describe('project files', () => {
     withLocator.set(zip.subarray(0, eocd))
     withLocator.set(locator, eocd)
     withLocator.set(zip.subarray(eocd), eocd + 20)
-    expect(() => unpackProject(withLocator)).toThrow(/zip64/)
+    expect(() => unpackArchive(withLocator)).toThrow(/zip64/)
     // the counts of an end record that points to zip64 data likewise
     const big = zip.slice()
     new DataView(big.buffer).setUint16(eocd + 10, 0xffff, true)
-    expect(() => unpackProject(big)).toThrow(/zip64/)
+    expect(() => unpackArchive(big)).toThrow(/zip64/)
   })
 
   test('the size limit counts what the zip declares, entry by entry, and what comes out', () => {
     const zip = zipSync({ 'search.json': strToU8(record()), 'a.bin': new Uint8Array(5000), 'b.bin': new Uint8Array(5000) })
-    expect(unpackProject(zip, 20000).length).toBe(3)
-    expect(() => unpackProject(zip, 9000)).toThrow(/more than/)
+    expect(unpackArchive(zip, 20000).length).toBe(3)
+    expect(() => unpackArchive(zip, 9000)).toThrow(/more than/)
     // one entry alone is within it, the sum is not
-    expect(() => unpackProject(zip, record().length + 5000 + 100)).toThrow(/more than/)
+    expect(() => unpackArchive(zip, record().length + 5000 + 100)).toThrow(/more than/)
   })
 
   test('non-ASCII names (UTF-8 flagged, as the app writes them) read the same in both readers', () => {
     const zip = zipSync({ 'search.json': strToU8(record()), 'qpx/ü ö.parquet': strToU8('x') })
-    expect(unpackProject(zip).map((e) => e.name).sort()).toEqual(['qpx/ü ö.parquet', 'search.json'])
+    expect(unpackArchive(zip).map((e) => e.name).sort()).toEqual(['qpx/ü ö.parquet', 'search.json'])
   })
 
   test('folders in the zip are skipped, not written', () => {
     const zip = zipSync({ 'search.json': strToU8(record()), 'qpx/': new Uint8Array(0), 'qpx/a.txt': strToU8('x') })
-    expect(unpackProject(zip).map((e) => e.name).sort()).toEqual(['qpx/a.txt', 'search.json'])
+    expect(unpackArchive(zip).map((e) => e.name).sort()).toEqual(['qpx/a.txt', 'search.json'])
   })
 
   test('plain names: the rule of the Rust side', () => {
@@ -477,13 +477,13 @@ describe('project files', () => {
     }
   })
 
-  test('project names are reduced to safe file names', () => {
-    expect(projectFileName('My search #1')).toBe('My_search_1.prose')
-    expect(projectFileName('../etc/passwd')).toBe('etc_passwd.prose')
-    expect(projectFileName('???')).toBe('prose-results.prose')
-    expect(projectFileName('Probe Größe ä ö ü')).toBe('Probe_Größe_ä_ö_ü.prose')
-    expect(projectFileName('蛋白质组 a:b')).toBe('蛋白质组_a_b.prose')
-    expect(projectFileName('DatabaseSuitability.v2')).toBe('DatabaseSuitability.v2.prose')
+  test('archive names are reduced to safe file names', () => {
+    expect(archiveFileName('My search #1')).toBe('My_search_1.prose')
+    expect(archiveFileName('../etc/passwd')).toBe('etc_passwd.prose')
+    expect(archiveFileName('???')).toBe('prose-results.prose')
+    expect(archiveFileName('Probe Größe ä ö ü')).toBe('Probe_Größe_ä_ö_ü.prose')
+    expect(archiveFileName('蛋白质组 a:b')).toBe('蛋白质组_a_b.prose')
+    expect(archiveFileName('DatabaseSuitability.v2')).toBe('DatabaseSuitability.v2.prose')
   })
 
   test('the entries are framed as the Rust side reads them', () => {

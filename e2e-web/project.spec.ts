@@ -1,4 +1,4 @@
-// Projects (.prose-setup.json) in the browser: Save project downloads the setup (the desktop app's save dialog is the
+// Projects (.prose-project.json) in the browser: Save project downloads the setup (the desktop app's save dialog is the
 // browser's download here), Open project reads one with the browser's file picker (the open dialog's stand-in). The
 // browser reads no file, so every input of an opened project is reported as missing; its search, in the in-memory
 // History of the fixture, opens in Results with the saved tab and filter.
@@ -12,9 +12,9 @@ test('Save project downloads the setup as JSON', async ({ page }) => {
   const download = page.waitForEvent('download')
   await page.getByTestId('save-setup').click()
   const file = await download
-  expect(file.suggestedFilename()).toBe('project.prose-setup.json')
+  expect(file.suggestedFilename()).toBe('project.prose-project.json')
   const setup = JSON.parse(await readFile((await file.path())!, 'utf8'))
-  expect(setup).toMatchObject({ format: 'prose-setup', schema: 1, inputs: [], database: null, ui: { view: 'search' } })
+  expect(setup).toMatchObject({ format: 'prose-project', schema: 1, inputs: [], database: null, ui: { view: 'search' } })
   expect(setup.presetId).toMatch(/ion-?trap/i)
   expect(typeof setup.appVersion).toBe('string')
   await expect(page.getByTestId('project-name')).toHaveText('Project: project')
@@ -23,7 +23,7 @@ test('Save project downloads the setup as JSON', async ({ page }) => {
 test('Open project restores New search, names the missing files, and opens its search in Results', async ({ page }) => {
   await openFixture(page)
   const setup = {
-    format: 'prose-setup',
+    format: 'prose-project',
     schema: 1,
     name: 'exp',
     inputs: [
@@ -53,7 +53,7 @@ test('Open project restores New search, names the missing files, and opens its s
   await page.getByRole('link', { name: 'New search' }).click()
   const chooser = page.waitForEvent('filechooser')
   await page.getByTestId('open-setup').click()
-  await (await chooser).setFiles({ name: 'exp.prose-setup.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(setup)) })
+  await (await chooser).setFiles({ name: 'exp.prose-project.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(setup)) })
   // its search opens in Results, on the tab and with the filter it was saved with
   await expect(page).toHaveURL(/#\/results\/100-0$/)
   await expect(page.getByRole('tab', { name: /^Peptides/ })).toHaveAttribute('aria-selected', 'true')
@@ -70,6 +70,6 @@ test('a project of a newer ProSE is refused with a message', async ({ page }) =>
   await page.goto('/#/search')
   const chooser = page.waitForEvent('filechooser')
   await page.getByTestId('open-setup').click()
-  await (await chooser).setFiles({ name: 'new.prose-setup.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({ format: 'prose-setup', schema: 99, inputs: [] })) })
+  await (await chooser).setFiles({ name: 'new.prose-project.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({ format: 'prose-project', schema: 99, inputs: [] })) })
   await expect(page.getByTestId('project-error')).toContainText('saved by a newer ProSE (project schema 99')
 })

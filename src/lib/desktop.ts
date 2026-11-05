@@ -4,9 +4,9 @@
 //
 // Commands (src-tauri/src/lib.rs): tool_info, start_search, cancel_search, read_search_file,
 // inspect_files, cpu_count, example_files, save_text, save_search_file, history_list, history_save_record,
-// history_save_proteins, history_rename, history_delete, history_files, history_import, open_project_file,
-// save_project_file, save_curation, open_design_file, locate_data_files, answer_close, save_project_setup, open_project_setup, forget_project_setup, menu_state. Events:
-// search://progress, search://done, search://failed, project://progress, app://close-requested, menu://action. The system's dialogs open one at a time (`oneDialog`). The window's
+// history_save_proteins, history_rename, history_delete, history_files, history_import, open_archive_file,
+// save_archive_file, save_curation, open_design_file, locate_data_files, answer_close, save_project_setup, open_project_setup, forget_project_setup, menu_state. Events:
+// search://progress, search://done, search://failed, archive://progress, app://close-requested, menu://action. The system's dialogs open one at a time (`oneDialog`). The window's
 // theme (`windowTheme`, `onWindowThemeChanged`, `setWindowTheme`).
 
 import { invoke } from '@tauri-apps/api/core'
@@ -377,8 +377,8 @@ export function importQpxFolder(folder: string, record: string, inputs: string):
 }
 
 /**
- * History's disk: the Rust commands (src-tauri/src/history.rs). A project file is written by the Rust side
- * (src-tauri/src/project.rs); an opened one and the entries of an import go as raw bodies, not as JSON numbers.
+ * History's disk: the Rust commands (src-tauri/src/history.rs). A results archive is written by the Rust side
+ * (src-tauri/src/archive.rs); an opened one and the entries of an import go as raw bodies, not as JSON numbers.
  */
 export const desktopBackend: HistoryBackend = {
   list: () => invoke<HistoryEntry[]>('history_list'),
@@ -388,24 +388,24 @@ export const desktopBackend: HistoryBackend = {
   rename: (searchId, name) => invoke('history_rename', { searchId, name }),
   delete: (searchId) => invoke('history_delete', { searchId }),
   files: (searchId) => invoke('history_files', { searchId }),
-  // the dialog and the writing are one command: the zip goes to disk entry by entry, `project://progress` says how far
-  saveProject: (searchId, name, onProgress) =>
+  // the dialog and the writing are one command: the zip goes to disk entry by entry, `archive://progress` says how far
+  saveArchive: (searchId, name, onProgress) =>
     oneDialog(null, async () => {
       const unlisten = onProgress
-        ? await listen<{ searchId: string; written: number; total: number }>('project://progress', (e) => {
+        ? await listen<{ searchId: string; written: number; total: number }>('archive://progress', (e) => {
             if (e.payload.searchId === searchId) onProgress(e.payload.total > 0 ? e.payload.written / e.payload.total : 1)
           })
         : null
       try {
-        return await invoke<string | null>('save_project_file', { searchId, name })
+        return await invoke<string | null>('save_archive_file', { searchId, name })
       } finally {
         unlisten?.()
       }
     }),
   // the dialog and the read are one command: the page never names a path (cancelled: an empty body)
-  openProject: () =>
+  openArchive: () =>
     oneDialog(null, async () => {
-      const bytes = new Uint8Array(await invoke<ArrayBuffer>('open_project_file'))
+      const bytes = new Uint8Array(await invoke<ArrayBuffer>('open_archive_file'))
       return bytes.length === 0 ? null : bytes
     }),
   importEntries: (body) => invoke<string>('history_import', body),

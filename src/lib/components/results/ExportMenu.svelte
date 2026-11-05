@@ -2,7 +2,7 @@
   // The header's Export menu of the open result.
   import { buttonVariants } from '$lib/components/ui/button'
   import * as DropdownMenu from '$lib/components/ui/dropdown-menu'
-  import { saveProjectFile } from '$lib/history/history.svelte'
+  import { saveArchiveFile } from '$lib/history/history.svelte'
   import { exportCsv, exportCurated, exportDesign, exportIdXML, exportMethods, exportXlsx, idXMLFile } from '$lib/results/exports'
   import type { ResultsView } from '$lib/results/view.svelte'
   import { cn } from '$lib/utils'
@@ -18,8 +18,8 @@
   /** PSMs with a curation mark or note (when the menu opened). */
   let curated = $state(0)
   let busy = $state(false)
-  let projecting = $state(false)
-  /** How far the project file is written (0–1); null before the writing starts (the save dialog). */
+  let archiving = $state(false)
+  /** How far the results archive is written (0–1); null before the writing starts (the save dialog). */
   let written = $state<number | null>(null)
   let error = $state<string | null>(null)
 
@@ -41,21 +41,21 @@
   }
 
   /**
-   * The search's folder as a project file (a zip; large for a large search), written where the user chooses:
+   * The search's folder as a results archive (a zip; large for a large search), written where the user chooses:
    * the dialog first, then the writing, with its percentage on the menu's button.
    */
-  async function project() {
+  async function archive() {
     busy = true
-    projecting = true
+    archiving = true
     written = null
     error = null
     try {
-      await saveProjectFile(view.result, (fraction) => (written = fraction))
+      await saveArchiveFile(view.result, (fraction) => (written = fraction))
     } catch (e) {
       error = `Results archive: ${String((e as Error)?.message ?? e)}`
     } finally {
       busy = false
-      projecting = false
+      archiving = false
       written = null
     }
   }
@@ -78,7 +78,7 @@
 {/if}
 <DropdownMenu.Root {open} onOpenChange={openChange}>
   <DropdownMenu.Trigger class={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'h-7 gap-1 px-2.5 text-xs')} disabled={busy}>
-    {#if projecting}Saving archive…{#if written !== null}<span class="tabular-nums">{Math.floor(written * 100)} %</span>{/if}{:else if busy || view.exporting}Exporting…{:else}Export{/if}<ChevronDown class="size-3.5" aria-hidden="true" />
+    {#if archiving}Saving archive…{#if written !== null}<span class="tabular-nums">{Math.floor(written * 100)} %</span>{/if}{:else if busy || view.exporting}Exporting…{:else}Export{/if}<ChevronDown class="size-3.5" aria-hidden="true" />
   </DropdownMenu.Trigger>
   <DropdownMenu.Content class="w-auto min-w-52" align="end">
     <DropdownMenu.Item disabled={view.level === null || view.exporting} onSelect={() => guard(() => exportCsv(view))}
@@ -102,7 +102,7 @@
     <DropdownMenu.Item
       disabled={view.exporting}
       title="Saves the search's results as one archive file that you can import in ProSE elsewhere (History › Import results archive). Not a project (File › Save Project, the setup). It contains ProSE's outputs, which name folders on this computer, such as those of the database and the search. The mzML files and the log are not included."
-      onSelect={project}>Results archive (.prose)</DropdownMenu.Item>
+      onSelect={archive}>Results archive (.prose)</DropdownMenu.Item>
     <DropdownMenu.Separator />
     <DropdownMenu.Item onSelect={idXML}>{idXMLFile(view.result).label}</DropdownMenu.Item>
   </DropdownMenu.Content>

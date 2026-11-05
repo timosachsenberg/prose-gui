@@ -104,7 +104,7 @@
     </li>
   </ul>
 
-  <h3 id="formats-project">Projects (.prose-setup.json)</h3>
+  <h3 id="formats-project">Projects (.prose-project.json)</h3>
   <p>
     A <b>project</b> is the setup of a search, kept as a small JSON file, so that the same search can be set up again and
     the app shows what it showed: <b>File › Save Project</b> (⌘/Ctrl S; Save Project As, ⌘/Ctrl ⇧ S, for another file) or

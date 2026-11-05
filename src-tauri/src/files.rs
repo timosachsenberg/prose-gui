@@ -108,7 +108,7 @@ fn search_folder(searches_dir: &Path, search_id: &str) -> Result<PathBuf, ReadEr
     Ok(canonical)
 }
 
-/// Whether the search counts as imported from a project file: its `search.json` says so, or is there
+/// Whether the search counts as imported from a results archive: its `search.json` says so, or is there
 /// and cannot be read as a record (then it is not trusted). A folder without a `search.json` (one just
 /// finished, not saved yet) is not imported.
 fn is_imported(folder: &Path) -> bool {
@@ -139,7 +139,7 @@ pub fn resolve_search_file(
 ) -> Result<PathBuf, ReadError> {
     let folder = search_folder(searches_dir, search_id)?;
     if Path::new(name).is_absolute() {
-        // an imported search (a project from elsewhere) never reads outside its folder: a path it records
+        // an imported search (an archive from elsewhere) never reads outside its folder: a path it records
         // is that of another computer, or an attempt to name one of this
         if is_imported(&folder) {
             return Err(ReadError::refused(format!(

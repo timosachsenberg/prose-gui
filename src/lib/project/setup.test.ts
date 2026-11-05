@@ -1,11 +1,11 @@
 import { describe, expect, test } from 'vitest'
 import { checkFiles, parseSetup, proteomeOf, serializeSetup, SETUP_SCHEMA, setupName, SetupError, type ProjectSetup } from './setup'
 
-// The project file (`.prose-setup.json`) without the app: written and read back, its schema checked, and the files
+// The project file (`.prose-project.json`) without the app: written and read back, its schema checked, and the files
 // that are gone or changed since it was saved.
 
 const setup = (): ProjectSetup => ({
-  format: 'prose-setup',
+  format: 'prose-project',
   schema: SETUP_SCHEMA,
   savedAt: '2026-10-30T10:00:00.000Z',
   appVersion: '0.1.4',
@@ -77,7 +77,7 @@ describe('project files', () => {
   })
 
   test('fields left out take their defaults, and broken view state is dropped', () => {
-    const back = parseSetup(JSON.stringify({ format: 'prose-setup', schema: 1, inputs: [{ path: '/x/run.mzML' }], ui: { view: 'nowhere', results: { tab: 'psms' } } }))
+    const back = parseSetup(JSON.stringify({ format: 'prose-project', schema: 1, inputs: [{ path: '/x/run.mzML' }], ui: { view: 'nowhere', results: { tab: 'psms' } } }))
     expect(back.inputs).toEqual([{ path: '/x/run.mzML', name: 'run.mzML', size: 0 }])
     expect(back.database).toBeNull()
     expect(back.ui).toEqual({ view: 'search', showSettings: false, advanced: false, results: null })
@@ -101,9 +101,18 @@ describe('project files', () => {
     expect(checkFiles(s.inputs, [])).toEqual({ missing: ['a.mzML', 'b.mzML'], changed: [] })
   })
 
+  test('a project file of the first format ("prose-setup") is read as one of this', () => {
+    const old = JSON.parse(serializeSetup(setup()))
+    old.format = 'prose-setup'
+    expect(parseSetup(JSON.stringify(old)).format).toBe('prose-project')
+    expect(() => parseSetup(JSON.stringify({ ...old, format: 'other' }))).toThrow(/not a ProSE project file/)
+  })
+
   test('names: the project from its file, the proteome from a downloaded FASTA', () => {
-    expect(setupName('/a/b/exp 1.prose-setup.json')).toBe('exp 1')
+    expect(setupName('/a/b/exp 1.prose-project.json')).toBe('exp 1')
+    // (the first name of a project file opens too)
     expect(setupName('C:\\data\\Exp.PROSE-SETUP.JSON')).toBe('Exp')
+    expect(setupName('/a/exp.prose-setup.json')).toBe('exp')
     expect(setupName('exp.json')).toBe('exp')
     expect(proteomeOf('UP000005640.fasta')).toBe('UP000005640')
     expect(proteomeOf('UP000005640_reviewed.fasta')).toBe('UP000005640')

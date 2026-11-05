@@ -1,5 +1,5 @@
 // The state of History for the views: the saved searches, what became of the last save, and the actions
-// of the views (open from History, save and open a project file, rename, delete). A search is saved here
+// of the views (open from History, save and open a results archive, rename, delete). A search is saved here
 // automatically: its record as soon as ProSE has ended (before its results are read, so that a search
 // whose results cannot be read stays in History and can be opened again), its proteins.fasta once its
 // results are read. Saving never breaks the results view, it only reports. A search that finished while it
@@ -34,11 +34,11 @@ import {
   APP_VERSION,
   SCHEMA_VERSION,
   endedRecordOf,
-  exportProject,
-  importProject,
+  exportArchive,
+  importArchive,
   openSearch,
   parseRecord,
-  ProjectError,
+  ArchiveError,
   RECORD_FILE,
   proteinsFasta,
   psmsOfSearch,
@@ -112,7 +112,7 @@ export async function refreshHistory(): Promise<void> {
 }
 
 /**
- * The name of a result in History and in its project file: the one History has (it may have been
+ * The name of a result in History and in its results archive: the one History has (it may have been
  * renamed since it was opened), else the one it was stored with, else the exports' (from its files).
  */
 function nameOf(result: Pick<OpenResult, 'id' | 'design' | 'stored'>): string {
@@ -214,7 +214,7 @@ export function retrySave(id: string): Promise<void> {
 export async function openAgain(id: string): Promise<void> {
   if (unsavedRecords.has(id)) {
     await retrySave(id)
-    if (unsavedRecords.has(id)) throw new ProjectError((status?.state === 'unsaved' && status.message) || 'The search is not saved to History.')
+    if (unsavedRecords.has(id)) throw new ArchiveError((status?.state === 'unsaved' && status.message) || 'The search is not saved to History.')
   }
   await openFromHistory(id)
 }
@@ -244,7 +244,7 @@ export function initHistory(): void {
   void refreshHistory()
 }
 
-/** Shows a saved search in Results and returns its id. Throws a ProjectError that says what is wrong. */
+/** Shows a saved search in Results and returns its id. Throws a ArchiveError that says what is wrong. */
 async function show(id: string): Promise<void> {
   const { result, origin } = await openSearch(backend, id)
   openStoredResult(result, origin)
@@ -274,17 +274,17 @@ export async function restoreFromHistory(id: string): Promise<boolean> {
 }
 
 /**
- * Asks for a project file (the open dialog), makes a saved search of it and opens it in Results.
- * Resolves with false if the user cancelled. Throws a ProjectError (a ProjectVersionError for a newer
+ * Asks for a results archive (the open dialog), makes a saved search of it and opens it in Results.
+ * Resolves with false if the user cancelled. Throws a ArchiveError (a ArchiveVersionError for a newer
  * file) that says what is wrong.
  */
-export async function openProjectFile(): Promise<boolean> {
+export async function openArchiveFile(): Promise<boolean> {
   let id: string | null
   try {
-    id = await importProject(backend)
+    id = await importArchive(backend)
   } catch (e) {
-    if (e instanceof ProjectError) throw e
-    throw new ProjectError(errorText(e))
+    if (e instanceof ArchiveError) throw e
+    throw new ArchiveError(errorText(e))
   }
   if (id === null) return false
   await refreshHistory()
@@ -307,7 +307,7 @@ export async function reopenInNewSearch(id: string, start: boolean, changes: Rec
       database = (JSON.parse(new TextDecoder().decode(await backend.read(id, name))) as { path?: string }).path ?? null
       if (database) break
     } catch {
-      // (not there: an older search, or one from a project)
+      // (not there: an older search, or one from an archive)
     }
   }
   // the design rows are in input order (two files of one name in different folders stay apart)
@@ -425,8 +425,8 @@ export async function openQpxFolderFile(): Promise<boolean> {
     }
     id = await importQpxFolder(chosen.folder, JSON.stringify(record), JSON.stringify(inputs))
   } catch (e) {
-    if (e instanceof ProjectError) throw e
-    throw new ProjectError(errorText(e))
+    if (e instanceof ArchiveError) throw e
+    throw new ArchiveError(errorText(e))
   }
   await refreshHistory()
   await show(id)
@@ -434,17 +434,17 @@ export async function openQpxFolderFile(): Promise<boolean> {
 }
 
 /**
- * Saves `result` as a project file where the user chooses (the save dialog), `onProgress` told how far the
+ * Saves `result` as a results archive where the user chooses (the save dialog), `onProgress` told how far the
  * writing is (0–1). A search that is not in History yet (its save failed) is saved first. Resolves with the
  * path, or null if the user cancelled.
  */
-export async function saveProjectFile(result: OpenResult, onProgress?: (fraction: number) => void): Promise<string | null> {
+export async function saveArchiveFile(result: OpenResult, onProgress?: (fraction: number) => void): Promise<string | null> {
   if (!isListed(result.id)) await refreshHistory()
   if (!isListed(result.id)) {
     await saveFinished(result)
-    if (status?.state === 'unsaved' && status.id === result.id) throw new ProjectError(status.message)
+    if (status?.state === 'unsaved' && status.id === result.id) throw new ArchiveError(status.message)
   }
-  return exportProject(backend, result.id, nameOf(result), onProgress)
+  return exportArchive(backend, result.id, nameOf(result), onProgress)
 }
 
 /**
@@ -459,7 +459,7 @@ export async function removeFromHistory(id: string): Promise<void> {
   await refreshHistory()
 }
 
-/** Renames a saved search; an open result of it takes the name (Export › Project writes it, see `nameOf`). */
+/** Renames a saved search; an open result of it takes the name (Export › Results archive writes it, see `nameOf`). */
 export async function rename(id: string, name: string): Promise<void> {
   const trimmed = name.trim()
   if (trimmed === '') return
@@ -475,7 +475,7 @@ export function dismissSaveStatus(): void {
 /**
  * The ProSE command line of search `id` (its `command.txt`, written by the shim; guidance G8), the parameters in
  * its `prose.ini`. The paths are placeholders (`<input 1>`, `<database>`, `<search folder>`); `withPaths` puts in
- * the inputs' paths (inputs.json: names only for a project) and the user's database. Null for a search made
+ * the inputs' paths (inputs.json: names only for an archive) and the user's database. Null for a search made
  * before the app wrote it.
  */
 export async function commandLineOf(id: string, withPaths: boolean): Promise<string | null> {

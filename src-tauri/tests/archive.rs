@@ -1,17 +1,17 @@
-//! Project files: a search folder written as a zip entry by entry (`project`), read back here as the front
+//! Results archives: a search folder written as a zip entry by entry (`archive`), read back here as the front
 //! end reads it: the central directory, then each entry's local header and data (stored or deflated, its CRC).
-//! The zip of the fixture folder below is `src/lib/history/fixtures/rust-project.prose`, which the front end's
-//! tests open with `unpackProject` (fflate): the round trip. `PROSE_WRITE_FIXTURES=1 cargo test --test project`
+//! The zip of the fixture folder below is `src/lib/history/fixtures/rust-archive.prose`, which the front end's
+//! tests open with `unpackArchive` (fflate): the round trip. `PROSE_WRITE_FIXTURES=1 cargo test --test archive`
 //! writes it again after a change of the writer.
 
 mod common;
 
 use common::TempDir;
 use flate2::read::DeflateDecoder;
-use prose_desktop_lib::history::save_record;
-use prose_desktop_lib::project::{
-    dos_time, project_files, without_paths, write_project, ZipWriter, INPUTS, RECORD,
+use prose_desktop_lib::archive::{
+    archive_files, dos_time, without_paths, write_archive, ZipWriter, INPUTS, RECORD,
 };
+use prose_desktop_lib::history::save_record;
 use std::fs;
 use std::io::{Cursor, Read};
 use std::path::{Path, PathBuf};
@@ -22,7 +22,7 @@ fn fixture_time() -> SystemTime {
     UNIX_EPOCH + Duration::from_secs(1_792_845_296)
 }
 
-/// A saved search folder as the app keeps it, with what a project leaves out.
+/// A saved search folder as the app keeps it, with what an archive leaves out.
 fn folder(dir: &Path, id: &str) {
     let folder = dir.join(id);
     fs::create_dir_all(folder.join("qpx/runs")).unwrap();
@@ -139,18 +139,18 @@ fn unzip(bytes: &[u8]) -> Vec<Unzipped> {
 }
 
 fn fixture_path() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../src/lib/history/fixtures/rust-project.prose")
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../src/lib/history/fixtures/rust-archive.prose")
 }
 
 #[test]
-fn a_project_is_the_folder_as_a_zip_written_entry_by_entry() {
-    let tmp = TempDir::new("project");
+fn an_archive_is_the_folder_as_a_zip_written_entry_by_entry() {
+    let tmp = TempDir::new("archive");
     let dir = tmp.path().join("searches");
     folder(&dir, "1-0");
     let target = tmp.path().join("out/Fixture.prose");
     fs::create_dir_all(target.parent().unwrap()).unwrap();
     let mut reports = Vec::new();
-    write_project(
+    write_archive(
         &dir,
         "1-0",
         &target,
@@ -214,39 +214,39 @@ fn a_project_is_the_folder_as_a_zip_written_entry_by_entry() {
     }
     assert!(
         fs::read(fixture_path()).unwrap() == bytes,
-        "the writer changed: PROSE_WRITE_FIXTURES=1 cargo test --test project writes {} again",
+        "the writer changed: PROSE_WRITE_FIXTURES=1 cargo test --test archive writes {} again",
         fixture_path().display()
     );
 }
 
 #[test]
-fn a_project_is_refused_before_anything_is_written() {
-    let tmp = TempDir::new("project-refused");
+fn an_archive_is_refused_before_anything_is_written() {
+    let tmp = TempDir::new("archive-refused");
     let dir = tmp.path().join("searches");
-    // a folder without record: not saved, so no project
+    // a folder without record: not saved, so no archive
     fs::create_dir_all(dir.join("2-0/qpx")).unwrap();
     fs::write(dir.join("2-0/qpx/x.parquet"), "x").unwrap();
-    let message = project_files(&dir, "2-0").unwrap_err();
+    let message = archive_files(&dir, "2-0").unwrap_err();
     assert!(message.contains("not saved to History"), "{message}");
     let target = tmp.path().join("x.prose");
-    assert!(write_project(&dir, "2-0", &target, fixture_time(), &mut |_, _| {}).is_err());
+    assert!(write_archive(&dir, "2-0", &target, fixture_time(), &mut |_, _| {}).is_err());
     assert!(!target.exists());
     // no such search, or not a search
-    assert!(project_files(&dir, "9-9").is_err());
-    assert!(project_files(&dir, "../searches").is_err());
+    assert!(archive_files(&dir, "9-9").is_err());
+    assert!(archive_files(&dir, "../searches").is_err());
 }
 
 #[test]
-fn a_project_that_cannot_be_made_leaves_nothing_and_keeps_what_was_there() {
-    let tmp = TempDir::new("project-failed");
+fn an_archive_that_cannot_be_made_leaves_nothing_and_keeps_what_was_there() {
+    let tmp = TempDir::new("archive-failed");
     let dir = tmp.path().join("searches");
     folder(&dir, "1-0");
     fs::write(dir.join("1-0").join(INPUTS), "{ not a list").unwrap();
     let target = tmp.path().join("old.prose");
-    fs::write(&target, "the old project").unwrap();
-    let message = write_project(&dir, "1-0", &target, fixture_time(), &mut |_, _| {}).unwrap_err();
+    fs::write(&target, "the old archive").unwrap();
+    let message = write_archive(&dir, "1-0", &target, fixture_time(), &mut |_, _| {}).unwrap_err();
     assert!(message.contains("inputs.json cannot be read"), "{message}");
-    assert_eq!(fs::read_to_string(&target).unwrap(), "the old project");
+    assert_eq!(fs::read_to_string(&target).unwrap(), "the old archive");
     assert_eq!(
         fs::read_dir(tmp.path()).unwrap().count(),
         2,
@@ -254,7 +254,7 @@ fn a_project_that_cannot_be_made_leaves_nothing_and_keeps_what_was_there() {
     );
     // a folder that cannot be written to
     folder(&dir, "3-0");
-    let message = write_project(
+    let message = write_archive(
         &dir,
         "3-0",
         &tmp.path().join("absent/x.prose"),
@@ -285,7 +285,7 @@ fn inputs_json_names_the_files_without_their_paths() {
 }
 
 #[test]
-fn the_entries_have_the_time_of_the_project_in_ms_dos_format() {
+fn the_entries_have_the_time_of_the_archive_in_ms_dos_format() {
     // 2026-10-24 12:34:56
     let (time, date) = dos_time(fixture_time());
     assert_eq!(time, (12 << 11) | (34 << 5) | 28);

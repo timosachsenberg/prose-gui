@@ -15,8 +15,8 @@ const constant = (file: string, name: string) => {
   return at < 0 ? '' : text.slice(at, text.indexOf('];', at))
 }
 
-test('the files a project leaves out are the same in Rust and TypeScript', () => {
-  const line = constant('project.rs', 'LEFT_OUT')
+test('the files a results archive leaves out are the same in Rust and TypeScript', () => {
+  const line = constant('archive.rs', 'LEFT_OUT')
   expect(new Set(strings(line))).toEqual(LEFT_OUT)
 })
 

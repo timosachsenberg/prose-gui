@@ -65,7 +65,7 @@
     [`${mod} Enter`, 'New search: start the search'],
     ...(desktop
       ? ([
-          [`${mod} O`, 'Open a project (.prose-setup.json)'],
+          [`${mod} O`, 'Open a project (.prose-project.json)'],
           [`${mod} S  ·  ${mod} ⇧ S`, 'Save the project · Save it as'],
           [`${mod} N`, 'New search'],
           [`${mod} /`, 'This list'],

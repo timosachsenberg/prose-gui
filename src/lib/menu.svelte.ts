@@ -7,7 +7,7 @@
 import { toast } from 'svelte-sonner'
 import { isDesktop, onMenuAction, openUrl, setMenuState, errorText } from './desktop'
 import { openHelp } from './help-link.svelte'
-import { openProjectFile, openQpxFolderFile, saveProjectFile } from './history/history.svelte'
+import { openArchiveFile, openQpxFolderFile, saveArchiveFile } from './history/history.svelte'
 import { newSetup, openProject, saveProject } from './project/project.svelte'
 import { exportCsv, exportIdXML, exportMethods, exportXlsx } from './results/exports'
 import { resultsViewFor } from './results/view.svelte'
@@ -75,7 +75,7 @@ export async function menuAction(id: string): Promise<void> {
       return attempt('Open QPX folder', () => openQpxFolderFile())
     case 'import-results':
       navigate({ view: 'history' })
-      return attempt('Import results archive', () => openProjectFile())
+      return attempt('Import results archive', () => openArchiveFile())
     case 'export-csv':
       if (view) return attempt('CSV export', () => exportCsv(view))
       return
@@ -91,7 +91,7 @@ export async function menuAction(id: string): Promise<void> {
     case 'export-archive':
       if (result)
         return attempt('Results archive', async () => {
-          const path = await saveProjectFile(result)
+          const path = await saveArchiveFile(result)
           if (path) toast.success('Results archive saved', { description: path })
         })
       return

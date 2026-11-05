@@ -95,15 +95,15 @@ the browser). A click on an item is the event `menu://action` to the page (`src/
 its own buttons do; the page's ⇧⌘1–4 handler leaves those keys to the menu in the desktop app and keeps them in the
 browser. Close Window and Exit close as the window's close button does (a running search asks first).
 
-## Projects (`.prose-setup.json`)
+## Projects (`.prose-project.json`)
 
 A project is the setup of a search and the state of the views as one JSON file (format and fields:
 `src/lib/project/setup.ts`; schema 1). File › Save Project (or Save project… in New search) writes it where you
 choose (the save dialog is the Rust side's, `src-tauri/src/setup_file.rs`; Save writes the same file again, Save As
-asks); Open Project, Open Recent or Open project… in New search reads it (only `.prose-setup.json`, at most 4 MB). It
+asks); Open Project, Open Recent or Open project… in New search reads it (only `.prose-project.json`, at most 4 MB). It
 holds:
 
-- `format` `"prose-setup"`, `schema` `1`, `savedAt`, `appVersion`, `proseVersion`, `name`
+- `format` `"prose-project"`, `schema` `1`, `savedAt`, `appVersion`, `proseVersion`, `name`
 - `inputs`: each spectrum file's absolute `path`, `name` and `size` (bytes), and its design fields (`condition`,
   `replicate`, `fraction`, `techReplicate`) as entered
 - `database` (`path`, `name`, `size`, `proteome`: the UniProt proteome id of a downloaded FASTA), `contaminants`,
@@ -123,7 +123,7 @@ is refused. A project is not a results archive: it holds paths and settings, no 
 ## Results archives (`.prose`)
 
 Export › Results archive (`.prose`) writes a search as one zip, which History › Import results archive opens on
-another computer (in the code and the file's checks it is still the "project file" of `history.ts` and `project.rs`).
+another computer (`src/lib/history/history.ts`, `src-tauri/src/archive.rs`).
 It holds the search's folder as the app keeps it: ProSE's outputs (the QPX Parquet files, the idXML, the
 open-search tables), `search.json`, `proteins.fasta`, `curation.json` (if PSMs were curated), and `inputs.json` with the
 files' names only. Left out are ProSE's log, the database copy with the contaminants, `database.json` (the path of a
@@ -162,7 +162,7 @@ most 3 GB (larger searches are refused with a message; they stay in History).
   measurement in Node.js, the same engine, read 4 million synthetic PSMs but not 8 million), so there the limit may
   be lower; macOS' webview is WebKit, as on Linux. Results archives are written to disk entry by entry (after the save
   dialog), but read in memory when opened, and hold at most 3 GB (no zip64 is written or read; a larger search is
-  refused with a message). Later, not now: reading the project zip entry by entry (with zip64).
+  refused with a message). Later, not now: reading the archive's zip entry by entry (with zip64).
 - macOS: Apple silicon only; not signed with a Developer ID (see Install).
 - Windows: two inputs of one name are searched together only when they are on the drive of the app's data.
 

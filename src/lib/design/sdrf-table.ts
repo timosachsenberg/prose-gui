@@ -319,7 +319,7 @@ export function sdrfFilterOptions(t: SdrfTable, fileNames: string[]): { column: 
 const LOCAL = /^(file:|\/|[a-z]:[\\/]|\\\\)/i
 
 /**
- * The SDRF `text` as it may leave this computer (a search's record, a project file, the tool's copy): data file
+ * The SDRF `text` as it may leave this computer (a search's record, a results archive, the tool's copy): data file
  * names without folders, and a file URI that names a local file (`file:`, an absolute path) "not available".
  * Everything else is byte for byte as it was.
  */
