@@ -6,44 +6,44 @@
   "description": "The enzyme used for peptide digestion.",
   "tags": [],
   "validStrings": [
-   "2-iodobenzoate",
-   "Alpha-lytic protease",
-   "glutamyl endopeptidase",
-   "proline endopeptidase",
-   "elastase-trypsin-chymotrypsin",
-   "Clostripain/P",
-   "cyanogen-bromide",
-   "PepsinA + P",
-   "iodosobenzoate",
-   "Asp-N/B",
-   "staphylococcal protease/D",
-   "proline-endopeptidase/HKR",
-   "Glu-C+P",
-   "no cleavage",
-   "Trypsin",
-   "Arg-C",
-   "Asp-N_ambic",
-   "unspecific cleavage",
-   "Trypsin/P",
-   "Chymotrypsin",
-   "V8-DE",
    "Chymotrypsin/P",
-   "Arg-C/P",
    "CNBr",
-   "Asp-N",
    "Formic_acid",
    "Lys-C",
    "Lys-N",
-   "V8-E",
    "Lys-C/P",
    "PepsinA",
+   "TrypChymo",
+   "Trypsin/P",
+   "V8-DE",
+   "V8-E",
    "leukocyte elastase",
-   "TrypChymo"
+   "proline endopeptidase",
+   "Trypsin",
+   "glutamyl endopeptidase",
+   "Alpha-lytic protease",
+   "2-iodobenzoate",
+   "iodosobenzoate",
+   "staphylococcal protease/D",
+   "proline-endopeptidase/HKR",
+   "Glu-C+P",
+   "PepsinA + P",
+   "cyanogen-bromide",
+   "Clostripain/P",
+   "elastase-trypsin-chymotrypsin",
+   "no cleavage",
+   "unspecific cleavage",
+   "Arg-C",
+   "Arg-C/P",
+   "Asp-N",
+   "Asp-N/B",
+   "Asp-N_ambic",
+   "Chymotrypsin"
   ]
  },
  {
   "name": "decoys",
-  "value": "auto",
+  "value": "generate",
   "type": "string",
   "description": "Decoy handling for target-decoy FDR. 'auto': ensure decoys are available — reuse decoys already present in the database (marker auto-detected, prefix or suffix) or generate them if none are found. Supplied decoys are reused only at 0.5 to 2 decoys per target protein: target-decoy FDR needs about one decoy per target, so a database with far fewer or more is refused (use 'generate'). 'generate': always (re)generate decoys from the target proteins (any pre-existing decoys are removed first to avoid decoy-of-decoy entries). 'ignore': search the target proteins only — any decoys present in the database are removed.",
   "tags": [],
@@ -60,6 +60,19 @@
   "description": "Accession prefix prepended to decoy proteins when ProSE generates them (modes 'auto' without existing decoys, and 'generate'). Pre-existing decoys in the database are detected automatically (any common marker, used as prefix or suffix) and do not require this setting.",
   "tags": [
    "advanced"
+  ]
+ },
+ {
+  "name": "decoy_method",
+  "value": "keep_termini",
+  "type": "string",
+  "description": "How ProSE generates decoys (decoys 'generate', or 'auto' with a database without decoys). 'reverse' (ProSEAlgorithm's default; the ProSE tool's default is 'keep_termini'): every enzymatic segment of the protein is reversed except its last residue (the last segment entirely), an initial Met stays first with peptide:clip_nterm_methionine. 'keep_termini': the construction of OpenMS DecoyDatabase (method reverse, Decoy:keepPeptideNTerm/keepPeptideCTerm true) with the search enzyme and Decoy:non_shuffle_pattern 'KRP': in every segment of a digest without missed cleavages, the first and the last residue and every K, R and P stay in place and the rest is reversed. For enzymes whose cleavage sites are fixed by these residues (Trypsin, Trypsin/P, Lys-C, Arg-C and the like) every target peptide then has a decoy with the same start, length, mass and cleavage sites: also every protein N-terminal and Met-clipped one, so that peptide:clip_nterm_methionine and protein N-terminal modifications add the same number of target and decoy candidates (except peptides that equal their decoy, e.g. made of short segments or of K, R and P only; and modifications specific to a peptide's first residue, e.g. pyro-Glu on an N-terminal Q, apply to the target and its decoy alike only where that residue is kept in place). Semi- or non-specific digestion: as 'reverse'. Other enzymes: a warning names the decoys whose cleavage sites differ from the target's. No effect on decoys taken from the database (decoys 'auto' with decoys in it). The results differ from 'reverse'.",
+  "tags": [
+   "advanced"
+  ],
+  "validStrings": [
+   "reverse",
+   "keep_termini"
   ]
  },
  {
@@ -100,7 +113,7 @@
   "name": "precursor:min_charge",
   "value": 2,
   "type": "int",
-  "description": "Minimum precursor charge to be considered. Spectra without a precursor charge are searched with every charge of the range; spectra whose recorded charge lies outside of it are not searched.",
+  "description": "Minimum precursor charge to be considered. Spectra without a precursor charge are searched with every charge of the range; spectra whose recorded charge lies outside of it are searched at that charge, or not at all with precursor:recorded_charge_outside_range 'skip'.",
   "tags": [],
   "min": 1,
   "max": 20
@@ -113,6 +126,19 @@
   "tags": [],
   "min": 1,
   "max": 20
+ },
+ {
+  "name": "precursor:recorded_charge_outside_range",
+  "value": "skip",
+  "type": "string",
+  "description": "A spectrum whose recorded precursor charge lies outside of precursor:min_charge..max_charge: 'skip' (the default, as OpenMS develop since #10713) does not search it; 'search' (the behaviour before #10713) searches it at its recorded charge. Spectra without a recorded charge are searched with every charge of the range.",
+  "tags": [
+   "advanced"
+  ],
+  "validStrings": [
+   "search",
+   "skip"
+  ]
  },
  {
   "name": "precursor:isotope_error_min",
@@ -301,7 +327,8 @@
  {
   "name": "modifications:variable",
   "value": [
-   "Oxidation (M)"
+   "Oxidation (M)",
+   "Acetyl (Protein N-term)"
   ],
   "type": "string[]",
   "description": "Variable modifications, specified using UniMod (www.unimod.org) terms, e.g. 'Oxidation (M)'. A terminus and a residue carry one modification each: a variable terminal modification (e.g. 'Acetyl (Protein N-term)', 'Gln->pyro-Glu (N-term Q)') is not searched where a fixed one sits on that terminus (e.g. 'TMT6plex (N-term)'), and a variable residue modification (e.g. 'Glutathione (C)') is not searched where a fixed one sits on that residue (e.g. 'Carbamidomethyl (C)').",
@@ -539,7 +566,7 @@
   "name": "peptide:protein_mapping",
   "value": "index",
   "type": "string",
-  "description": "How the hits are mapped to their proteins (peptide evidences, target_decoy, protein_references, protein hits). 'index': from the digest of the fragment index, which holds every protein occurrence of a candidate; the result is that of PeptideIndexing, which runs instead wherever the index cannot reproduce it exactly (e.g. low_memory, a specificity other than full, protein-terminal modifications, a chunked database, symbols other than letters or long stretches of ambiguous residues in the database). 'PeptideIndexing': always search every hit in the whole database (Aho-Corasick), as before.",
+  "description": "How the hits are mapped to their proteins (peptide evidences, target_decoy, protein_references, protein hits). 'index': from the digest of the fragment index, which holds every protein occurrence of a candidate (with a protein-terminal modification: from a pass over the database for the hits' sequences); the result is that of PeptideIndexing, which runs instead wherever the index cannot reproduce it exactly (e.g. low_memory, a specificity other than full, a chunked database, symbols other than letters or long stretches of ambiguous residues in the database). 'PeptideIndexing': always search every hit in the whole database (Aho-Corasick), as before.",
   "tags": [
    "advanced"
   ],
@@ -587,7 +614,7 @@
   "name": "report:top_hits",
   "value": 1,
   "type": "int",
-  "description": "Maximum number of top scoring hits per spectrum that are reported.",
+  "description": "Maximum number of top scoring hits per spectrum that are reported. With 'rescore', only the best hit per spectrum is reported after the rescoring, and the hits that Percolator rescores are set by 'rescoring:top_hits' (report:top_hits then applies to a run that is not rescored and to -out_pin). FDR:PSM > 0 and the protein FDR (FDR:protein > 0) also keep the best hit of each spectrum only, so values above 1 apply with 'rescore' false, FDR:PSM 0 and FDR:protein 0.",
   "tags": [],
   "min": 1,
   "max": 100
@@ -609,17 +636,56 @@
   "name": "percolator:max_train_psms",
   "value": 500000,
   "type": "int",
-  "description": "With 'rescore': the most PSMs Percolator trains a model on (0: all). Every PSM is scored, also beyond the cap. For a run with more PSMs, Percolator samples the training PSMs by spectrum; for the model of the files of a multi-file search too small for a model of their own (trained on the files rescored on their own), each of these files contributes an equal share, so that none dominates. The run log says when the training PSMs were sampled. Searches below the cap are not affected.",
+  "description": "With 'rescore': the most PSMs Percolator trains a model on (0: all). Every PSM is scored, also beyond the cap. For a run with more PSMs, Percolator samples the training PSMs by spectrum (see 'rescoring:subset_mode'); for the model of the files of a multi-file search too small for a model of their own (trained on the files rescored on their own), each of these files contributes at most this many divided by the number of input files (reproducible random spectra), so that none dominates. The run log says when the training PSMs were sampled. Searches below the cap are not affected. Until all files of such a search are searched, ProSE keeps their PSMs before the rescoring for that model: all PSMs of the files too small, and of the others only their share (with 0, all PSMs of every file, also with the ProSE tool's -out_pin).",
   "tags": [
    "advanced"
   ],
   "min": 0
  },
  {
+  "name": "rescoring:terminal_features",
+  "value": "true",
+  "type": "string",
+  "description": "Two more rescoring features: 'protein_nterm' (1 if the peptide occurs at a protein N-terminus) and 'met_clipped' (1 if it occurs only as the Met-clipped protein N-terminal peptide of peptide:clip_nterm_methionine). They let the rescoring learn the different rate of correct matches of these small peptide classes. Use them only with decoys that populate both classes like the targets (decoy_method 'keep_termini'): with decoys that rarely start with M (reversed proteins, reused with decoys 'auto') they would tell targets from decoys, so they are switched off with a warning. The results differ.",
+  "tags": [
+   "advanced"
+  ],
+  "validStrings": [
+   "true",
+   "false"
+  ]
+ },
+ {
+  "name": "rescoring:stratum_q_values",
+  "value": "true",
+  "type": "string",
+  "description": "Also q-values per stratum (meta values 'stratum' and 'stratum_q_value'): the rescored PSMs of protein N-terminal peptides (incl. Met-clipped ones) and the others each get target-decoy competition of their own ((decoys + 1) / targets, as mokapot's grouped confidence). For a list of N-terminal peptides at an FDR, use the stratum q-value; the main score stays the pooled q-value. Needs decoys that populate the N-terminal classes like the targets (decoy_method 'keep_termini'; with reused decoys that rarely start with M it is switched off with a warning). With rescore_method 'reset' the values are computed on RESET's scores (both decoy sets count as decoys with reset:decoys 'two'), not as RESET's estimate.",
+  "tags": [
+   "advanced"
+  ],
+  "validStrings": [
+   "true",
+   "false"
+  ]
+ },
+ {
+  "name": "rescoring:peptide_level",
+  "value": "true",
+  "type": "string",
+  "description": "Also Percolator's peptide-level q-values (default; 'false' leaves them out), as the percolator executable reports peptides (without -U): after the target-decoy competition of the spectra, the best PSM of each peptide (modified sequence) and label competes, and q-values and PEPs are estimated on these peptides. Every rescored hit gets the values of its peptide as meta values 'percolator_peptide_q_value' and 'percolator_peptide_pep'; a list of peptides at an FDR is the target peptides with percolator_peptide_q_value at most that FDR (the distinct peptides of the PSMs at an FDR are not FDR-controlled at the peptide level). The main score stays the PSM-level q-value. Default Percolator rescoring only (not with rescore_method 'reset', which reports RESET:peptide_q_value, nor with rescore_reuse models).",
+  "tags": [
+   "advanced"
+  ],
+  "validStrings": [
+   "true",
+   "false"
+  ]
+ },
+ {
   "name": "FDR:PSM",
   "value": 0,
   "type": "double",
-  "description": "Filter PSMs based on q-value (e.g., 0.05 = 5% FDR; 0 disables the filter). Target and decoy PSMs are filtered alike by the threshold; decoys that pass are kept (no decoy-specific stripping here — decoys are removed only at protein-FDR finalization). With 'rescore' (the default), the threshold applies to the Percolator q-values, the main score of the rescored PSMs. Without rescoring ('rescore' false, or a run that Percolator did not rescore), 0 computes no q-values: every PSM keeps its search engine score ('ln(hyperscore)') as main score, e.g. as input for Percolator or a downstream FDR step. Above 0, the target-decoy q-value (see FDR:PSM_groups) replaces the main score (the search engine score is kept as meta value 'ln(hyperscore)_score') and only the best hit of each spectrum is kept. If no PSM matched a decoy, the q-value of the T PSMs is the conservative 1/T (target-decoy competition with +1), so a lower threshold reports no PSM instead of lifting the filter. Needs decoys ('decoys' auto or generate); with 'ignore', a threshold above 0 is skipped with a warning (the QPX run view of the ProSE tool's -qpx_extended records per input whether the filter was applied: 'psm_fdr_applied'). Afterwards, the proteins that no remaining PSM references are removed.",
+  "description": "Filter PSMs based on q-value (e.g., 0.05 = 5% FDR; 0 disables the filter). Target and decoy PSMs are filtered alike by the threshold; decoys that pass are kept (no decoy-specific stripping here — decoys are removed only at protein-FDR finalization). With 'rescore' (the default), the threshold applies to the Percolator q-values, the main score of the rescored PSMs. Without rescoring ('rescore' false, or a run that Percolator did not rescore), 0 computes no q-values: every PSM keeps its search engine score ('ln(hyperscore)') as main score, e.g. as input for Percolator or a downstream FDR step. Above 0, the target-decoy q-value (see FDR:PSM_groups) replaces the main score (the search engine score is kept as meta value 'ln(hyperscore)_score') and only the best hit of each spectrum is kept. If no PSM matched a decoy, the q-value of the T PSMs is the conservative 1/T (target-decoy competition with +1), so a lower threshold reports no PSM instead of lifting the filter. Needs decoys ('decoys' auto or generate); with 'ignore', a threshold above 0 is skipped with a warning (the QPX run view of the ProSE tool's -qpx_extended records per input whether the filter was applied: 'psm_fdr_applied'). Afterwards, the proteins that no remaining PSM references are removed. The final PSM FDR with FDR:protein > 0 (e.g. 0.01), a loose evidence threshold of the intermediates with FDR:protein 0 (e.g. 0.1; see there).",
   "tags": [],
   "min": 0,
   "max": 1
@@ -641,7 +707,7 @@
   "name": "FDR:protein",
   "value": 0,
   "type": "double",
-  "description": "Filter proteins based on picked-protein FDR q-value (e.g., 0.01 = 1% protein FDR, set to 0 to disable). Applied after PSM-level FDR on a complete protein set (single file, or the -out_merged aggregate). Setting this > 0 finalizes the result: identified decoys are removed. With 0, decoys are retained for downstream/merged FDR. Uses the picked-protein approach (Savitski et al. 2015) which pairs target and decoy proteins by accession. The protein inference and the picked-protein FDR use the PSMs up to FDR:protein_inference_PSM, and a protein scores with the best posterior error probability of its PSMs (Percolator's, with 'rescore'; without it the best search engine score). The proteins and the protein groups (which have q-values of their own) are filtered at the threshold, and only the proteins of the groups that pass are kept. Proteins without a reported PSM (one that passes FDR:PSM) are removed afterwards, and so are the PSMs all of whose proteins failed the protein FDR. Needs decoys ('decoys' auto or generate).",
+  "description": "Picked-protein FDR threshold (e.g. 0.01 = 1 %), and the switch between the two modes of a search. Above 0, the search is the whole experiment: its proteins are inferred on the pooled PSMs of all its inputs, filtered at this protein FDR, and the PSMs filtered finally, so every output is the final result (the decoys removed, see the ProSE tool's -keep_decoys). With 0 (the default), the search is one part of a larger experiment, e.g. one shard of files searched on one compute node: every output is a per-run intermediate (PSM q-values and PEPs per run, FDR:PSM as a loose evidence threshold, decoys and the proteins the search indexed for the run's PSMs kept), to be finished downstream on all parts together (e.g. ProteomicsLFQ, or IDMerger, ProteinInference or Epifany, FalseDiscoveryRate and IDFilter). Uses the picked-protein approach (Savitski et al. 2015) which pairs target and decoy proteins by accession. The protein inference and the picked-protein FDR use the PSMs up to FDR:protein_inference_PSM, and a protein scores with the best posterior error probability of its PSMs (Percolator's, with 'rescore'; without it the best search engine score). The proteins and the protein groups (which have q-values of their own) are filtered at the threshold, and only the proteins of the groups that pass are kept. Proteins without a reported PSM (one that passes FDR:PSM) are removed afterwards, and so are the PSMs all of whose proteins failed the protein FDR. Needs decoys ('decoys' auto or generate).",
   "tags": [],
   "min": 0,
   "max": 1
@@ -650,7 +716,7 @@
   "name": "FDR:protein_inference_PSM",
   "value": 0.1,
   "type": "double",
-  "description": "q-value cutoff of the PSMs that protein inference and the protein FDR (FDR:protein) use; FDR:PSM still filters the reported PSMs. The q-values are those FDR:PSM filters on (Percolator's with 'rescore', else see FDR:PSM_groups). A looser cutoff than FDR:PSM leaves more decoy proteins for the picked-protein FDR, as ProteomicsLFQ infers proteins on PSMs at a looser q-value than its PSM FDR. Values at or below FDR:PSM use the PSMs of FDR:PSM; with FDR:PSM 0 (no PSM filter) all PSMs are used.",
+  "description": "q-value cutoff of the PSMs that protein inference and the protein FDR (FDR:protein > 0) use; FDR:PSM still filters the reported PSMs. Without the protein FDR it has no effect. The q-values are those FDR:PSM filters on (Percolator's with 'rescore', else see FDR:PSM_groups). A looser cutoff than FDR:PSM leaves more decoy proteins for the picked-protein FDR, as ProteomicsLFQ infers proteins on PSMs at a looser q-value than its PSM FDR. Values at or below FDR:PSM use the PSMs of FDR:PSM; with FDR:PSM 0 (no PSM filter) all PSMs are used.",
   "tags": [
    "advanced"
   ],

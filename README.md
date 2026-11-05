@@ -160,9 +160,9 @@ tolerance of 0.5 Da for the ion-trap fragments, a PSM FDR of 2 % and the protein
 PSM FDR of 1 % (Percolator's q-values are (decoys + 1) / targets, so its ~80 PSMs reach 1.2 % at best, and none would
 pass 1 %) and for a protein FDR, so its proteins are listed without one (Overview says "not applied"). Leaving the
 example (other files or another database, Remove all, Start over) gives these settings back to the preset's, unless you
-changed them. The search takes a few seconds and finds 77 target PSMs at 2 % FDR in each replicate (64 peptides, 61
-proteins), with precursor errors between −6 and +8 ppm (median 4.1 ppm) and a few isotope errors. The run also has too
-few PSMs for Percolator's full model: Percolator falls back to its best single feature (Overview says why).
+changed them. The search takes a few seconds and finds 66 target PSMs at 2 % FDR in each replicate (54 peptides, 53
+proteins), with precursor errors between −9 and +8 ppm (median 4.2 ppm). The run also has too few PSMs for Percolator's
+full model: Percolator falls back to its best single feature (Overview says why).
 
 ## Licence
 
@@ -185,18 +185,17 @@ native/scripts/in-env.sh e2e/run.sh e2e/screens.shot.ts # screenshots into docs/
 ```
 
 The OpenMS the app's ProSE is built from is pinned in `native/OPENMS_COMMIT` (a full commit hash) and
-`native/OPENMS_REPO` (its repository, `owner/name`). The pin is now `okohlbacher/OpenMS` `prose/integration` (ProSE of
-OpenMS #10740 with what the app needs on top). Once OpenMS pull request #10740 is merged, move it to OpenMS/OpenMS:
-put the full hash of the merge commit (or a later `develop` commit) into `native/OPENMS_COMMIT`, write `OpenMS/OpenMS`
-into `native/OPENMS_REPO` (or delete the file, which means OpenMS/OpenMS), build and test it, and make the parameter
-table and the fixtures again (the steps: `native/README.md`, "Moving the pin to OpenMS/OpenMS").
+`native/OPENMS_REPO` (its repository, `owner/name`): `develop` of OpenMS/OpenMS. Its ProSE has no `-sdrf` yet (the
+app then does not pass the SDRF; `okohlbacher/OpenMS` `prose/integration` has it). To move the pin, build and test the
+new commit and make the parameter table and the fixtures again (`native/README.md`, "Moving the pin to another
+repository or commit").
 
 Packages and their smoke test (needs the OpenMS build of `native/scripts/build-openms.sh`):
 
 ```bash
 native/scripts/bundle-prose.sh /scratch/sachsenb/openms-desktop/build src-tauri/resources/prose
 native/scripts/package-linux.sh                                    # .deb and AppImage
-native/scripts/smoke-appimage.sh src-tauri/target/release/bundle/appimage/ProSE_0.1.4_amd64.AppImage \
+native/scripts/smoke-appimage.sh src-tauri/target/release/bundle/appimage/ProSE_0.2.0_amd64.AppImage \
   --hide-openms /scratch/sachsenb/openms-desktop/build
 ```
 

@@ -6,6 +6,7 @@
 import { formatPercent, formatQ } from '../format/fdr'
 import { psmFdrOff } from './overview'
 import type { PsmOptionState } from '../psm/psm'
+import type { PsmMarks } from '../psm/measure'
 import type { OpenResult } from '../search/session.svelte'
 import { columnDef } from './columns'
 import { toCsv, toXlsx } from './csv'
@@ -149,6 +150,12 @@ export class ResultsView {
   psm = $state.raw<OpenPsm | null>(null)
   /** The toggles of the PSM view's spectrum, kept from one PSM to the next. */
   psmOptions = $state<PsmOptionState>({ ions: ['b', 'y'], charges: null, losses: null, precursor: false, bottom: null })
+  /**
+   * The measurements and labels the user made on the PSM view's spectra ("Measure", "Label"), by spectrum ("<file>
+   * <native ID>", as the viewers keep them: the PSMs of one spectrum, its co-isolated precursors, share them): kept for
+   * the session, so that another PSM and back finds them again.
+   */
+  psmMarks = $state<Record<string, PsmMarks>>({})
   /** Saves the spectrum of the open PSM as SVG: set by the PSM view while it shows a spectrum (the Export menu's item). */
   spectrumExporter: (() => void) | null = null
 

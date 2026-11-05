@@ -1,8 +1,8 @@
 <script lang="ts">
   // The results of the open search: key figures, the tabs of the three levels, one filter row and a
   // virtualized table per level, the column settings and "Export CSV · n rows". A protein opens its
-  // panel beside the Proteins table; a PSM opens the PSM view beside the PSM table, which then narrows
-  // to the list that "Previous" and "Next" go through. The Overview (files, and the mass shifts of an
+  // panel beside the Proteins table; a PSM opens the PSM view, with the PSM table under its spectrum:
+  // the arrow keys in the table go through the PSMs, as do "Previous" and "Next". The Overview (files, and the mass shifts of an
   // open search), Samples and QC tabs show the search as a whole; Proteins stays the first view.
   import FaqLink from '$lib/components/help/FaqLink.svelte'
   import SaveNotice from '$lib/components/history/SaveNotice.svelte'
@@ -84,7 +84,7 @@
   // The protein panel stands beside the Proteins table (the key figures give way to it, as in the
   // mockup). It opens with focus inside and closes with focus back on the protein's row.
   const panelOpen = $derived(view !== null && view.tab === 'proteins' && view.panel !== null && !noProteins)
-  // The PSM view stands beside the PSM table, which narrows to a list (its filter row stays)
+  // The PSM view takes the place of the results, the PSM table (with its filter row) under its spectrum
   const psmOpen = $derived(view !== null && view.tab === 'psms' && view.psm !== null)
 
   let proteinsTable = $state<ProteinsTable | null>(null)
@@ -121,15 +121,20 @@
   }
 
   /**
-   * A PSM of the PSM table opens the PSM view beside it. The focus stays in the table (now the list
-   * beside the view), so that the keyboard goes on through the PSMs; the view announces the PSM, and
-   * Tab leads into it.
+   * A PSM of the PSM table opens the PSM view, the table under its spectrum. The focus stays in the table, so
+   * that the arrow keys go on through the PSMs (each one shown as the keys reach it); the view announces the PSM.
    */
-  function openPsm(psm: number) {
-    view?.openPsm(psm)
+  async function openPsm(psm: number) {
+    if (!view) return
+    const opening = view.psm === null
+    view.openPsm(psm)
+    if (!opening) return
+    // the table now stands under the spectrum (a new one): the keys go on in it, at the PSM
+    await tick()
+    psmsTable?.focusRow(psm)
   }
 
-  /** A PSM of the protein panel: the PSM view beside the PSMs of its peptide (or protein). */
+  /** A PSM of the protein panel: the PSM view, the PSMs of its peptide (or protein) under its spectrum. */
   async function openPsmFromPanel(psm: number, peptide: number | null) {
     view?.openPsmFromPanel(psm, peptide)
     await tick()
@@ -171,26 +176,51 @@
 
 <svelte:window {onkeydown} />
 
+<!-- The PSM table under the PSM view's spectrum: the arrow keys, Page Up/Down, Home and End go through the PSMs, the
+     view showing each; the filter row stays with it. -->
+<!-- What the result says about itself: the History save, PSMs without an FDR, ProSE's notes on the inputs' spectra,
+     ProSE's warnings (above the PSM table while the PSM view is open) -->
+{#snippet notices()}
+  {#if view}
+    <SaveNotice id={view.result.id} />
+    {#if fdrNotice}
+      <p class="text-xs text-amber-700" data-testid="psm-fdr-notice">{fdrNotice}<FaqLink faq="faq-decoys-fdr" /></p>
+    {/if}
+    {#if spectraNotices.length > 0}
+      <ul class="flex flex-col gap-0.5 text-xs text-amber-700 dark:text-amber-400" data-testid="input-notices">
+        {#each spectraNotices as notice (notice.text)}
+          <li>{notice.text}<FaqLink check={notice.kind} /></li>
+        {/each}
+      </ul>
+    {/if}
+    {#if view.result.outcome.warnings.length > 0}
+      <p class="text-xs text-amber-700 dark:text-amber-400" data-testid="results-warnings">{view.result.outcome.warnings.join(' ')}</p>
+    {/if}
+  {/if}
+{/snippet}
+
+{#snippet psmList()}
+  {#if view}
+    {@render notices()}
+    {#key view.psms}
+      <FilterBar
+        {view}
+        level={view.psms}
+        proteinFdrApplied={view.result.outcome.summary.proteinFdrApplied}
+        psmFdrApplied={!psmFdrAppliedToNone(view.result.outcome.summary)} />
+    {/key}
+    <PsmsTable bind:this={psmsTable} {view} level={view.psms} onOpen={openPsm} follow onOpenProtein={openProteinTab} />
+  {/if}
+{/snippet}
+
 {#if view && figures}
   {@const level = view.level}
   <section data-testid="view-results" class="absolute inset-0 flex">
-    <div
-      class="flex min-w-0 flex-col gap-3 py-4 {psmOpen ? 'flex-none border-r pr-3 pl-4' : 'flex-1 px-5'}"
-      style:width={psmOpen ? 'clamp(320px, 27vw, 400px)' : undefined}>
+    <!-- (with the PSM view open, the PSM table stands in it, under the spectrum: `psmList`) -->
+    <div class="flex min-w-0 flex-1 flex-col gap-3 px-5 py-4" class:hidden={psmOpen}>
       <h1 class="sr-only">Results</h1>
-      <SaveNotice id={view.result.id} />
-      {#if fdrNotice}
-        <p class="text-xs text-amber-700" data-testid="psm-fdr-notice">{fdrNotice}<FaqLink faq="faq-decoys-fdr" /></p>
-      {/if}
-      {#if spectraNotices.length > 0}
-        <ul class="flex flex-col gap-0.5 text-xs text-amber-700 dark:text-amber-400" data-testid="input-notices">
-          {#each spectraNotices as notice (notice.text)}
-            <li>{notice.text}<FaqLink check={notice.kind} /></li>
-          {/each}
-        </ul>
-      {/if}
-      {#if view.result.outcome.warnings.length > 0}
-        <p class="text-xs text-amber-700 dark:text-amber-400" data-testid="results-warnings">{view.result.outcome.warnings.join(' ')}</p>
+      {#if !psmOpen}
+        {@render notices()}
       {/if}
       {#if !panelOpen && !psmOpen}
         <KeyFigures {figures} proteinFdr={view.result.proteinFdr} proteinFdrApplied={view.result.outcome.summary.proteinFdrApplied} psmFdr={view.model.psmFdr} />
@@ -242,8 +272,8 @@
               <ProteinsTable bind:this={proteinsTable} {view} {level} onOpen={openProtein} />
             {:else if level.level === 'peptides'}
               <PeptidesTable {view} {level} onOpen={(peptide) => openInPsmTable({ peptide })} onOpenProtein={openProteinTab} />
-            {:else}
-              <PsmsTable bind:this={psmsTable} {view} {level} onOpen={openPsm} compact={psmOpen} onOpenProtein={openProteinTab} />
+            {:else if !psmOpen}
+              <PsmsTable bind:this={psmsTable} {view} {level} onOpen={openPsm} onOpenProtein={openProteinTab} />
             {/if}
             {#if level.level !== 'proteins' && !psmOpen}
               <p class="-mt-1 text-xs text-muted-foreground" data-testid="mod-legend">
@@ -277,7 +307,7 @@
       {/key}
     {/if}
     {#if psmOpen}
-      <PsmView bind:this={psmView} {view} onClose={closePsm} onBreadcrumb={breadcrumb} />
+      <PsmView bind:this={psmView} {view} onClose={closePsm} onBreadcrumb={breadcrumb} list={psmList} />
     {/if}
   </section>
 {:else}

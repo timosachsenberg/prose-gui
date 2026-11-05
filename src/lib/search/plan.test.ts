@@ -90,10 +90,10 @@ describe('the search request', () => {
     expect(searchPlan.problem).toBeNull()
     const r = await request()
     // the Orbitrap HCD preset, on ProSE's defaults: what differs is sent, by the shim's names (the protein FDR off is
-    // ProSE's default, 0, so it is not sent)
+    // ProSE's default, 0, and the variable modifications Oxidation (M) and Acetyl (Protein N-term) are the tool's
+    // defaults since OpenMS #10740, so they are not sent)
     expect(r.settings.parameters).toEqual({
       enzyme: 'Trypsin/P',
-      'modifications:variable': ['Oxidation (M)', 'Acetyl (Protein N-term)'],
       // the example's PSM FDR (the run is too small for 1 %)
       'FDR:PSM': 0.02,
       'peptide:missed_cleavages': 2,
@@ -206,12 +206,13 @@ describe('the search request', () => {
     for (const name of ['FDR:PSM', 'FDR:protein', 'FDR:protein_inference_PSM']) expect(name in r.settings.parameters, name).toBe(false)
     // the result has no cutoffs: every PSM and protein counts
     expect(vi.mocked(runSearch).mock.calls.at(-1)![1]).toMatchObject({ psmFdr: 1, proteinFdr: 1 })
-    // decoys again: the FDR the user had (the PSM FDR of 0 waits again)
-    form.setParam('decoys', 'generate')
+    // decoys again (the database's, else generated: not the tool's default, generate, so it is sent): the FDR the user
+    // had (the PSM FDR of 0 waits again)
+    form.setParam('decoys', 'auto')
     expect(searchPlan.problem).toBe('Set a PSM FDR above 0 %.')
     form.setParam('FDR:PSM', 0.01)
     const again = await request()
-    expect(again.settings.parameters).toMatchObject({ decoys: 'generate', 'FDR:PSM': 0.01, 'FDR:protein': 0.05, 'FDR:protein_inference_PSM': 0.2 })
+    expect(again.settings.parameters).toMatchObject({ decoys: 'auto', 'FDR:PSM': 0.01, 'FDR:protein': 0.05, 'FDR:protein_inference_PSM': 0.2 })
     expect(vi.mocked(runSearch).mock.calls.at(-1)![1]).toMatchObject({ psmFdr: 0.01, proteinFdr: 0.05 })
   })
 

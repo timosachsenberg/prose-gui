@@ -710,7 +710,12 @@ fn a_database_with_decoys_gets_decoys_of_the_contaminants_too() {
         "decoys.fasta",
         ">P1 one\nMKWV\n>P2\nAAAK\n>rev_P1 one\nMVWK\n>rev_P2\nAAAK\n",
     );
-    with_contaminants(&user, &crap, &dest, &DecoyRules::default()).unwrap();
+    // (decoys auto: ProSE reuses the database's decoys; the tool's default, generate, makes them all itself)
+    let auto = DecoyRules {
+        mode: "auto".into(),
+        ..DecoyRules::default()
+    };
+    with_contaminants(&user, &crap, &dest, &auto).unwrap();
     let text = fs::read_to_string(&dest).unwrap();
     assert!(
         text.ends_with(
@@ -727,7 +732,7 @@ fn a_database_with_decoys_gets_decoys_of_the_contaminants_too() {
     // a suffix, and Trypsin/P without keeping the initial Met
     let suffixed = dir.write("suffixed.fasta", ">P1\nMK\n>P1_REVERSED\nKM\n");
     let rules = DecoyRules::of(
-        json!({ "enzyme": "Trypsin/P", "peptide:clip_nterm_methionine": false })
+        json!({ "decoys": "auto", "enzyme": "Trypsin/P", "peptide:clip_nterm_methionine": false })
             .as_object()
             .unwrap(),
     );
@@ -737,12 +742,16 @@ fn a_database_with_decoys_gets_decoys_of_the_contaminants_too() {
         text.ends_with(">CON__sp|TRY|trypsin_REVERSED\nCBAMKED\n>CON__kept_REVERSED\nAKRP\n"),
         "{text}"
     );
-    // ProSE removes the database's decoys and generates all of them (generate, ignore), or the database has
-    // none: no decoys from the app
+    // ProSE removes the database's decoys and generates all of them (generate, the default; ignore), or the database
+    // has none: no decoys from the app
     for (db, params) in [
+        (&user, json!({})),
         (&user, json!({ "decoys": "generate" })),
         (&user, json!({ "decoys": "ignore" })),
-        (&dir.write("targets.fasta", ">P1\nMK\n>P2\nAK\n"), json!({})),
+        (
+            &dir.write("targets.fasta", ">P1\nMK\n>P2\nAK\n"),
+            json!({ "decoys": "auto" }),
+        ),
     ] {
         with_contaminants(
             db,

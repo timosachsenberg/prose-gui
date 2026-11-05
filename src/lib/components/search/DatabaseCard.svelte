@@ -125,7 +125,7 @@
       <Label for="decoys" class="text-xs">Decoys <Help topic="decoys" /></Label>
       <ChoiceSelect
         id="decoys"
-        value={String(form.value('decoys') ?? 'auto')}
+        value={String(form.value('decoys') ?? 'generate')}
         options={decoyOptions}
         onChange={(v) => form.setParam('decoys', v)} />
     </div>

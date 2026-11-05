@@ -115,7 +115,8 @@ export type InputWarning = { kind: 'no-ms2' | 'profile' | 'charge'; short: strin
  * What ProSE reports about a file's spectra that limits its search, each only when it applies: no MS2 spectra
  * (e.g. an MS1-only file: nothing is searched), MS2 spectra in profile mode (ProSE expects centroided spectra and
  * searches them as they are), MS2 spectra not searched because their recorded precursor charge is outside the
- * charge range. The last two come from run-view columns of a later ProSE; a summary without them has none.
+ * charge range. The last two come from run-view columns of ProSE since the pin d60780f605; a summary of an earlier
+ * ProSE has none.
  */
 export function inputWarnings(f: ProSEFileSummary): InputWarning[] {
   const name = baseName(f.path)
