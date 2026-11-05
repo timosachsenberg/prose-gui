@@ -1,5 +1,5 @@
-# TEMPORARY (branch claude/compare-defaults, not for main): the web app's larger example and the app's example searched
-# by the pin's ProSE with the tool's defaults (since OpenMS #10740) and with the web app's settings, their counts in the log.
+# TEMPORARY (branch claude/compare-defaults, not for main): what archive.openms.de has (a larger dataset for the
+# comparison of the tool's defaults with the web app's settings).
 name: Compare defaults (temporary)
 
 on:
@@ -8,74 +8,25 @@ on:
 
 permissions:
   contents: read
-  actions: read
-
-env:
-  BUNDLE_RUN: '41899484683'
 
 jobs:
-  compare:
+  list:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          cache: npm
-      - run: npm ci
-      - name: The bundled ProSE of the pin
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
+      - name: The archive's listing, three levels
         run: |
-          gh run download "$BUNDLE_RUN" --name prose-bundle-linux-x64 --dir "$RUNNER_TEMP/bundle"
-          tar -C src-tauri/resources -xzf "$RUNNER_TEMP/bundle/prose-bundle.tar.gz"
-          src-tauri/resources/prose/bin/ProSE --help 2>&1 | grep -m1 'Version:'
-      - name: OpenMS' TOPP test data at the pin
-        run: |
-          pin=$(tr -d '[:space:]' < native/OPENMS_COMMIT)
-          mkdir -p "$RUNNER_TEMP/topp/THIRDPARTY"
-          for f in THIRDPARTY/DatabaseSuitability_database.fasta THIRDPARTY/DatabaseSuitability_in_spec.mzML; do
-            curl -sfL "https://raw.githubusercontent.com/OpenMS/OpenMS/$pin/src/tests/topp/$f" -o "$RUNNER_TEMP/topp/$f"
+          list() { curl -sfL --max-time 30 "$1" | grep -oE 'href="[^"?#]+"' | cut -d'"' -f2 | grep -vE '^(/|\.\./|https?:)' || true; }
+          base=https://archive.openms.de/
+          curl -sfIL --max-time 30 "$base" | head -5 || true
+          for a in $(list "$base"); do
+            echo "$a"
+            case "$a" in */) ;; *) continue ;; esac
+            for b in $(list "$base$a"); do
+              echo "  $a$b"
+              case "$b" in */) ;; *) continue ;; esac
+              for c in $(list "$base$a$b" | head -60); do echo "    $a$b$c"; done
+            done
           done
-      - name: The searches
-        env:
-          PROSE: ${{ github.workspace }}/src-tauri/resources/prose/bin/ProSE
+      - name: The archive's index pages with sizes (top two levels)
         run: |
-          export OPENMS_TOPP="$RUNNER_TEMP/topp"
-          for c in suitability-defaults suitability example example-web; do
-            KEEP=1 OUT="$RUNNER_TEMP/out/$c" node scripts/results-fixture-native.mjs "$c" "$PROSE" > "$RUNNER_TEMP/$c.txt"
-            work=$(grep -o 'kept .*' "$RUNNER_TEMP/$c.txt" | cut -d' ' -f2)
-            echo "=== $c: ProSE's report"
-            sed -n '/Search Report/,$p' "$work/search/prose.log" | grep -E '^\[ProSE\]' || true
-            grep -Ei 'warning|sanity|single feature|stratum|switched off' "$work/search/prose.log" | head -10 || true
-          done
-      - name: Counts (the app's reader)
-        run: |
-          cat > src/zz-compare.test.ts <<'TS'
-          /// <reference types="node" />
-          import { readFileSync } from 'node:fs'
-          import { join } from 'node:path'
-          import { it } from 'vitest'
-          import { bytesOfRange, FileNotFound, readSearch } from './lib/results/read'
-          const out = process.env.OUT_ROOT!
-          for (const [c, psmFdr, proteinFdr] of [['suitability-defaults', 0.01, 0.05], ['suitability', 0.01, 0.05], ['example', 0.02, 0], ['example-web', 0.02, 0]] as const) {
-            it(c, { timeout: 120000 }, async () => {
-              const dir = join(out, c)
-              const r = await readSearch(async (name, range) => { try { return bytesOfRange(new Uint8Array(readFileSync(join(dir, name))), range) } catch { throw new FileNotFound(name) } })
-              const p = r.tables.psms
-              const rows = Array.from({ length: p.count }, (_, i) => i)
-              const target = rows.filter((i) => !p.decoy[i] && p.qValue[i] <= psmFdr)
-              const perFile = [0, 1].map((f) => target.filter((i) => p.file[i] === f).length)
-              const peptides = new Set(target.map((i) => r.tables.peptides.openms[p.peptide[i]])).size
-              const stems = new Set(target.map((i) => r.tables.peptides.sequence[p.peptide[i]])).size
-              const decoys = rows.filter((i) => p.decoy[i] && p.qValue[i] <= psmFdr).length
-              const pr = r.tables.proteins
-              const proteins = proteinFdr > 0 ? Array.from({ length: pr.count }, (_, i) => i).filter((i) => !pr.decoy[i] && pr.qValue[i] <= proteinFdr).length : Array.from({ length: pr.count }, (_, i) => i).filter((i) => !pr.decoy[i]).length
-              const fn = p.featureNames.indexOf('protein_nterm')
-              const nterm = fn < 0 ? 0 : target.filter((i) => p.features[i * p.featureNames.length + fn] === 1).length
-              console.log(`RESULT ${c}: target PSMs at ${psmFdr * 100} % ${target.length} (per run ${perFile.join(' / ')}), decoys kept ${decoys}, peptides ${peptides} (sequences ${stems}), protein N-terminal PSMs ${nterm}, target proteins ${proteins}, percolator ${JSON.stringify(r.summary.files.map((f) => f.percolator?.warning ? 'single feature' : f.percolator?.applied ? 'model' : f.percolator?.skipped))}`)
-            })
-          }
-          TS
-          OUT_ROOT="$RUNNER_TEMP/out" npx vitest run src/zz-compare.test.ts --silent=false 2>&1 | tail -40
+          curl -sfL --max-time 30 https://archive.openms.de/ | sed -e 's/<[^>]*>/ /g' | tr -s ' ' | grep -v '^ *$' | head -80 || true
