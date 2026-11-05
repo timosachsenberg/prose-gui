@@ -5,7 +5,8 @@
   // the peptide with its fragment ladder; the spectrum annotated (psm/annotate.ts, the web module's
   // annotatePeaks in TypeScript), mirrored against PeptDeep's prediction, which ProSE wrote for every
   // PSM (its input's QPX psm file, read when the PSM is opened), or the theoretical spectrum, with ion,
-  // charge and loss toggles; the
+  // charge, precursor and loss toggles (the precursor peaks shown unless switched off; the precursor's m/z is marked
+  // in the spectrum always); the
   // ion table, the fragment mass errors of the annotated ions shown (a strip that can be collapsed, remembered
   // in displaySettings.massErrors) and the PSM's features. A PSM whose peaks the search did not
   // keep shows its ladder, theoretical ions and features. An open search's unlocalized mass shift is
@@ -316,13 +317,14 @@
       : '',
   )
 
-  /** What the losses menu's button says: the losses on, and the precursor ("CH₄SO · precursor", "none"). */
+  /** What the losses menu's button says: the losses on ("CH₄SO, other", "none"). */
   const moreSummary = $derived.by(() => {
     const on = losses.filter((l) => options.losses.includes(l.formula)).map((l) => (l.formula === 'other' ? 'other' : l.label))
-    if (options.precursor) on.push('precursor')
     return on.length > 0 ? on.join(', ') : 'none'
   })
-  const moreOn = $derived(options.losses.length > 0 || options.precursor)
+  const moreOn = $derived(options.losses.length > 0)
+  /** The PSM's precursor, marked in the spectrum at its m/z. */
+  const precursorMark = $derived(Number.isFinite(ps.mz[row]) ? { mz: ps.mz[row], charge } : null)
 
   // the toggles: a choice made here becomes the user's (no longer automatic) for all PSMs
   function setIon(type: IonType, on: boolean) {
@@ -653,6 +655,16 @@
           onchange={(e) => (displaySettings.massErrors = e.currentTarget.checked)} />
         <span class={toggle}>mass errors</span>
       </label>
+      <label class="relative" title="The precursor peaks, with their losses of water and ammonia (the precursor's m/z is marked in the spectrum always)">
+        <input
+          type="checkbox"
+          class="peer absolute inset-0 z-10 m-0 cursor-pointer opacity-0 disabled:cursor-not-allowed"
+          aria-label="Precursor peaks"
+          data-testid="precursor-toggle"
+          checked={options.precursor}
+          onchange={(e) => (view.psmOptions.precursor = e.currentTarget.checked)} />
+        <span class={toggle}>precursor</span>
+      </label>
       <!-- the tools on the observed peaks (one at a time) and what clears what they made -->
       <div class="flex items-center gap-1" role="group" aria-label="Tools" data-testid="spectrum-tools">
         <button
@@ -688,13 +700,13 @@
         <!-- (as wide as the longest hint while a tool is on: the hint changes between the clicks, the toolbar does not) -->
         {#if toolHint}<span class="ml-1 inline-block w-56 truncate text-muted-foreground" title={toolHint} data-testid="tool-hint">{toolHint}</span>{/if}
       </div>
-      <!-- the neutral losses and the precursor peaks: one menu, its button says what is on -->
+      <!-- the neutral losses: one menu, its button says what is on -->
       <div class="flex items-center gap-1">
         <span id="{uid}-more" class="mr-1 text-muted-foreground">Losses</span>
         <DropdownMenu.Root>
           <DropdownMenu.Trigger
             class={cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'h-[26px] gap-1 px-2 text-xs font-normal', moreOn && 'border-primary')}
-            aria-label="Losses and precursor peaks: {moreSummary}">
+            aria-label="Neutral losses: {moreSummary}">
             {moreSummary}<ChevronDown class="size-3.5 text-muted-foreground" aria-hidden="true" />
           </DropdownMenu.Trigger>
           <DropdownMenu.Content class="w-auto min-w-56" align="start">
@@ -708,9 +720,6 @@
                   >{l.formula === 'other' ? 'other losses' : `${l.label} loss${l.note ? ` (${l.note})` : ''}`}</DropdownMenu.CheckboxItem>
               {/each}
             </DropdownMenu.Group>
-            <DropdownMenu.Separator />
-            <DropdownMenu.CheckboxItem checked={options.precursor} onCheckedChange={(on) => (view.psmOptions.precursor = on)}
-              >Precursor peaks</DropdownMenu.CheckboxItem>
           </DropdownMenu.Content>
         </DropdownMenu.Root>
       </div>
@@ -757,6 +766,7 @@
         {marks}
         onmarks={setMarks}
         {measure}
+        precursor={precursorMark}
         bind:pending={toolBusy} />
       {#if hiddenOnePlus}
         <p class="flex flex-wrap items-center gap-2 pb-1 text-xs text-muted-foreground" role="status" data-testid="oneplus-hint">
