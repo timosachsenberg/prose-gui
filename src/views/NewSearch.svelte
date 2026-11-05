@@ -12,6 +12,7 @@
   import { Button } from '$lib/components/ui/button'
   import { onFileDrop } from '$lib/desktop'
   import { searchForm as form } from '$lib/search/form.svelte'
+  import { undoReplace } from '$lib/history/history.svelte'
 
   let dragging = $state(false)
 
@@ -59,6 +60,14 @@
     {/if}
   </div>
 
+  {#if form.replaced}
+    <!-- opening a search from History replaced what New search held: one click brings it back -->
+    <p class="flex flex-wrap items-center gap-2 text-xs text-muted-foreground" role="status" data-testid="replaced-note">
+      Opening “{form.replaced.by}” replaced the files, database and settings you had here.
+      <Button variant="outline" size="sm" class="h-6 px-2 text-xs" disabled={form.busy} data-testid="undo-replace" onclick={undoReplace}>Undo</Button>
+      <button type="button" class="underline underline-offset-2 hover:no-underline" onclick={() => (form.replaced = null)}>Dismiss</button>
+    </p>
+  {/if}
   {#if form.files.length === 0}
     <EmptyState {dragging} />
   {:else}

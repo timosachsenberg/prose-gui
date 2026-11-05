@@ -52,7 +52,7 @@ libglvnd-gles` (Fedora).
 - The searches (History): a folder per search in the app's data folder, `searches/<id>/`: ProSE's outputs, the
   record `search.json`, `proteins.fasta` (the proteins of the result, so that the search opens without its
   database), `prose.ini` (the parameters ProSE was given; ProSE's defaults of the recorded version for the rest),
-  `command.txt` (its command line, the paths as placeholders) and links to the inputs. The app's data folder is
+  `command.txt` (its command line, the paths as placeholders: "Command line" in History copies it) and links to the inputs. The app's data folder is
   - Linux: `~/.local/share/org.openms.prose.desktop/` (`$XDG_DATA_HOME`)
   - macOS: `~/Library/Application Support/org.openms.prose.desktop/`
   - Windows: `%APPDATA%\org.openms.prose.desktop\`

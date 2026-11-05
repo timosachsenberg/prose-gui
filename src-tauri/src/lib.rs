@@ -543,6 +543,56 @@ async fn open_archive_file(app: AppHandle) -> Result<Response, String> {
     .map(Response::new)
 }
 
+/// A QPX results folder (ProSE run by hand or on a cluster): the folder dialog, then its runs' stems
+/// (`history::qpx_stems`) -> `{ folder, stems }`, or null if cancelled.
+#[tauri::command]
+async fn open_qpx_folder(app: AppHandle) -> Result<Option<serde_json::Value>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let chosen = match test_dialog_path() {
+            Some(path) => Some(path),
+            None => match app
+                .dialog()
+                .file()
+                .set_title("Open a QPX results folder")
+                .blocking_pick_folder()
+            {
+                None => None,
+                Some(p) => Some(p.into_path().map_err(|e| e.to_string())?),
+            },
+        };
+        let Some(folder) = chosen else {
+            return Ok(None);
+        };
+        let stems = history::qpx_stems(&folder)?;
+        // (the run and provenance views, small, for the record: PSMs, cutoffs, database)
+        let qpx = history::qpx_dir(&folder).ok_or("The folder has no QPX results.")?;
+        let read = |name: &str| std::fs::read(qpx.join(name)).map_err(|e| format!("{name}: {e}"));
+        Ok(Some(serde_json::json!({
+            "folder": folder,
+            "stems": stems,
+            "run": read("quantms.run.parquet")?,
+            "provenance": read("quantms.provenance.parquet")?,
+        })))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// The QPX folder `folder` (from `open_qpx_folder`) as a new search, with the page's `record` and `inputs`
+/// (search.json and inputs.json) -> the new id.
+#[tauri::command]
+async fn history_import_qpx(
+    app: AppHandle,
+    folder: String,
+    record: String,
+    inputs: String,
+) -> Result<String, String> {
+    on_searches(&app, move |dir| {
+        history::import_qpx(&dir, Path::new(&folder), &record, &inputs)
+    })
+    .await
+}
+
 /// The title of the save dialog of a results archive: what it holds, beyond the results.
 pub const ARCHIVE_DIALOG_TITLE: &str =
     "Save the results archive: the search's results, including folder paths of this computer";
@@ -737,6 +787,8 @@ pub fn run() {
             history_import,
             save_curation,
             open_archive_file,
+            open_qpx_folder,
+            history_import_qpx,
             save_archive_file,
             answer_close
         ])

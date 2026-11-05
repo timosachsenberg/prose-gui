@@ -352,6 +352,19 @@ export function saveSearchFile(searchId: string, name: string, suggested: string
   return oneDialog(null, () => invoke<string | null>('save_search_file', { searchId, name, suggested }))
 }
 
+/** A QPX results folder the user chose (ProSE run by hand): its runs' stems and its run and provenance views; null if cancelled. */
+export function openQpxFolder(): Promise<{ folder: string; stems: string[]; run: Uint8Array; provenance: Uint8Array } | null> {
+  return oneDialog(null, async () => {
+    const r = await invoke<{ folder: string; stems: string[]; run: number[]; provenance: number[] } | null>('open_qpx_folder')
+    return r && { ...r, run: Uint8Array.from(r.run), provenance: Uint8Array.from(r.provenance) }
+  })
+}
+
+/** The QPX folder as a new search in History, with its record and inputs.json: the new id. */
+export function importQpxFolder(folder: string, record: string, inputs: string): Promise<string> {
+  return invoke<string>('history_import_qpx', { folder, record, inputs })
+}
+
 /**
  * History's disk: the Rust commands (src-tauri/src/history.rs). A results archive is written by the Rust side
  * (src-tauri/src/archive.rs); an opened one and the entries of an import go as raw bodies, not as JSON numbers.
