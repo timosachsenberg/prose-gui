@@ -56,8 +56,12 @@ it('counts', { timeout: 1800000 }, async () => {
   const peptides = new Set(accepted.map((i) => pt.openms[p.peptide[i]]))
   const sequences = new Set(accepted.map((i) => pt.sequence[p.peptide[i]]))
   const proteinRows = Array.from({ length: pr.count }, (_, i) => i).filter((i) => !pr.decoy[i] && pr.qValue[i] <= PROTEIN_FDR)
-  const fn = p.featureNames.indexOf('protein_nterm')
-  const nterm = fn < 0 ? NaN : accepted.filter((i) => p.features[i * p.featureNames.length + fn] === 1).length
+  const feature = (i: number, name: string) => {
+    const j = p.featureNames.indexOf(name)
+    return j < 0 ? NaN : p.features[i * p.featureNames.length + j]
+  }
+  const nterm = accepted.filter((i) => feature(i, 'protein_nterm') > 0).length
+  const clipped = accepted.filter((i) => feature(i, 'met_clipped') > 0).length
   const acetyl = accepted.filter((i) => pt.openms[p.peptide[i]].startsWith('.(Acetyl)')).length
   const proteinsOf = (k: number) => {
     const out: string[] = []
@@ -74,7 +78,7 @@ it('counts', { timeout: 1800000 }, async () => {
   console.log(
     `RESULT ${name}: target PSMs at 1 % ${accepted.length} (per run ${perFile.join(' / ')}), decoy PSMs at 1 % ${decoys}, ` +
       `peptidoforms ${peptides.size}, sequences ${sequences.size}, target proteins at 1 % ${proteinRows.length}, ` +
-      `protein N-terminal PSMs ${nterm}, N-terminally acetylated PSMs ${acetyl}, by species ${JSON.stringify(species)}, ` +
+      `protein N-terminal PSMs ${nterm} (Met clipped ${clipped}), N-terminally acetylated PSMs ${acetyl}, by species ${JSON.stringify(species)}, ` +
       `percolator ${JSON.stringify(percolator)}, ProSE ${summary.search.secondsTotal.toFixed(0)} s, ` +
       `decoys ${summary.search.decoyMode}, ${summary.search.targetProteins} target / ${summary.search.decoyProteins} decoy proteins, ` +
       `${summary.search.indexedPeptides} indexed peptides`,
@@ -109,10 +113,29 @@ it('counts', { timeout: 1800000 }, async () => {
   const psmKinds = accepted.map((i) => kindOf(p.peptide[i]))
   const peptideKinds = [...new Set(accepted.map((i) => p.peptide[i]))].map(kindOf)
   const proteinRatio = entrapmentProteins / targetProteins
-  const proteinKinds = proteinRows.map((i) => (pr.accession[i].startsWith(ENTRAP) ? 'entrapment' : 'target'))
+  // proteins: (a) every accepted protein by its accession; (b) the indistinguishable groups, entrapment if all their
+  // members are; (c) as (a), but an entrapment protein is a discovery only with an accepted PSM of a foreign peptide
+  // (one that no target protein has), else (its peptides all shared with target proteins) left out
+  const isEntrap = (i: number) => pr.accession[i].startsWith(ENTRAP)
+  const proteinKinds = proteinRows.map((i) => (isEntrap(i) ? 'entrapment' : 'target'))
+  const groups = new Map<string, boolean>()
+  for (const i of proteinRows) {
+    const key = pr.group[i] >= 0 ? `g${pr.group[i]}` : `p${i}`
+    groups.set(key, (groups.get(key) ?? true) && isEntrap(i))
+  }
+  const groupKinds = [...groups.values()].map((e) => (e ? 'entrapment' : 'target'))
+  const foreignEvidence = new Set<number>()
+  for (const i of accepted) {
+    const k = p.peptide[i]
+    if (kindOf(k) !== 'entrapment') continue
+    for (let j = pt.proteinOffsets[k]; j < pt.proteinOffsets[k + 1]; j++) foreignEvidence.add(pt.protein[j])
+  }
+  const evidenceKinds = proteinRows.filter((i) => !isEntrap(i) || foreignEvidence.has(i)).map((i) => (isEntrap(i) ? 'entrapment' : 'target'))
+  const sharedOnly = proteinRows.filter((i) => isEntrap(i) && !foreignEvidence.has(i)).length
   console.log(
     `RESULT ${name} entrapment (r = ${ratio.toFixed(3)}: ${foreign} foreign of ${entrapment.size} entrapment peptides, ${targets.size} target peptides; ` +
       `proteins ${entrapmentProteins} / ${targetProteins}): PSMs ${estimate(psmKinds, ratio)}; peptidoforms ${estimate(peptideKinds, ratio)}; ` +
-      `proteins ${estimate(proteinKinds, proteinRatio)}`,
+      `proteins by accession ${estimate(proteinKinds, proteinRatio)}; protein groups ${estimate(groupKinds, proteinRatio)}; ` +
+      `proteins with foreign evidence ${estimate(evidenceKinds, proteinRatio)} (${sharedOnly} entrapment proteins with shared peptides only left out)`,
   )
 })
