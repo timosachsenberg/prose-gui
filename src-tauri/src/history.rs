@@ -844,8 +844,9 @@ pub fn qpx_stems(folder: &Path) -> Result<Vec<String>, String> {
     Ok(stems)
 }
 
-/// A QPX folder as a new search in History: its QPX view (and an open search's `mods/` beside it), with the
-/// record and inputs.json the page made from [`qpx_stems`]. The files are copied: History owns its folders.
+/// A QPX folder as a new search in History: its QPX view (and, when `folder` is a search folder with the view in
+/// `qpx/`, an open search's `mods/` and the database beside it), with the record and inputs.json the page made from
+/// [`qpx_stems`]. The files are copied: History owns its folders.
 pub fn import_qpx(dir: &Path, folder: &Path, record: &str, inputs: &str) -> Result<String, String> {
     let qpx = qpx_dir(folder).ok_or_else(|| format!("{} has no QPX results.", folder.display()))?;
     let mut entries: Vec<(String, Entry)> = vec![
@@ -875,16 +876,17 @@ pub fn import_qpx(dir: &Path, folder: &Path, record: &str, inputs: &str) -> Resu
             .map(|m| if dir { m.is_dir() } else { m.is_file() })
             .unwrap_or(false)
     };
-    if let Some(mods) = qpx
-        .parent()
+    // what lies beside the QPX view belongs to its search only in a search folder (`<folder>/qpx`): the parent of a
+    // QPX folder chosen itself is any folder, whose mods/ or database.fasta may be another search's
+    let search_folder = (qpx != folder).then_some(folder);
+    if let Some(mods) = search_folder
         .map(|p| p.join("mods"))
         .filter(|m| regular(m, true))
     {
         walk(&mods, "mods/", &mut entries)?;
     }
-    // the protein sequences (coverage), if the folder has its database beside the QPX view
-    if let Some(fasta) = qpx
-        .parent()
+    // the protein sequences (coverage), if the search folder has its database beside the QPX view
+    if let Some(fasta) = search_folder
         .map(|p| p.join("database.fasta"))
         .filter(|f| regular(f, false))
     {

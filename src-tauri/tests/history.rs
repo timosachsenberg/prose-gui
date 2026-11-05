@@ -847,6 +847,29 @@ fn a_qpx_folder_is_copied_without_following_links() {
     );
 }
 
+/// The mods/ and database.fasta beside a QPX view come along only from a search folder (the view in `<folder>/qpx`):
+/// a QPX folder chosen itself may sit in any folder, whose files are another search's.
+#[test]
+fn a_qpx_folder_takes_what_lies_beside_it_only_from_its_search_folder() {
+    let (tmp, dir) = searches();
+    let folder = tmp.path().join("run1");
+    fs::create_dir_all(folder.join("qpx/runs")).unwrap();
+    fs::write(folder.join("qpx/quantms.psm.parquet"), b"PAR1").unwrap();
+    fs::write(folder.join("qpx/runs/1__a.psm.parquet"), b"PAR1").unwrap();
+    fs::create_dir_all(folder.join("mods")).unwrap();
+    fs::write(folder.join("mods/shifts.tsv"), b"x").unwrap();
+    fs::write(folder.join("database.fasta"), b">P1\nMKV\n").unwrap();
+    // the search folder chosen: its mods/ and database come along
+    let id = import_qpx(&dir, &folder, &record("x", "with mods"), "[]").unwrap();
+    assert!(dir.join(&id).join("mods/shifts.tsv").is_file());
+    assert!(dir.join(&id).join("database.fasta").is_file());
+    // the QPX folder itself chosen: what lies in its parent is not taken
+    let id = import_qpx(&dir, &folder.join("qpx"), &record("x", "view only"), "[]").unwrap();
+    assert!(dir.join(&id).join("qpx/runs/1__a.psm.parquet").is_file());
+    assert!(!dir.join(&id).join("mods").exists());
+    assert!(!dir.join(&id).join("database.fasta").exists());
+}
+
 #[test]
 fn curation_is_saved_whole_to_a_saved_search() {
     let (_tmp, dir) = searches();
