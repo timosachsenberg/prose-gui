@@ -13,12 +13,22 @@ jobs:
   list:
     runs-on: ubuntu-22.04
     steps:
-      - name: The candidate folders with sizes, two levels
+      - name: Readmes and listings
         run: |
           base=https://archive.openms.de/openms/
-          page() { echo "## $1"; curl -sfL --max-time 30 "$base$1" | sed -e 's/<[^>]*>/ /g' | tr -s ' ' | grep -vE '^ *$|Index of|\.\./' | head -80 || true; }
-          sub() { curl -sfL --max-time 30 "$base$1" | grep -oE 'href="[^"?#]+/"' | cut -d'"' -f2 | grep -vE '^(/|\.\./|https?:)' || true; }
-          for d in testfiles/proteobench-astral-entrapment/ testfiles/lfq/ testfiles/20260717-ProteomicsLFQ-Multi-Instrument/ benchmarks/pride-benchmarks/ testfiles/raw-file-museum/; do
-            page "$d"
-            for s in $(sub "$d"); do page "$d$s"; done
+          page() { echo "## $1"; curl -sfL --max-time 30 "$base$1" | sed -e 's/<[^>]*>/ /g' | tr -s ' ' | grep -vE '^ *$|Index of|\.\./' | head -120 || true; }
+          hrefs() { echo "## hrefs $1"; curl -sfL --max-time 30 "$base$1" | grep -oE 'href="[^"?#]+"' | cut -d'"' -f2 | grep -vE '^(/|\.\./|https?:)' || true; }
+          echo "#### proteobench README"; curl -sfL --max-time 30 "${base}testfiles/proteobench-astral-entrapment/README.md" || true
+          echo "#### proteobench MANIFEST"; curl -sfL --max-time 30 "${base}testfiles/proteobench-astral-entrapment/MANIFEST.tsv" | head -40 || true
+          hrefs testfiles/proteobench-astral-entrapment/100K_sampled_fasta/
+          echo "#### lfq README"; curl -sfL --max-time 30 "${base}testfiles/lfq/README.md" || true
+          for d in testfiles/20260717-ProteomicsLFQ-Multi-Instrument/PXD045781-Bruker-timsTOF-Pro/mzML-TIMSCONVERT/ \
+                   testfiles/20260717-ProteomicsLFQ-Multi-Instrument/PXD060911-SCIEX-TripleTOF-6600/mzML-SCIEX-Converter/ \
+                   testfiles/20260717-ProteomicsLFQ-Multi-Instrument/PXD069532-Agilent-6550/mzMLs-ProteoWizard/ \
+                   benchmarks/pride-benchmarks/lfq/QExactiveHF/ benchmarks/pride-benchmarks/lfq/LTQOrbitrapVelos/ \
+                   benchmarks/pride-benchmarks/lfq/OrbitrapFusionLumos/; do
+            page "$d"; hrefs "$d" | head -20
           done
+          echo "#### Agilent metadata"; curl -sfL --max-time 30 "${base}testfiles/20260717-ProteomicsLFQ-Multi-Instrument/PXD069532-Agilent-6550/20260720-Metadata.txt" || true
+          hrefs testfiles/20260717-ProteomicsLFQ-Multi-Instrument/PXD069532-Agilent-6550/
+          hrefs testfiles/20260717-ProteomicsLFQ-Multi-Instrument/PXD060911-SCIEX-TripleTOF-6600/
