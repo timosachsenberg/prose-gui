@@ -182,6 +182,28 @@ fn searches_dir(app: &AppHandle) -> Result<PathBuf, String> {
         .join("searches"))
 }
 
+/// Opens `url` (https only: the Help page's links) in the system's browser.
+#[tauri::command]
+fn open_url(url: String) -> Result<(), String> {
+    if !url.starts_with("https://") || url.chars().any(|c| c.is_whitespace() || c == '"') {
+        return Err(format!("{url} is not an https link."));
+    }
+    #[cfg(target_os = "macos")]
+    let mut cmd = std::process::Command::new("open");
+    #[cfg(target_os = "linux")]
+    let mut cmd = std::process::Command::new("xdg-open");
+    #[cfg(target_os = "windows")]
+    let mut cmd = {
+        let mut c = std::process::Command::new("rundll32");
+        c.arg("url.dll,FileProtocolHandler");
+        c
+    };
+    cmd.arg(&url)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("The browser cannot be opened ({e})."))
+}
+
 /// A file of a search (see `files::read_search_file`), as raw bytes.
 #[tauri::command]
 async fn read_search_file(
@@ -608,6 +630,7 @@ pub fn run() {
             cpu_count,
             example_files,
             save_text,
+            open_url,
             save_search_file,
             history_list,
             history_save_record,

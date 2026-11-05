@@ -249,6 +249,11 @@ export function saveText(name: string, contents: string): Promise<string | null>
   return oneDialog(null, () => invoke<string | null>('save_text', { name, contents }))
 }
 
+/** Opens an https link in the system's browser (the Help page). */
+export function openUrl(url: string): Promise<void> {
+  return invoke('open_url', { url })
+}
+
 /**
  * The PSM curation of search `searchId`: its folder's `curation.json` (results/curation.ts), read with
  * read_search_file and written with save_curation. Null outside the desktop app (the marks then last the session).

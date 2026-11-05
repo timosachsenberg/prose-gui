@@ -1,4 +1,5 @@
 <script lang="ts">
+  import FaqLink from '$lib/components/help/FaqLink.svelte'
   // History: the searches kept on this computer, each a folder of the app's data (the tool's outputs and a
   // record of the settings and the design; the mzML files stay where they are). Open, rename and delete;
   // "Import results archive (.prose)…" unpacks a .prose file into History. It stays usable while a search runs, and reads the
@@ -155,7 +156,7 @@
       <p class="text-sm font-medium">No saved searches yet</p>
       <p class="mx-auto mt-1 max-w-md text-xs text-muted-foreground">
         Finished searches are saved here with their spectra, so you can reopen them later. To open a results archive
-        (saved with Export › Results archive, here or on another computer), use Import results archive above.
+        (saved with Export › Results archive, here or on another computer), use Import results archive above.<FaqLink faq="formats-results" label="What a search keeps ›" />
       </p>
     </div>
   {:else}
@@ -222,14 +223,14 @@
               <Table.Cell class="{cell} text-right tabular-nums" data-column="psms">{entry.psms === null ? '' : formatCount(entry.psms)}</Table.Cell>
               <Table.Cell class="{cell} text-right whitespace-nowrap tabular-nums" data-column="size">{formatBytes(entry.bytes)}</Table.Cell>
               <Table.Cell class="{cell} text-right whitespace-nowrap">
-                <div class="flex justify-end gap-1.5">
+                <div class="flex justify-end gap-0.5">
                   <Button size="xs" disabled={busy !== null || entry.error !== null} aria-label="Open {entry.name ?? entry.id}" onclick={() => open(entry)}>
                     {busy === entry.id ? 'Opening…' : 'Open'}
                   </Button>
                   <!-- (not while it opens) -->
-                  <Button variant="outline" size="xs" disabled={busy === entry.id || entry.error !== null} aria-label="Rename {entry.name ?? entry.id}" onclick={() => startRename(entry)}
+                  <Button variant="ghost" size="xs" disabled={busy === entry.id || entry.error !== null} aria-label="Rename {entry.name ?? entry.id}" onclick={() => startRename(entry)}
                     >Rename</Button>
-                  <Button variant="outline" size="xs" disabled={busy === entry.id} aria-label="Delete {entry.name ?? entry.id}" onclick={() => askDelete(entry)}
+                  <Button variant="ghost" size="xs" disabled={busy === entry.id} aria-label="Delete {entry.name ?? entry.id}" onclick={() => askDelete(entry)}
                     >Delete</Button>
                 </div>
               </Table.Cell>
