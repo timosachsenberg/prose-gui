@@ -183,14 +183,16 @@ fn the_example_is_searched_through_start_search() {
         .unwrap()
         .contains("<ITEM name=\"mass_tolerance\" value=\"0.5\" type=\"double\""));
     let command = fs::read_to_string(folder.join("command.txt")).unwrap();
+    // (the search folder's files are joined with the platform's separator: a backslash on Windows)
+    let sep = std::path::MAIN_SEPARATOR;
     assert!(
-        command.starts_with(
-            "ProSE -in <input 1> <input 2> -database <database> -out_qpx <search folder>/qpx"
-        ),
+        command.starts_with(&format!(
+            "ProSE -in <input 1> <input 2> -database <database> -out_qpx <search folder>{sep}qpx"
+        )),
         "{command}"
     );
     assert!(
-        command.contains("-ini <search folder>/prose.ini"),
+        command.contains(&format!("-ini <search folder>{sep}prose.ini")),
         "{command}"
     );
     assert!(fs::read_to_string(folder.join("database.fasta"))

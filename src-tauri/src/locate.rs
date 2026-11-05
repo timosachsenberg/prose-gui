@@ -184,7 +184,8 @@ mod tests {
             .collect();
 
         let near = locate(&root.join("sdrf"), &names, None);
-        assert!(near[0].exact.as_deref().unwrap().ends_with("sdrf/a.mzML"));
+        // (by path components: on Windows the separator is a backslash)
+        assert!(Path::new(near[0].exact.as_deref().unwrap()).ends_with("sdrf/a.mzML"));
         assert_eq!(near[0].mzml, near[0].exact);
         assert_eq!(near[1], Located::default());
 

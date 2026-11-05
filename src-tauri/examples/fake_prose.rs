@@ -14,7 +14,8 @@
 //!
 //! Next to the -out_qpx folder it leaves argv.txt (one argument per line), inputs.txt (every -in path with
 //! the file it resolves to), prose.pid and, for hang and stubborn, children.pid; in it, a psm file per input
-//! (in runs/) and quantms.psm.parquet (stand-ins: not Parquet). `--help` prints a version line; `--sleep` (the children)
+//! (in runs/) and quantms.psm.parquet (stand-ins: not Parquet). `--help` and `--helphelp` (what `tool::probe` asks)
+//! print a version line; `--sleep` (the children)
 //! sleeps five minutes.
 
 use std::fs;
@@ -68,7 +69,7 @@ fn main() {
         std::thread::sleep(Duration::from_secs(300));
         exit(0);
     }
-    if args.iter().any(|a| a == "--help") {
+    if args.iter().any(|a| a == "--help" || a == "--helphelp") {
         println!("ProSE -- a stand-in for the shim's tests");
         println!("Version: 9.9.9 Oct 20 2026, 12:00:00");
         exit(0);

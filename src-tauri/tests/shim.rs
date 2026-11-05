@@ -1493,7 +1493,7 @@ fn probe_written_script(script: &Path) -> Result<tool::ToolInfo, String> {
 #[test]
 fn probing_a_tool_reports_its_version_path_and_onnx_support() {
     let dir = TempDir::new("probe");
-    // a script on Unix; on Windows the fake tool, which answers --help the same way
+    // a script on Unix; on Windows the fake tool, which answers --helphelp (what probe asks) the same way
     #[cfg(unix)]
     let script = executable(&dir, "ProSE");
     #[cfg(unix)]
