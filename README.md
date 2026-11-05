@@ -110,8 +110,9 @@ browser. Close Window and Exit close as the window's close button does (a runnin
 A project is the setup of a search and the state of the views as one JSON file (format and fields:
 `src/lib/project/setup.ts`; schema 1). File › Save Project (or Save project… in New search) writes it where you
 choose (the save dialog is the Rust side's, `src-tauri/src/setup_file.rs`; Save writes the same file again, Save As
-asks); Open Project, Open Recent or Open project… in New search reads it (only `.prose-project.json`, at most 4 MB). It
-holds:
+asks; a name chosen without `.prose-project.json` gets it, and Save asks before it replaces a file of that name);
+Open Project, Open Recent or Open project… in New search reads it (only `.prose-project.json`, at most 4 MB), and asks
+first when the opened project has unsaved changes; a file that does not read as a project changes nothing. It holds:
 
 - `format` `"prose-project"`, `schema` `1`, `savedAt`, `appVersion`, `proseVersion`, `name`
 - `inputs`: each spectrum file's absolute `path`, `name` and `size` (bytes), and its design fields (`condition`,

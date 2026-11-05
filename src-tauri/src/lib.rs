@@ -38,8 +38,10 @@
 //! - Projects (`setup_file`): `save_project_setup(name, contents, ask)` (the save dialog unless `ask` is false and a
 //!   project was opened or saved before: then that file again) -> `{ path, name }` or null;
 //!   `open_project_setup(recent?)` (the open dialog, or the `recent`-th entry of File › Open Recent) -> `{ path,
-//!   text }` or null; both refuse other files than `.prose-project.json` (or the older `.prose-setup.json`) and more than 4 MB, and put the file first in
-//!   the recent projects; `forget_project_setup()` detaches the current one (New Search). `menu_state({ result, table, theme })`: which menu items apply (`menu`); a click on one
+//!   text }` or null, and `use_opened_project_setup()` once the page has read that file as a project (only then is it
+//!   the one Save writes to); both refuse other files than `.prose-project.json` (or the older `.prose-setup.json`)
+//!   and more than 4 MB, and put the file first in the recent projects; Save asks before it replaces a file whose
+//!   name it gave the project's extension; `forget_project_setup()` detaches the current one (New Search). `menu_state({ result, table, theme })`: which menu items apply (`menu`); a click on one
 //!   of the page's items is the event `menu://action` with its id.
 //! - closing the window while a search runs: the window stays and `app://close-requested` asks the page,
 //!   which answers with `answer_close(close)` ([`close_requested`])
@@ -75,13 +77,16 @@ use std::sync::Arc;
 use tauri::ipc::Response;
 use tauri::webview::PageLoadEvent;
 use tauri::{AppHandle, Emitter, Manager, RunEvent, State};
-use tauri_plugin_dialog::DialogExt;
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
 struct AppState {
     searches: Arc<Searches>,
     closing: std::sync::Mutex<Closing>,
     /// The project file opened or saved last (`<name>.prose-project.json`): Save writes there again.
     setup_path: std::sync::Mutex<Option<PathBuf>>,
+    /// The project file Open Project read last, until the page has taken it (`use_opened_project_setup`): a file the
+    /// page refuses never becomes the one Save writes to.
+    opened_setup: std::sync::Mutex<Option<PathBuf>>,
 }
 
 impl Default for AppState {
@@ -98,6 +103,7 @@ impl Default for AppState {
             searches: Arc::new(searches),
             closing: Default::default(),
             setup_path: Default::default(),
+            opened_setup: Default::default(),
         }
     }
 }
@@ -986,6 +992,28 @@ async fn save_project_setup(
                     },
                 };
                 let Some(path) = chosen else { return Ok(None) };
+                // the file gets the project's extension: one of that name the dialog did not ask about is not
+                // replaced without asking (`exp.json` chosen, `exp.prose-project.json` there)
+                let written = setup_file::with_setup_extension(&path);
+                if written != path
+                    && written.exists()
+                    && test_dialog_path().is_none()
+                    && !handle
+                        .dialog()
+                        .message(format!(
+                            "{} already exists. Replace it with this project?",
+                            written.display()
+                        ))
+                        .title("Replace the project?")
+                        .kind(MessageDialogKind::Warning)
+                        .buttons(MessageDialogButtons::OkCancelCustom(
+                            "Replace".to_string(),
+                            "Cancel".to_string(),
+                        ))
+                        .blocking_show()
+                {
+                    return Ok(None);
+                }
                 path
             }
         };
@@ -1043,8 +1071,19 @@ async fn open_project_setup(
     let Some((path, text)) = read else {
         return Ok(None);
     };
-    use_setup_path(&app, &app.state::<AppState>(), &path);
+    // (the project's file once the page has read it as a project: `use_opened_project_setup`)
+    *app.state::<AppState>().opened_setup.lock().unwrap() = Some(path.clone());
     Ok(Some(serde_json::json!({ "path": path, "text": text })))
+}
+
+/// The project file Open Project read last is the window's project, now that the page has read it as one: Save
+/// writes there, it is first under Open Recent, and the window's title names it.
+#[tauri::command]
+fn use_opened_project_setup(app: AppHandle, state: State<'_, AppState>) {
+    let opened = state.opened_setup.lock().unwrap().take();
+    if let Some(path) = opened {
+        use_setup_path(&app, &state, &path);
+    }
 }
 
 /// File › New Search: no current project any more (the next Save asks where), and the window's title is the app's.
@@ -1221,6 +1260,7 @@ pub fn run() {
             save_archive_file,
             save_project_setup,
             open_project_setup,
+            use_opened_project_setup,
             forget_project_setup,
             menu_state,
             answer_close,

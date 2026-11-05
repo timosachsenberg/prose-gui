@@ -8,7 +8,7 @@
 
 import { toast } from 'svelte-sonner'
 import { loadDesign, sdrfSession } from '../design/sdrf-session.svelte'
-import { errorText, forgetProjectSetup, openProjectSetup, readDesignFile, saveProjectSetup } from '../desktop'
+import { errorText, forgetProjectSetup, openProjectSetup, readDesignFile, saveProjectSetup, useOpenedProjectSetup } from '../desktop'
 import { APP_VERSION } from '../history/history'
 import { history, openFromHistory, refreshHistory } from '../history/history.svelte'
 import { resultName } from '../results/display'
@@ -44,12 +44,20 @@ function sizes(was: number, now: number): string {
 }
 
 /** The project of the window: its name (null: none saved or opened yet) and the search it ran as. */
-export const project = $state<{ name: string | null; searchId: string | null; busy: boolean; confirmNew: boolean }>({
+export const project = $state<{
+  name: string | null
+  searchId: string | null
+  busy: boolean
+  confirmNew: boolean
+  confirmOpen: { recent?: number } | null
+}>({
   name: null,
   searchId: null,
   busy: false,
   /** New Search asks first: the opened project has changes that are not saved (NewProjectDialog.svelte). */
   confirmNew: false,
+  /** Open Project (`recent`: from Open Recent) asks first, for the same reason. */
+  confirmOpen: null,
 })
 
 /** The setup as it was when the project was opened or saved last (its search and views aside); null: no project. */
@@ -180,12 +188,20 @@ export async function saveProject(ask: boolean): Promise<string | null> {
 
 /**
  * Open Project (the open dialog) or a recent one (`recent`: its place under File › Open Recent): the setup restored
- * (`restoreSetup`). Resolves with false if cancelled; throws with what is wrong with the file.
+ * (`restoreSetup`). With unsaved changes to the opened project it asks first (`project.confirmOpen`) unless
+ * `confirmed`. The file becomes the window's project (Save writes there) only once it reads as one. Resolves with
+ * false if cancelled or asking; throws with what is wrong with the file.
  */
-export async function openProject(recent?: number): Promise<boolean> {
+export async function openProject(recent?: number, confirmed = false): Promise<boolean> {
+  if (!confirmed && hasUnsavedChanges()) {
+    project.confirmOpen = { recent }
+    return false
+  }
+  project.confirmOpen = null
   const chosen = await openProjectSetup(recent)
   if (!chosen) return false
   const setup = parseSetup(chosen.text)
+  await useOpenedProjectSetup()
   await restoreSetup(setup, setupName(chosen.path))
   return true
 }

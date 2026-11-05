@@ -34,6 +34,7 @@ vi.mock('../desktop', () => ({
     return { path: `/projects/${name}`, name }
   }),
   openProjectSetup: vi.fn(async () => toOpen),
+  useOpenedProjectSetup: vi.fn(async () => {}),
   forgetProjectSetup: vi.fn(async () => {}),
   // (UniProt: the proteome lands in the app's databases folder, or fails when `uniprotDown`)
   downloadProteome: vi.fn(async (id: string, reviewed: boolean) => {
@@ -82,7 +83,7 @@ describe('projects in New search', () => {
     form.notices = []
     form.removed = null
     form.choosePreset('orbitrap-hcd-tryptic')
-    Object.assign(project, { name: null, searchId: null, busy: false, confirmNew: false, confirmSdrf: null })
+    Object.assign(project, { name: null, searchId: null, busy: false, confirmNew: false, confirmOpen: null, confirmSdrf: null })
     sdrf.path = null
     Object.assign(toolState, { status: 'ready', info: { version: '3.7.0', path: '/x/ProSE', onnx: true }, error: null })
     await form.addFiles(['/data/a.mzML', '/data/b.mzML', '/db/human.fasta'])
@@ -122,7 +123,9 @@ describe('projects in New search', () => {
     form.peptdeep = false
     form.setParam('precursor:mass_tolerance', 20)
     toOpen = { path: '/projects/prose-results.prose-project.json', text: saved[0].contents }
-    expect(await openProject()).toBe(true)
+    // (those are unsaved changes to the project: Open asks first, here answered with "Discard changes")
+    expect(await openProject()).toBe(false)
+    expect(await openProject(undefined, true)).toBe(true)
     await settle()
     expect(form.files.map((r) => [r.file.path, r.condition, r.replicate])).toEqual([
       ['/data/a.mzML', 'ctrl', undefined],
@@ -239,5 +242,34 @@ describe('projects in New search', () => {
     expect(newSetup(true)).toBe(true)
     expect(form.files).toEqual([])
     expect(project).toMatchObject({ name: null, confirmNew: false })
+  })
+
+  test('Open Project asks first about unsaved changes, and a file it refuses never becomes the project', async () => {
+    await saveProject(false)
+    const good = { path: '/projects/exp.prose-project.json', text: saved[0].contents }
+    toOpen = good
+    await openProject()
+    await settle()
+    expect(project.name).toBe('exp')
+    expect(desktop.useOpenedProjectSetup).toHaveBeenCalledTimes(1)
+
+    // changed, then Open Project (or Open Recent): asked first, nothing opened until answered
+    form.setParam('precursor:mass_tolerance', 15)
+    vi.mocked(desktop.openProjectSetup).mockClear()
+    expect(await openProject(2)).toBe(false)
+    expect(project.confirmOpen).toEqual({ recent: 2 })
+    expect(desktop.openProjectSetup).not.toHaveBeenCalled()
+    expect(form.value('precursor:mass_tolerance')).toBe(15)
+    // "Discard changes": the recent project opens
+    expect(await openProject(2, true)).toBe(true)
+    expect(desktop.openProjectSetup).toHaveBeenCalledWith(2)
+    expect(project.confirmOpen).toBeNull()
+
+    // a file that does not read as a project: an error, and the shim is not told to use it (Save keeps its file)
+    vi.mocked(desktop.useOpenedProjectSetup).mockClear()
+    toOpen = { path: '/projects/broken.prose-project.json', text: '{"format":"something else"}' }
+    await expect(openProject(undefined, true)).rejects.toThrow()
+    expect(desktop.useOpenedProjectSetup).not.toHaveBeenCalled()
+    expect(project.name).toBe('exp')
   })
 })
