@@ -32,8 +32,9 @@
 
 use crate::args::{
     build_args_with, command_line, humanize, ini_of, input_placements, input_records_with,
-    reserved_stem, split_search_args, with_contaminants, InputLinks, InputRecord, Placement,
-    SearchRequest, COMMAND_FILE, DATABASE_FILE, DATABASE_RECORD, DATABASE_SOURCE, INI_FILE,
+    reserved_stem, split_search_args, with_contaminants, with_idxml_option, InputLinks,
+    InputRecord, Placement, SearchRequest, COMMAND_FILE, DATABASE_FILE, DATABASE_RECORD,
+    DATABASE_SOURCE, INI_FILE,
 };
 use crate::decoys::DecoyRules;
 use crate::history::{finish_partial, lock_partial, remove_partial, with_backoff};
@@ -1076,7 +1077,11 @@ impl Searches {
         let partial = searches_dir.join(format!("{id}.partial"));
         let done_dir = searches_dir.join(&id);
         // everything that can be wrong with the request is found before a folder exists
-        let args = build_args_with(&request, &partial, self.links)?;
+        // (a one-input search's idXML: the option the tool lists, `-out` or, before OpenMS 3.7, `-out_idxml`)
+        let args = with_idxml_option(
+            build_args_with(&request, &partial, self.links)?,
+            tool::idxml_option_of(tool_path),
+        );
 
         fs::create_dir(&partial).map_err(|e| {
             format!(
@@ -1225,6 +1230,23 @@ fn prepare_folder(
                     file.path
                 )
             })?,
+            // (Windows) a hard link is of a file only: a Bruker .d folder that needs another name in the search
+            // folder cannot get one there (the reasons as below; nothing is ever copied)
+            Placement::HardLink if original.is_dir() => {
+                let why = if reserved_stem(&record.name) {
+                    "ProSE's own result files are called quantms"
+                } else if !record.link.ends_with(&record.name) {
+                    "its name is too long for ProSE's result files in the search folder"
+                } else {
+                    "another input has the same name, and ProSE names its results after the inputs"
+                };
+                return Err(format!(
+                    "ProSE needs the Bruker folder {} under another name in the search folder, because {why}. On \
+                     Windows the app can give a file another name there (a hard link), but not a folder. Rename \
+                     the folder and start the search again.",
+                    file.path
+                ));
+            }
             // (Windows) a hard link works on the folder's own volume only; nothing is ever copied
             Placement::HardLink => fs::hard_link(&original, &link).map_err(|e| {
                 // (a name too long for ProSE's outputs in the search folder: its link's name is shortened)

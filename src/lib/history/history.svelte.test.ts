@@ -259,12 +259,23 @@ describe('the command line of a search', () => {
         { path: '/runs/a b.mzML', index: 0 },
         { path: '/runs/c.mzML', index: 1 },
       ]),
-      'database-source.json': JSON.stringify({ path: '/db/human.fasta' }),
+      'database.json': JSON.stringify({ path: '/db/human.fasta' }),
     })
     expect(await commandLineOf('9-0', false)).toBe('ProSE -in <input 1> <input 2> -database <database> -ini <search folder>/prose.ini')
     expect(await commandLineOf('9-0', true)).toBe('ProSE -in "/runs/a b.mzML" /runs/c.mzML -database /db/human.fasta -ini <search folder>/prose.ini')
     disk.addFolder('9-1', { 'search.json': '{}' })
     expect(await commandLineOf('9-1', true)).toBeNull()
+  })
+
+  test('with contaminants the database stays a placeholder: the FASTA alone would be another search', async () => {
+    const { commandLineOf } = await import('./history.svelte')
+    disk.addFolder('9-2', {
+      'search.json': '{}',
+      'command.txt': 'ProSE -in <input 1> -database <database>\n',
+      'inputs.json': JSON.stringify([{ path: '/runs/a.mzML', index: 0 }]),
+      'database-source.json': JSON.stringify({ path: '/db/human.fasta' }),
+    })
+    expect(await commandLineOf('9-2', true)).toBe('ProSE -in /runs/a.mzML -database <database>')
   })
 })
 
