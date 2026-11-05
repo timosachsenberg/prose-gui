@@ -13,20 +13,12 @@ jobs:
   list:
     runs-on: ubuntu-22.04
     steps:
-      - name: The archive's listing, three levels
+      - name: The candidate folders with sizes, two levels
         run: |
-          list() { curl -sfL --max-time 30 "$1" | grep -oE 'href="[^"?#]+"' | cut -d'"' -f2 | grep -vE '^(/|\.\./|https?:)' || true; }
-          base=https://archive.openms.de/
-          curl -sfIL --max-time 30 "$base" | head -5 || true
-          for a in $(list "$base"); do
-            echo "$a"
-            case "$a" in */) ;; *) continue ;; esac
-            for b in $(list "$base$a"); do
-              echo "  $a$b"
-              case "$b" in */) ;; *) continue ;; esac
-              for c in $(list "$base$a$b" | head -60); do echo "    $a$b$c"; done
-            done
+          base=https://archive.openms.de/openms/
+          page() { echo "## $1"; curl -sfL --max-time 30 "$base$1" | sed -e 's/<[^>]*>/ /g' | tr -s ' ' | grep -vE '^ *$|Index of|\.\./' | head -80 || true; }
+          sub() { curl -sfL --max-time 30 "$base$1" | grep -oE 'href="[^"?#]+/"' | cut -d'"' -f2 | grep -vE '^(/|\.\./|https?:)' || true; }
+          for d in testfiles/proteobench-astral-entrapment/ testfiles/lfq/ testfiles/20260717-ProteomicsLFQ-Multi-Instrument/ benchmarks/pride-benchmarks/ testfiles/raw-file-museum/; do
+            page "$d"
+            for s in $(sub "$d"); do page "$d$s"; done
           done
-      - name: The archive's index pages with sizes (top two levels)
-        run: |
-          curl -sfL --max-time 30 https://archive.openms.de/ | sed -e 's/<[^>]*>/ /g' | tr -s ' ' | grep -v '^ *$' | head -80 || true
