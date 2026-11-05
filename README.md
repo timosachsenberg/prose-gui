@@ -61,12 +61,18 @@ libglvnd-gles` (Fedora).
 
 ## Curating PSMs
 
-In the PSM view, **Accept** and **Reject** (keys A and R; pressing again takes the mark away) mark the open PSM. The
-PSM table shows the mark in its Curation column and filters by it (Curated, Accepted, Rejected, Not curated); with the
-table at Not curated, marking a PSM goes on to the next one. Export › TSV (current view) saves the table as shown
-(Export › CSV for spreadsheets), and Export › Curated PSMs (TSV) every marked PSM, whatever the filters, with its mark.
-The marks are saved in the search's folder as `curation.json` (`src/lib/results/curation.ts`: each PSM by its file,
-native ID, peptide and charge), so they stay with the search in History and go with its project file.
+In the PSM view, **Accept** and **Reject** (keys A and R; pressing again takes the mark away) mark the open PSM, and
+**Note** keeps an optional line of text on it (saved when the field loses the focus or on Enter). The PSM table shows
+the mark in its Curation column (the note in its Note column, under Columns) and filters by it (Curated, Accepted,
+Rejected, Not curated); with the table at Not curated, marking a PSM goes on to the next one. **Mark shown** accepts,
+rejects or unmarks every PSM the table shows (e.g. all PSMs of a peptide after "All n in the PSM table"), with Undo.
+The Peptides table counts the accepted (✓) and rejected (✗) PSMs of each peptide and filters by them (With an
+accepted PSM, ...).
+
+Export › TSV (current view) saves the table as shown (Export › CSV for spreadsheets), and Export › Curated PSMs (TSV)
+every marked or noted PSM, whatever the filters, with its mark and note. The marks and notes are saved in the
+search's folder as `curation.json` (`src/lib/results/curation.ts`: each PSM by its file, native ID, peptide and
+charge), so they stay with the search in History and go with its project file.
 
 ## Project files
 

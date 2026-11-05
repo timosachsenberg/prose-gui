@@ -78,6 +78,12 @@ export function columnSpecs(m: ResultModel, level: Level, search: { openSearch: 
       ...sampleSpecs(m),
       col('foundIn', 'Found in', 84, 'left', { title: foundTitle }),
       col('bestQ', 'Best PSM q-value', 148, 'right'),
+      col('curation', 'Curation', 96, 'left', {
+        sortKey: 'acceptedPsms',
+        csv: ['acceptedPsms', 'rejectedPsms'],
+        optional: 'shown',
+        title: 'Its PSMs that you accepted (✓) and rejected (✗), whatever the cutoffs. Sorts by the accepted ones',
+      }),
       col('length', 'Length', 70, 'right', { optional: 'hidden' }),
     ]
   }
@@ -93,6 +99,7 @@ export function columnSpecs(m: ResultModel, level: Level, search: { openSearch: 
     col('score', columnDef(m, 'psms', 'score')!.header, 130, 'right'),
     col('qValue', 'q-value', 90, 'right'),
     col('curation', 'Curation', 96, 'left', { optional: 'shown', title: 'Your mark of the PSM: accepted or rejected (the PSM view, keys A and R)' }),
+    col('note', 'Note', 180, 'left', { sortKey: 'curationNote', csv: ['curationNote'], optional: 'hidden', title: 'Your note on the PSM (the PSM view)' }),
     col('pep', 'PEP', 70, 'right', { optional: 'hidden', title: 'Posterior error probability (Percolator)' }),
     col('deltaMass', 'Δ mass (Da)', 104, 'right', { optional: search.openSearch ? 'shown' : 'hidden', title: 'Unassigned mass shift of an open search' }),
     col('file', 'File', 160, 'left', { optional: 'hidden' }),

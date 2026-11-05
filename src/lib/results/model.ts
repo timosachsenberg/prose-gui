@@ -106,6 +106,8 @@ export type ResultModel = {
    * and changes it in place (`ResultsView.curation`); a model of its own has one without marks.
    */
   curation: Uint8Array
+  /** Per PSM row (only those with one): the user's note. Owned by the results view as `curation` is. */
+  curationNotes: Map<number, string>
 }
 
 /** Contaminants of the cRAP database carry this accession prefix. */
@@ -196,7 +198,7 @@ export const baseName = (path: string) => path.slice(Math.max(path.lastIndexOf('
 export function buildModel(
   t: ResultTables,
   d: DesignResolution,
-  opts: { showTechReplicates: boolean; psmFdr: number; proteinFdr: number; rescored?: boolean; curation?: Uint8Array },
+  opts: { showTechReplicates: boolean; psmFdr: number; proteinFdr: number; rescored?: boolean; curation?: Uint8Array; curationNotes?: Map<number, string> },
 ): ResultModel {
   const { showTechReplicates, psmFdr, proteinFdr } = opts
   const rescored = opts.rescored ?? false
@@ -374,5 +376,6 @@ export function buildModel(
     },
     columnSample,
     curation: opts.curation ?? new Uint8Array(t.psms.count),
+    curationNotes: opts.curationNotes ?? new Map(),
   }
 }

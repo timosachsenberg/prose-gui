@@ -7,7 +7,7 @@
 // (see `peptideCounts`): the getters get the counts to read as their third argument.
 
 import { psmProforma } from '../format/peptide'
-import { MARK_NAMES } from './curation'
+import { MARK_NAMES, peptideMarks } from './curation'
 import { parseAccession, parseDescription } from './display'
 import { baseName, type Level, type PeptideCounts, type ResultModel } from './model'
 
@@ -74,6 +74,9 @@ const peptides: Record<string, ColumnDef> = {
   foundIn: num('Found in', (_, k, c) => c.foundIn[k]),
   contaminant: num('Contaminant', (m, k) => m.peptide.contaminant[k]),
   decoy: num('Decoy', (m, k) => m.tables.peptides.decoy[k]),
+  // its PSMs that the user accepted, rejected (curation.ts; all its PSMs, whatever the cutoffs)
+  acceptedPsms: num('Accepted PSMs', (m, k) => peptideMarks(m).accepted[k]),
+  rejectedPsms: num('Rejected PSMs', (m, k) => peptideMarks(m).rejected[k]),
 }
 
 const psms: Record<string, ColumnDef> = {
@@ -102,6 +105,7 @@ const psms: Record<string, ColumnDef> = {
   decoy: num('Decoy', (m, i) => m.tables.psms.decoy[i]),
   // the user's mark (curation.ts): sorts accepted, rejected, then the PSMs without a mark; prints its name
   curation: label('Curation', (m, i) => m.curation[i] || NaN, (m, i) => MARK_NAMES[m.curation[i]] ?? ''),
+  curationNote: str('Curation note', (m, i) => m.curationNotes.get(i) ?? ''),
 }
 
 const tables: Record<Level, Record<string, ColumnDef>> = { proteins, peptides, psms }

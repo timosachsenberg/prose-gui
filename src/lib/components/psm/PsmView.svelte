@@ -20,6 +20,7 @@
   // written) or the selection, then leaves the tool, then closes the view; Delete removes what is selected.
   // "Accept" and "Reject" (keys A and R; again: the mark goes) curate the PSM (results/curation.ts, view.curate): the
   // PSM table shows and filters the marks, and a PSM that the table's curation filter now hides gives way to the next.
+  // The note under the header (optional, one line) is saved with the marks when the field loses the focus or on Enter.
   import { signedNumber } from '$lib/format/number'
   import { errorText } from '$lib/format/error'
   import { Button, buttonVariants } from '$lib/components/ui/button'
@@ -57,7 +58,7 @@
   } from '$lib/psm/psm'
   import { exportSpectrumSvg } from '$lib/psm/svg-export'
   import { COISOLATED_TITLE, chimericRank, isCoisolated, sameSpectrum } from '$lib/results/coisolated'
-  import { ACCEPTED, NONE, REJECTED } from '$lib/results/curation'
+  import { ACCEPTED, MAX_NOTE, NONE, REJECTED } from '$lib/results/curation'
   import { baseName } from '$lib/results/model'
   import { formatQValue, parseAccession, parseDescription, scanNumber } from '$lib/results/display'
   import type { LoadedSpectra, PsmSpectra } from '$lib/results/read'
@@ -102,6 +103,11 @@
   const mark = $derived.by(() => {
     void view.curationVersion
     return view.curation[row]
+  })
+  /** The open PSM's note ('' none). */
+  const note = $derived.by(() => {
+    void view.curationVersion
+    return view.curationNotes.get(row) ?? ''
   })
   /** Marks the open PSM, or takes the mark away when it has it. */
   function curate(next: typeof ACCEPTED | typeof REJECTED) {
@@ -572,6 +578,20 @@
           title={COISOLATED_TITLE} />{/if}
     </p>
   </div>
+  {#key row}
+    <label class="mb-2 flex max-w-xl items-center gap-2 text-xs" data-testid="psm-note">
+      <span class="text-muted-foreground">Note</span>
+      <input
+        type="text"
+        class="h-7 min-w-0 flex-1 rounded-md border bg-background px-2 text-xs outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+        placeholder="Optional, e.g. why you accepted or rejected the PSM"
+        maxlength={MAX_NOTE}
+        spellcheck="false"
+        value={note}
+        onchange={(e) => view.setNote(row, e.currentTarget.value)}
+        onkeydown={(e) => e.key === 'Enter' && e.currentTarget.blur()} />
+    </label>
+  {/key}
   {#if mates.length > 0}
     <!-- the PSMs of the other precursors of this spectrum: each opens here (the table below keeps its place) -->
     <p class="-mt-1 mb-2 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs text-muted-foreground" data-testid="same-spectrum">
