@@ -450,7 +450,7 @@ async fn save_bytes(
         .headers()
         .get("x-file-name")
         .and_then(|v| v.to_str().ok())
-        .map(|v| percent_decode(v))
+        .map(percent_decode)
         .unwrap_or_else(|| "export.xlsx".to_string());
     tauri::async_runtime::spawn_blocking(move || {
         let Some(path) = ask_save_path(&app, &name)? else {

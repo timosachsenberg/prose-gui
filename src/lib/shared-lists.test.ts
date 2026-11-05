@@ -8,14 +8,20 @@ import { isSpectrum } from './search/files'
 
 const rust = (file: string) => readFileSync(join(import.meta.dirname, '../../src-tauri/src', file), 'utf8')
 const strings = (line: string) => [...line.matchAll(/"([^"]+)"/g)].map((m) => m[1])
+/** The text of the Rust array constant `name` (up to its closing `];`, over the lines rustfmt breaks it into). */
+const constant = (file: string, name: string) => {
+  const text = rust(file)
+  const at = text.indexOf(`pub const ${name}`)
+  return at < 0 ? '' : text.slice(at, text.indexOf('];', at))
+}
 
 test('the files a project leaves out are the same in Rust and TypeScript', () => {
-  const line = rust('project.rs').split('\n').find((l) => l.startsWith('pub const LEFT_OUT'))!
+  const line = constant('project.rs', 'LEFT_OUT')
   expect(new Set(strings(line))).toEqual(LEFT_OUT)
 })
 
 test('the spectrum suffixes are the same in Rust and TypeScript', () => {
-  const line = rust('args.rs').split('\n').find((l) => l.startsWith('pub const SPECTRUM_SUFFIXES'))!
+  const line = constant('args.rs', 'SPECTRUM_SUFFIXES')
   const suffixes = strings(line)
   for (const s of suffixes) expect(isSpectrum(`run${s}`), s).toBe(true)
   for (const other of ['.wiff', '.mgf', '.mzXML']) expect(isSpectrum(`run${other}`), other).toBe(false)
