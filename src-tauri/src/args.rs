@@ -62,18 +62,25 @@ pub const SDRF_FILE: &str = "design.sdrf.tsv";
 pub fn sdrf_for_inputs(text: &str, records: &[InputRecord]) -> String {
     let eol = if text.contains("\r\n") { "\r\n" } else { "\n" };
     let mut lines = text.split(eol);
-    let Some(header) = lines.next() else { return text.to_string() };
+    let Some(header) = lines.next() else {
+        return text.to_string();
+    };
     let col = header
         .split('\t')
         .position(|h| h.trim().to_lowercase().replace(' ', "") == "comment[datafile]");
-    let Some(col) = col else { return text.to_string() };
+    let Some(col) = col else {
+        return text.to_string();
+    };
     let base = |p: &str| p.rsplit(['/', '\\']).next().unwrap_or(p).to_string();
     let mut out = vec![header.to_string()];
     for line in lines {
         let mut cells: Vec<String> = line.split('\t').map(str::to_string).collect();
         if let Some(cell) = cells.get_mut(col) {
             let stem = crate::locate::data_file_stem(&base(cell.trim()));
-            if let Some(r) = records.iter().find(|r| crate::locate::data_file_stem(&r.name) == stem) {
+            if let Some(r) = records
+                .iter()
+                .find(|r| crate::locate::data_file_stem(&r.name) == stem)
+            {
                 *cell = r.link.clone();
             }
         }
@@ -487,7 +494,11 @@ fn check_file(
     if is_bruker_d(&file_name(path)) != meta.is_dir() || !(meta.is_file() || meta.is_dir()) {
         return Err(format!(
             "The {kind} {path} is not a {}.",
-            if is_bruker_d(&file_name(path)) { "Bruker .d folder" } else { "file" }
+            if is_bruker_d(&file_name(path)) {
+                "Bruker .d folder"
+            } else {
+                "file"
+            }
         ));
     }
     if !accepted(&file_name(path)) {
@@ -1075,7 +1086,9 @@ struct IniNode {
 
 impl IniNode {
     fn at(&mut self, path: &[&str]) -> &mut IniNode {
-        let Some((first, rest)) = path.split_first() else { return self };
+        let Some((first, rest)) = path.split_first() else {
+            return self;
+        };
         let k = match self.children.iter().position(|(n, _)| n == first) {
             Some(k) => k,
             None => {
@@ -1088,7 +1101,10 @@ impl IniNode {
 
     fn write(&self, name: &str, depth: usize, out: &mut String) {
         let pad = "  ".repeat(depth);
-        out.push_str(&format!("{pad}<NODE name=\"{}\" description=\"\">\n", xml_escape(name)));
+        out.push_str(&format!(
+            "{pad}<NODE name=\"{}\" description=\"\">\n",
+            xml_escape(name)
+        ));
         for item in &self.items {
             out.push_str(&format!("{pad}  {item}\n"));
         }
@@ -1114,19 +1130,24 @@ pub fn ini_of(search_args: &[OsString]) -> Result<String, String> {
         let name = arg
             .strip_prefix("-Search:")
             .ok_or_else(|| format!("{arg} is not a search parameter."))?;
-        let kind = kind_of(name).ok_or_else(|| format!("{name} is not a search parameter the app sets."))?;
+        let kind = kind_of(name)
+            .ok_or_else(|| format!("{name} is not a search parameter the app sets."))?;
         i += 1;
         let mut values = Vec::new();
         match kind {
             Flag => {}
             List => {
-                while i < search_args.len() && !search_args[i].to_string_lossy().starts_with("-Search:") {
+                while i < search_args.len()
+                    && !search_args[i].to_string_lossy().starts_with("-Search:")
+                {
                     values.push(search_args[i].to_string_lossy().into_owned());
                     i += 1;
                 }
             }
             _ => {
-                let v = search_args.get(i).ok_or_else(|| format!("{name} has no value."))?;
+                let v = search_args
+                    .get(i)
+                    .ok_or_else(|| format!("{name} has no value."))?;
                 values.push(v.to_string_lossy().into_owned());
                 i += 1;
             }
@@ -1169,7 +1190,13 @@ pub fn ini_of(search_args: &[OsString]) -> Result<String, String> {
 
 /// The command line of `args` with the paths as placeholders: each input (`inputs`, the paths ProSE was given)
 /// `<input n>`, the database `<database>`, the search folder `<search folder>`; quoted where it has a blank.
-pub fn command_line(tool: &str, args: &[OsString], inputs: &[OsString], database: &OsString, folder: &Path) -> String {
+pub fn command_line(
+    tool: &str,
+    args: &[OsString],
+    inputs: &[OsString],
+    database: &OsString,
+    folder: &Path,
+) -> String {
     let folder = folder.to_string_lossy().into_owned();
     let mut words = vec![tool.to_string()];
     for a in args {
@@ -1200,16 +1227,38 @@ mod ini_tests {
     #[test]
     fn the_search_arguments_become_an_ini_by_their_types() {
         let args = os(&[
-            "-in", "/f/1__a.mzML", "-database", "/db/h.fasta", "-threads", "0",
-            "-Search:rescore", "true", "-Search:peptdeep:enable",
-            "-Search:enzyme", "Trypsin/P",
-            "-Search:precursor:mass_tolerance_lower", "7.5",
-            "-Search:peptide:missed_cleavages", "2",
-            "-Search:modifications:variable", "Oxidation (M)", "Acetyl (Protein N-term)",
+            "-in",
+            "/f/1__a.mzML",
+            "-database",
+            "/db/h.fasta",
+            "-threads",
+            "0",
+            "-Search:rescore",
+            "true",
+            "-Search:peptdeep:enable",
+            "-Search:enzyme",
+            "Trypsin/P",
+            "-Search:precursor:mass_tolerance_lower",
+            "7.5",
+            "-Search:peptide:missed_cleavages",
+            "2",
+            "-Search:modifications:variable",
+            "Oxidation (M)",
+            "Acetyl (Protein N-term)",
             "-Search:modifications:fixed",
         ]);
         let (tool, search) = split_search_args(&args);
-        assert_eq!(tool, os(&["-in", "/f/1__a.mzML", "-database", "/db/h.fasta", "-threads", "0"]));
+        assert_eq!(
+            tool,
+            os(&[
+                "-in",
+                "/f/1__a.mzML",
+                "-database",
+                "/db/h.fasta",
+                "-threads",
+                "0"
+            ])
+        );
         let ini = ini_of(&search).unwrap();
         for part in [
             "<NODE name=\"ProSE\"",
@@ -1235,7 +1284,16 @@ mod ini_tests {
     #[test]
     fn the_command_line_names_paths_by_placeholders() {
         let folder = Path::new("/data/searches/1-0.partial");
-        let args = os(&["-in", "/data/searches/1-0.partial/1__a b.mzML", "-database", "/db/h.fasta", "-out_qpx", "/data/searches/1-0.partial/qpx", "-ini", "/data/searches/1-0.partial/prose.ini"]);
+        let args = os(&[
+            "-in",
+            "/data/searches/1-0.partial/1__a b.mzML",
+            "-database",
+            "/db/h.fasta",
+            "-out_qpx",
+            "/data/searches/1-0.partial/qpx",
+            "-ini",
+            "/data/searches/1-0.partial/prose.ini",
+        ]);
         let line = command_line("ProSE", &args, &args[1..2], &args[3], folder);
         assert_eq!(line, "ProSE -in <input 1> -database <database> -out_qpx <search folder>/qpx -ini <search folder>/prose.ini");
     }

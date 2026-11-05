@@ -22,7 +22,11 @@ pub const RECENT_FILE: &str = "recent-projects.json";
 /// `path` names a project file (`.prose-setup.json`, in any case).
 pub fn is_setup_name(path: &Path) -> bool {
     path.file_name()
-        .map(|n| n.to_string_lossy().to_lowercase().ends_with(SETUP_EXTENSION))
+        .map(|n| {
+            n.to_string_lossy()
+                .to_lowercase()
+                .ends_with(SETUP_EXTENSION)
+        })
         .unwrap_or(false)
 }
 
@@ -32,8 +36,14 @@ pub fn with_setup_extension(path: &Path) -> PathBuf {
     if is_setup_name(path) {
         return path.to_path_buf();
     }
-    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-    let stem = name.strip_suffix(".json").or_else(|| name.strip_suffix(".JSON")).unwrap_or(&name);
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let stem = name
+        .strip_suffix(".json")
+        .or_else(|| name.strip_suffix(".JSON"))
+        .unwrap_or(&name);
     let stem = if stem.is_empty() { "project" } else { stem };
     path.with_file_name(format!("{stem}{SETUP_EXTENSION}"))
 }
@@ -43,14 +53,19 @@ pub fn with_setup_extension(path: &Path) -> PathBuf {
 pub fn read_setup(path: &Path) -> Result<String, String> {
     let shown = path.display();
     if !is_setup_name(path) {
-        return Err(format!("{shown} is not a ProSE project file (its name does not end with {SETUP_EXTENSION})."));
+        return Err(format!(
+            "{shown} is not a ProSE project file (its name does not end with {SETUP_EXTENSION})."
+        ));
     }
     let meta = std::fs::metadata(path).map_err(|e| format!("{shown} cannot be read ({e})."))?;
     if !meta.is_file() {
         return Err(format!("{shown} is not a file."));
     }
     if meta.len() > MAX_SETUP_BYTES {
-        return Err(format!("{shown} is too large for a project file ({} bytes; at most {MAX_SETUP_BYTES}).", meta.len()));
+        return Err(format!(
+            "{shown} is too large for a project file ({} bytes; at most {MAX_SETUP_BYTES}).",
+            meta.len()
+        ));
     }
     let bytes = std::fs::read(path).map_err(|e| format!("{shown} cannot be read ({e})."))?;
     String::from_utf8(bytes).map_err(|_| format!("{shown} is not a text file."))
@@ -60,13 +75,18 @@ pub fn read_setup(path: &Path) -> Result<String, String> {
 /// so that a failed write leaves the earlier version; -> the path written. More than [`MAX_SETUP_BYTES`] is refused.
 pub fn write_setup(path: &Path, contents: &str) -> Result<PathBuf, String> {
     if contents.len() as u64 > MAX_SETUP_BYTES {
-        return Err(format!("The project is too large to save ({} bytes; at most {MAX_SETUP_BYTES}).", contents.len()));
+        return Err(format!(
+            "The project is too large to save ({} bytes; at most {MAX_SETUP_BYTES}).",
+            contents.len()
+        ));
     }
     let path = with_setup_extension(path);
     let shown = path.display();
     let partial = path.with_file_name(format!(
         ".{}.partial",
-        path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
+        path.file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default()
     ));
     std::fs::write(&partial, contents).map_err(|e| format!("{shown} cannot be written ({e})."))?;
     if let Err(e) = std::fs::rename(&partial, &path) {
@@ -85,8 +105,15 @@ pub const MAX_SDRF_BYTES: u64 = 64 * 1024 * 1024;
 /// Where the SDRF of the project file `setup` goes: beside it, `<name>.sdrf.tsv` (`exp.prose-setup.json` ->
 /// `exp.sdrf.tsv`).
 pub fn sdrf_beside(setup: &Path) -> PathBuf {
-    let name = setup.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-    let stem = if is_setup_name(setup) { &name[..name.len() - SETUP_EXTENSION.len()] } else { name.as_str() };
+    let name = setup
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let stem = if is_setup_name(setup) {
+        &name[..name.len() - SETUP_EXTENSION.len()]
+    } else {
+        name.as_str()
+    };
     let stem = if stem.is_empty() { "project" } else { stem };
     setup.with_file_name(format!("{stem}{SDRF_EXTENSION}"))
 }
@@ -94,7 +121,11 @@ pub fn sdrf_beside(setup: &Path) -> PathBuf {
 /// Writes `contents` as the SDRF beside the project file `setup` ([`sdrf_beside`]), through a temporary file. A
 /// file already there is replaced only if `overwrite`: else `Ok(Err(path))`, nothing written (the page asks).
 /// -> `Ok(Ok(path))` written.
-pub fn write_sdrf_beside(setup: &Path, contents: &str, overwrite: bool) -> Result<Result<PathBuf, PathBuf>, String> {
+pub fn write_sdrf_beside(
+    setup: &Path,
+    contents: &str,
+    overwrite: bool,
+) -> Result<Result<PathBuf, PathBuf>, String> {
     if contents.len() as u64 > MAX_SDRF_BYTES {
         return Err(format!("The SDRF is too large to save beside the project ({} bytes; at most {MAX_SDRF_BYTES}).", contents.len()));
     }
@@ -105,7 +136,9 @@ pub fn write_sdrf_beside(setup: &Path, contents: &str, overwrite: bool) -> Resul
     let shown = path.display();
     let partial = path.with_file_name(format!(
         ".{}.partial",
-        path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default()
+        path.file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default()
     ));
     std::fs::write(&partial, contents).map_err(|e| format!("{shown} cannot be written ({e})."))?;
     if let Err(e) = std::fs::rename(&partial, &path) {
@@ -145,9 +178,15 @@ pub fn forget_all(dir: &Path) {
 }
 
 fn save_recent(dir: &Path, list: &[PathBuf]) {
-    let names: Vec<String> = list.iter().map(|p| p.to_string_lossy().into_owned()).collect();
+    let names: Vec<String> = list
+        .iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect();
     if std::fs::create_dir_all(dir).is_ok() {
-        let _ = std::fs::write(dir.join(RECENT_FILE), serde_json::to_vec(&names).unwrap_or_default());
+        let _ = std::fs::write(
+            dir.join(RECENT_FILE),
+            serde_json::to_vec(&names).unwrap_or_default(),
+        );
     }
 }
 
@@ -168,9 +207,18 @@ mod tests {
         assert!(is_setup_name(Path::new("/a/RUN.PROSE-SETUP.JSON")));
         assert!(!is_setup_name(Path::new("/a/run.json")));
         assert!(!is_setup_name(Path::new("/a/run.prose")));
-        assert_eq!(with_setup_extension(Path::new("/a/run")), PathBuf::from("/a/run.prose-setup.json"));
-        assert_eq!(with_setup_extension(Path::new("/a/run.json")), PathBuf::from("/a/run.prose-setup.json"));
-        assert_eq!(with_setup_extension(Path::new("/a/run.prose-setup.json")), PathBuf::from("/a/run.prose-setup.json"));
+        assert_eq!(
+            with_setup_extension(Path::new("/a/run")),
+            PathBuf::from("/a/run.prose-setup.json")
+        );
+        assert_eq!(
+            with_setup_extension(Path::new("/a/run.json")),
+            PathBuf::from("/a/run.prose-setup.json")
+        );
+        assert_eq!(
+            with_setup_extension(Path::new("/a/run.prose-setup.json")),
+            PathBuf::from("/a/run.prose-setup.json")
+        );
     }
 
     #[test]
@@ -178,7 +226,10 @@ mod tests {
         let dir = scratch("roundtrip");
         let written = write_setup(&dir.join("exp"), "{\"format\":\"prose-setup\"}").unwrap();
         assert_eq!(written, dir.join("exp.prose-setup.json"));
-        assert_eq!(read_setup(&written).unwrap(), "{\"format\":\"prose-setup\"}");
+        assert_eq!(
+            read_setup(&written).unwrap(),
+            "{\"format\":\"prose-setup\"}"
+        );
         // (no partial file is left)
         assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
         let _ = std::fs::remove_dir_all(&dir);
@@ -189,8 +240,12 @@ mod tests {
         let dir = scratch("refused");
         let other = dir.join("data.json");
         std::fs::write(&other, "{}").unwrap();
-        assert!(read_setup(&other).unwrap_err().contains("not a ProSE project file"));
-        assert!(read_setup(&dir.join("gone.prose-setup.json")).unwrap_err().contains("cannot be read"));
+        assert!(read_setup(&other)
+            .unwrap_err()
+            .contains("not a ProSE project file"));
+        assert!(read_setup(&dir.join("gone.prose-setup.json"))
+            .unwrap_err()
+            .contains("cannot be read"));
         let large = dir.join("large.prose-setup.json");
         std::fs::write(&large, vec![b' '; MAX_SETUP_BYTES as usize + 1]).unwrap();
         assert!(read_setup(&large).unwrap_err().contains("too large"));
@@ -201,7 +256,9 @@ mod tests {
         std::fs::write(&binary, [0xff, 0xfe, 0x00]).unwrap();
         assert!(read_setup(&binary).unwrap_err().contains("not a text file"));
         let too_much = " ".repeat(MAX_SETUP_BYTES as usize + 1);
-        assert!(write_setup(&dir.join("big"), &too_much).unwrap_err().contains("too large"));
+        assert!(write_setup(&dir.join("big"), &too_much)
+            .unwrap_err()
+            .contains("too large"));
         assert!(!dir.join("big.prose-setup.json").exists());
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -211,13 +268,31 @@ mod tests {
         let dir = scratch("sdrf");
         let setup = dir.join("exp.prose-setup.json");
         assert_eq!(sdrf_beside(&setup), dir.join("exp.sdrf.tsv"));
-        assert_eq!(write_sdrf_beside(&setup, "source name\n", false).unwrap(), Ok(dir.join("exp.sdrf.tsv")));
-        assert_eq!(std::fs::read_to_string(dir.join("exp.sdrf.tsv")).unwrap(), "source name\n");
+        assert_eq!(
+            write_sdrf_beside(&setup, "source name\n", false).unwrap(),
+            Ok(dir.join("exp.sdrf.tsv"))
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.join("exp.sdrf.tsv")).unwrap(),
+            "source name\n"
+        );
         // already there: left as it is unless replaced
-        assert_eq!(write_sdrf_beside(&setup, "other\n", false).unwrap(), Err(dir.join("exp.sdrf.tsv")));
-        assert_eq!(std::fs::read_to_string(dir.join("exp.sdrf.tsv")).unwrap(), "source name\n");
-        assert_eq!(write_sdrf_beside(&setup, "other\n", true).unwrap(), Ok(dir.join("exp.sdrf.tsv")));
-        assert_eq!(std::fs::read_to_string(dir.join("exp.sdrf.tsv")).unwrap(), "other\n");
+        assert_eq!(
+            write_sdrf_beside(&setup, "other\n", false).unwrap(),
+            Err(dir.join("exp.sdrf.tsv"))
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.join("exp.sdrf.tsv")).unwrap(),
+            "source name\n"
+        );
+        assert_eq!(
+            write_sdrf_beside(&setup, "other\n", true).unwrap(),
+            Ok(dir.join("exp.sdrf.tsv"))
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.join("exp.sdrf.tsv")).unwrap(),
+            "other\n"
+        );
         assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -239,7 +314,11 @@ mod tests {
         // a broken list is no list; entries that are no project files are left out
         std::fs::write(dir.join(RECENT_FILE), "not json").unwrap();
         assert!(recent(&dir).is_empty());
-        std::fs::write(dir.join(RECENT_FILE), "[\"relative.prose-setup.json\", \"/x/y.txt\"]").unwrap();
+        std::fs::write(
+            dir.join(RECENT_FILE),
+            "[\"relative.prose-setup.json\", \"/x/y.txt\"]",
+        )
+        .unwrap();
         assert!(recent(&dir).is_empty());
         forget_all(&dir);
         assert!(recent(&dir).is_empty());

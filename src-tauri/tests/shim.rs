@@ -531,7 +531,11 @@ fn input_paths_are_validated() {
     assert!(build_args(&request(&[&bruker], &i.fasta, false, json!({})), &out).is_ok());
     // a regular file named .d is no Bruker folder
     let fake = i.dir.write("data/fake.d", "x");
-    assert!(build_args(&request(&[&fake], &i.fasta, false, json!({})), &out).unwrap_err().contains("Bruker .d folder"));
+    assert!(
+        build_args(&request(&[&fake], &i.fasta, false, json!({})), &out)
+            .unwrap_err()
+            .contains("Bruker .d folder")
+    );
     assert!(
         build_args(&request(&[&i.mzml], &text, false, json!({})), &out)
             .unwrap_err()
@@ -1571,7 +1575,9 @@ fn the_tool_runs_on_its_bundled_dotnet_if_it_has_one() {
     let dir = TempDir::new("dotnet");
     let tool_path = dir.write("prose/bin/ProSE", "");
     let dotnet_root = |cmd: &std::process::Command| {
-        cmd.get_envs().find(|(k, _)| *k == "DOTNET_ROOT").map(|(_, v)| v.map(PathBuf::from))
+        cmd.get_envs()
+            .find(|(k, _)| *k == "DOTNET_ROOT")
+            .map(|(_, v)| v.map(PathBuf::from))
     };
     // no bundled runtime: DOTNET_ROOT is left as it is (a system .NET is found by the Thermo bridge)
     assert_eq!(tool::bundled_dotnet(&tool_path), None);
@@ -1582,7 +1588,10 @@ fn the_tool_runs_on_its_bundled_dotnet_if_it_has_one() {
     fs::create_dir_all(dir.path().join("prose/dotnet/host/fxr/10.0.14")).unwrap();
     let root = dir.path().join("prose/dotnet");
     assert_eq!(tool::bundled_dotnet(&tool_path), Some(root.clone()));
-    assert_eq!(dotnet_root(&tool::command_with(&tool_path, None)), Some(Some(root)));
+    assert_eq!(
+        dotnet_root(&tool::command_with(&tool_path, None)),
+        Some(Some(root))
+    );
 }
 
 #[test]
@@ -2506,7 +2515,11 @@ fn an_sdrf_is_passed_as_a_file_of_the_search_folder() {
     req.sdrf = Some("source name\tcomment[data file]\ns\ta.mzML\n".into());
     let args = args_of(&req, &out);
     let at = args.iter().position(|a| a == "-sdrf").expect("-sdrf");
-    assert_eq!(args[at + 1], out.join(prose_desktop_lib::args::SDRF_FILE).into_os_string());
+    assert_eq!(
+        args[at + 1],
+        out.join(prose_desktop_lib::args::SDRF_FILE)
+            .into_os_string()
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -2527,5 +2540,8 @@ fn the_sdrf_names_the_links_prose_sees() {
         sdrf_for_inputs(text, &records),
         "source name\tComment[Data File]\tfactor value[x]\r\na\t0__Ecoli_1.mzML\tp\r\nb\t1__Ecoli_2.mzML\tq\r\nc\tother.raw\tr\r\n"
     );
-    assert_eq!(sdrf_for_inputs("no data file\n", &records), "no data file\n");
+    assert_eq!(
+        sdrf_for_inputs("no data file\n", &records),
+        "no data file\n"
+    );
 }

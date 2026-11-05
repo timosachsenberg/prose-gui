@@ -14,7 +14,9 @@
 //!   the disk is asked.
 //! - [`example_files`]: the bundled example, as the two named runs the web app searches.
 
-use crate::args::{is_bruker_d, is_fasta_file, is_input_link, is_spectrum_file, suffix_start, DATABASE_RECORD};
+use crate::args::{
+    is_bruker_d, is_fasta_file, is_input_link, is_spectrum_file, suffix_start, DATABASE_RECORD,
+};
 use crate::content;
 use serde::Serialize;
 use std::fs;
@@ -345,9 +347,17 @@ pub fn inspect(path: &str) -> FileFacts {
         return facts;
     }
     let meta = match fs::metadata(path) {
-        Ok(meta) if (meta.is_file() && !is_bruker_d(&name)) || (meta.is_dir() && is_bruker_d(&name)) => meta,
+        Ok(meta)
+            if (meta.is_file() && !is_bruker_d(&name)) || (meta.is_dir() && is_bruker_d(&name)) =>
+        {
+            meta
+        }
         Ok(_) => {
-            facts.error = Some(if is_bruker_d(&name) { format!("{path} is not a Bruker .d folder.") } else { format!("{path} is not a file.") });
+            facts.error = Some(if is_bruker_d(&name) {
+                format!("{path} is not a Bruker .d folder.")
+            } else {
+                format!("{path} is not a file.")
+            });
             return facts;
         }
         Err(e) => {
@@ -356,8 +366,16 @@ pub fn inspect(path: &str) -> FileFacts {
         }
     };
     // (a .d folder: the sum of its files, not the folder's own entry)
-    facts.size = if meta.is_dir() { folder_bytes(Path::new(path)) } else { meta.len() };
-    facts.modified = meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_millis() as u64);
+    facts.size = if meta.is_dir() {
+        folder_bytes(Path::new(path))
+    } else {
+        meta.len()
+    };
+    facts.modified = meta
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_millis() as u64);
     let file = Path::new(path);
     let counted = if is_fasta_file(&name) {
         content::fasta(file, &name).map(|f| {

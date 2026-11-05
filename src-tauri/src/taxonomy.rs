@@ -24,7 +24,9 @@ pub struct ProteomeHit {
 pub fn encode(text: &str) -> String {
     text.bytes()
         .map(|b| match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => (b as char).to_string(),
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                (b as char).to_string()
+            }
             _ => format!("%{b:02X}"),
         })
         .collect()
@@ -34,19 +36,39 @@ pub fn encode(text: &str) -> String {
 fn taxa(name: &str, max: usize) -> Result<Vec<(u64, String, String)>, String> {
     let base = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils";
     let term = encode(&format!("{name}[All Names]"));
-    let found: Value = serde_json::from_str(&net::get_text(&format!("{base}/esearch.fcgi?db=taxonomy&retmode=json&retmax={max}&term={term}"), 20, "NCBI Taxonomy")?)
-        .map_err(|e| format!("NCBI Taxonomy answered something unexpected ({e})."))?;
-    let ids: Vec<String> = found["esearchresult"]["idlist"].as_array().into_iter().flatten().filter_map(|v| v.as_str().map(str::to_string)).collect();
+    let found: Value = serde_json::from_str(&net::get_text(
+        &format!("{base}/esearch.fcgi?db=taxonomy&retmode=json&retmax={max}&term={term}"),
+        20,
+        "NCBI Taxonomy",
+    )?)
+    .map_err(|e| format!("NCBI Taxonomy answered something unexpected ({e})."))?;
+    let ids: Vec<String> = found["esearchresult"]["idlist"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|v| v.as_str().map(str::to_string))
+        .collect();
     if ids.is_empty() {
         return Ok(Vec::new());
     }
-    let summary: Value = serde_json::from_str(&net::get_text(&format!("{base}/esummary.fcgi?db=taxonomy&retmode=json&id={}", ids.join(",")), 20, "NCBI Taxonomy")?)
-        .map_err(|e| format!("NCBI Taxonomy answered something unexpected ({e})."))?;
+    let summary: Value = serde_json::from_str(&net::get_text(
+        &format!(
+            "{base}/esummary.fcgi?db=taxonomy&retmode=json&id={}",
+            ids.join(",")
+        ),
+        20,
+        "NCBI Taxonomy",
+    )?)
+    .map_err(|e| format!("NCBI Taxonomy answered something unexpected ({e})."))?;
     Ok(ids
         .iter()
         .filter_map(|id| {
             let t = &summary["result"][id];
-            Some((id.parse().ok()?, t["scientificname"].as_str()?.to_string(), t["rank"].as_str().unwrap_or("").to_string()))
+            Some((
+                id.parse().ok()?,
+                t["scientificname"].as_str()?.to_string(),
+                t["rank"].as_str().unwrap_or("").to_string(),
+            ))
         })
         .collect())
 }
@@ -61,11 +83,16 @@ pub fn parse_proteomes(json: &str, taxid: u64, rank: &str) -> Vec<ProteomeHit> {
         .filter_map(|p| {
             Some(ProteomeHit {
                 upid: p["id"].as_str()?.to_string(),
-                organism: p["taxonomy"]["scientificName"].as_str().unwrap_or("").to_string(),
+                organism: p["taxonomy"]["scientificName"]
+                    .as_str()
+                    .unwrap_or("")
+                    .to_string(),
                 taxid,
                 rank: rank.to_string(),
                 proteins: p["proteinCount"].as_u64().unwrap_or(0),
-                reference: p["proteomeType"].as_str().is_some_and(|t| t.starts_with("Reference")),
+                reference: p["proteomeType"]
+                    .as_str()
+                    .is_some_and(|t| t.starts_with("Reference")),
                 strain: p["strain"].as_str().unwrap_or("").to_string(),
             })
         })
@@ -82,9 +109,17 @@ pub fn find_proteomes(name: &str) -> Result<Vec<ProteomeHit>, String> {
     let mut hits = Vec::new();
     for (taxid, _, rank) in taxa(name, 8)? {
         let url = format!("https://rest.uniprot.org/proteomes/search?query=organism_id:{taxid}&fields=upid,organism,organism_id,protein_count&format=json&size=5");
-        hits.extend(parse_proteomes(&net::get_text(&url, 20, "UniProt")?, taxid, &rank));
+        hits.extend(parse_proteomes(
+            &net::get_text(&url, 20, "UniProt")?,
+            taxid,
+            &rank,
+        ));
     }
-    hits.sort_by(|a, b| b.reference.cmp(&a.reference).then(b.proteins.cmp(&a.proteins)));
+    hits.sort_by(|a, b| {
+        b.reference
+            .cmp(&a.reference)
+            .then(b.proteins.cmp(&a.proteins))
+    });
     hits.truncate(20);
     Ok(hits)
 }
@@ -95,7 +130,10 @@ mod tests {
 
     #[test]
     fn encodes_and_parses() {
-        assert_eq!(encode("Chlamydomonas reinhardtii[All Names]"), "Chlamydomonas%20reinhardtii%5BAll%20Names%5D");
+        assert_eq!(
+            encode("Chlamydomonas reinhardtii[All Names]"),
+            "Chlamydomonas%20reinhardtii%5BAll%20Names%5D"
+        );
         let json = r#"{"results":[{"id":"UP000006906","taxonomy":{"scientificName":"Chlamydomonas reinhardtii","taxonId":3055},"proteomeType":"Reference proteome","strain":"CC-503","proteinCount":18840},{"id":"bad"}]}"#;
         let hits = parse_proteomes(json, 3055, "species");
         assert_eq!(hits.len(), 1);
@@ -109,8 +147,16 @@ mod tests {
     #[ignore]
     fn finds_a_non_model_organism() {
         let hits = find_proteomes("Chlamydomonas reinhardtii").unwrap();
-        assert!(hits.iter().any(|h| h.upid == "UP000006906" && h.reference), "{hits:?}");
+        assert!(
+            hits.iter().any(|h| h.upid == "UP000006906" && h.reference),
+            "{hits:?}"
+        );
         let common = find_proteomes("baker's yeast").unwrap();
-        assert!(common.iter().any(|h| h.taxid == 559292 || h.organism.contains("cerevisiae")), "{common:?}");
+        assert!(
+            common
+                .iter()
+                .any(|h| h.taxid == 559292 || h.organism.contains("cerevisiae")),
+            "{common:?}"
+        );
     }
 }

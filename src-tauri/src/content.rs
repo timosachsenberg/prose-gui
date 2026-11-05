@@ -170,10 +170,17 @@ pub fn instrument_of(head: &str) -> Option<Instrument> {
     let ic = head.find("<instrumentConfiguration ")?;
     let mut params = cv_params(head, ic, "<componentList");
     let block = &head[ic..];
-    let block = &block[..block.find("<componentList").or_else(|| block.find("</instrumentConfiguration")).unwrap_or(block.len())];
+    let block = &block[..block
+        .find("<componentList")
+        .or_else(|| block.find("</instrumentConfiguration"))
+        .unwrap_or(block.len())];
     if let Some(at) = block.find("<referenceableParamGroupRef") {
         let tag = &block[at..];
-        if let Some(r) = tag.find("ref=\"").map(|i| &tag[i + 5..]).and_then(|t| t.find('"').map(|e| &t[..e])) {
+        if let Some(r) = tag
+            .find("ref=\"")
+            .map(|i| &tag[i + 5..])
+            .and_then(|t| t.find('"').map(|e| &t[..e]))
+        {
             if let Some(group) = head.find(&format!("<referenceableParamGroup id=\"{r}\"")) {
                 params.extend(cv_params(head, group, "</referenceableParamGroup"));
             }
@@ -181,13 +188,18 @@ pub fn instrument_of(head: &str) -> Option<Instrument> {
     }
     let models: Vec<_> = params
         .into_iter()
-        .filter(|(acc, name)| acc.starts_with("MS:") && *acc != "MS:1000529" && !name.contains("serial number"))
+        .filter(|(acc, name)| {
+            acc.starts_with("MS:") && *acc != "MS:1000529" && !name.contains("serial number")
+        })
         .collect();
     let (acc, name) = models
         .iter()
         .find(|(_, name)| !name.ends_with("instrument model"))
         .or_else(|| models.first())?;
-    Some(Instrument { name: name.to_string(), accession: acc.to_string() })
+    Some(Instrument {
+        name: name.to_string(),
+        accession: acc.to_string(),
+    })
 }
 
 /// The instrument of the mzML at `path` (`.mzML` or `.mzML.gz`), from its first MiB.
@@ -196,7 +208,10 @@ pub fn mzml_instrument(path: &Path) -> Option<Instrument> {
     let gz = path.to_string_lossy().to_lowercase().ends_with(".gz");
     let mut head = Vec::new();
     if gz {
-        flate2::read::MultiGzDecoder::new(file).take(MZML_HEAD as u64).read_to_end(&mut head).ok()?;
+        flate2::read::MultiGzDecoder::new(file)
+            .take(MZML_HEAD as u64)
+            .read_to_end(&mut head)
+            .ok()?;
     } else {
         file.take(MZML_HEAD as u64).read_to_end(&mut head).ok()?;
     }
@@ -428,10 +443,18 @@ impl FastaScan {
         let organism = if let Some(at) = header.find(" OS=") {
             let rest = &header[at + 4..];
             // (the organism ends at the next field: " OX=", " GN=", " PE=", " SV=")
-            let end = [" OX=", " GN=", " PE=", " SV="].iter().filter_map(|f| rest.find(f)).min().unwrap_or(rest.len());
+            let end = [" OX=", " GN=", " PE=", " SV="]
+                .iter()
+                .filter_map(|f| rest.find(f))
+                .min()
+                .unwrap_or(rest.len());
             Some(rest[..end].trim())
         } else {
-            header.trim_end().strip_suffix(']').and_then(|h| h.rsplit_once('[')).map(|(_, o)| o.trim())
+            header
+                .trim_end()
+                .strip_suffix(']')
+                .and_then(|h| h.rsplit_once('['))
+                .map(|(_, o)| o.trim())
         };
         if let Some(o) = organism.filter(|o| !o.is_empty()) {
             *self.organisms.entry(o.to_string()).or_default() += 1;
@@ -440,12 +463,16 @@ impl FastaScan {
         if accession.starts_with("sp|") || accession.starts_with("tr|") {
             s.uniprot += 1;
             let id = accession.split('|').nth(1).unwrap_or("");
-            if id.rsplit_once('-').is_some_and(|(_, n)| !n.is_empty() && n.bytes().all(|c| c.is_ascii_digit())) {
+            if id
+                .rsplit_once('-')
+                .is_some_and(|(_, n)| !n.is_empty() && n.bytes().all(|c| c.is_ascii_digit()))
+            {
                 s.isoforms += 1;
             }
         }
         let lower = header.to_ascii_lowercase();
-        if accession.starts_with("CON__") || lower.contains("crap") || lower.contains("contaminant") {
+        if accession.starts_with("CON__") || lower.contains("crap") || lower.contains("contaminant")
+        {
             s.contaminants += 1;
         }
         self.decoys.count(accession, "DECOY_");
@@ -531,7 +558,8 @@ impl FastaScan {
             self.end_accession();
             self.end_header();
         }
-        let mut organisms: Vec<(String, u64)> = std::mem::take(&mut self.organisms).into_iter().collect();
+        let mut organisms: Vec<(String, u64)> =
+            std::mem::take(&mut self.organisms).into_iter().collect();
         organisms.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
         self.summary.organism_count = organisms.len() as u64;
         organisms.truncate(TOP_ORGANISMS);
@@ -667,14 +695,27 @@ mod tests {
 >CON__P00761 Trypsin\nIVGG\n\
 >DECOY_sp|P04637|P53_HUMAN\nPEEM\n";
         let s = fasta_of(fasta, "db.fasta").summary;
-        assert_eq!(s.organisms, vec![("Homo sapiens".to_string(), 2), ("Escherichia coli (strain K12)".to_string(), 1)]);
+        assert_eq!(
+            s.organisms,
+            vec![
+                ("Homo sapiens".to_string(), 2),
+                ("Escherichia coli (strain K12)".to_string(), 1)
+            ]
+        );
         assert_eq!((s.with_organism, s.organism_count), (3, 2));
-        assert_eq!((s.uniprot, s.isoforms, s.contaminants, s.decoys), (3, 1, 1, 1));
+        assert_eq!(
+            (s.uniprot, s.isoforms, s.contaminants, s.decoys),
+            (3, 1, 1, 1)
+        );
         // one decoy of five is no decoy database by OpenMS' rule, but ProSE's literal check finds DECOY_
         assert_eq!(s.decoy_marker.as_deref(), Some("DECOY_…"));
         assert_eq!(fasta_of(b">a\nPEPTIDE\n", "x").summary.decoy_marker, None);
         // NCBI headers name the organism in brackets; other headers name none, and nothing is wrong with them
-        let ncbi = fasta_of(b">XP_011520.1 tumor protein p53 [Homo sapiens]\nMEEP\n>ENSP0001 x\nMKV\n", "x").summary;
+        let ncbi = fasta_of(
+            b">XP_011520.1 tumor protein p53 [Homo sapiens]\nMEEP\n>ENSP0001 x\nMKV\n",
+            "x",
+        )
+        .summary;
         assert_eq!(ncbi.organisms, vec![("Homo sapiens".to_string(), 1)]);
         assert_eq!((ncbi.uniprot, ncbi.with_organism), (0, 1));
     }
@@ -859,7 +900,13 @@ mod tests {
             <cvParam cvRef="MS" accession="MS:1000556" name="LTQ Orbitrap XL" />
             <cvParam cvRef="MS" accession="MS:1000529" name="instrument serial number" value="01579B"/>
             <componentList count="3"><analyzer order="2"><cvParam cvRef="MS" accession="MS:1000484" name="orbitrap" />"#;
-        assert_eq!(instrument_of(direct), Some(Instrument { name: "LTQ Orbitrap XL".into(), accession: "MS:1000556".into() }));
+        assert_eq!(
+            instrument_of(direct),
+            Some(Instrument {
+                name: "LTQ Orbitrap XL".into(),
+                accession: "MS:1000556".into()
+            })
+        );
         let grouped = r#"<referenceableParamGroupList><referenceableParamGroup id="CommonInstrumentParams">
             <cvParam cvRef="MS" accession="MS:1000483" name="Thermo Fisher Scientific instrument model"/>
             <cvParam cvRef="MS" accession="MS:1002523" name="Q Exactive HF"/>
@@ -869,7 +916,8 @@ mod tests {
             <referenceableParamGroupRef ref="CommonInstrumentParams"/><componentList count="4">"#;
         assert_eq!(instrument_of(grouped).unwrap().accession, "MS:1002523");
         assert_eq!(instrument_of("<mzML><run>"), None);
-        let ecoli = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("resources/example/Ecoli_MS2_small.mzML");
+        let ecoli = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("resources/example/Ecoli_MS2_small.mzML");
         if ecoli.is_file() {
             assert_eq!(mzml_instrument(&ecoli).unwrap().name, "LTQ Orbitrap XL");
         }

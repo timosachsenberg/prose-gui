@@ -56,13 +56,13 @@ pub mod locate;
 pub mod menu;
 pub mod net;
 pub mod pride;
-pub mod sdrf_tools;
-pub mod spectra;
-pub mod taxonomy;
 pub mod progress;
 pub mod project;
 pub mod run;
+pub mod sdrf_tools;
 pub mod setup_file;
+pub mod spectra;
+pub mod taxonomy;
 pub mod tool;
 #[cfg(unix)]
 pub mod watchdog;
@@ -211,14 +211,22 @@ fn searches_dir(app: &AppHandle) -> Result<PathBuf, String> {
 /// UniProt proteomes of the organisms NCBI Taxonomy finds for `name` (`taxonomy`): only on the user's request.
 #[tauri::command]
 async fn find_proteomes(name: String) -> Result<Vec<taxonomy::ProteomeHit>, String> {
-    tauri::async_runtime::spawn_blocking(move || taxonomy::find_proteomes(&name)).await.map_err(|e| e.to_string())?
+    tauri::async_runtime::spawn_blocking(move || taxonomy::find_proteomes(&name))
+        .await
+        .map_err(|e| e.to_string())?
 }
 
 /// The proteomes downloaded into the app's `databases/` folder: their file names (`UP…[_reviewed].fasta`).
 #[tauri::command]
 fn downloaded_proteomes(app: AppHandle) -> Result<Vec<String>, String> {
-    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?.join("databases");
-    let Ok(entries) = std::fs::read_dir(&dir) else { return Ok(Vec::new()) };
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("databases");
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return Ok(Vec::new());
+    };
     let mut names: Vec<String> = entries
         .flatten()
         .filter(|e| e.file_type().map(|t| t.is_file()).unwrap_or(false))
@@ -245,7 +253,10 @@ fn open_url(url: String) -> Result<(), String> {
         c.arg("url.dll,FileProtocolHandler");
         c
     };
-    cmd.arg(&url).spawn().map(|_| ()).map_err(|e| format!("The browser cannot be opened ({e})."))
+    cmd.arg(&url)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("The browser cannot be opened ({e})."))
 }
 
 /// The reference proteome `proteome` (a UniProt proteome id, `UP` and nine digits) as a FASTA in the app's
@@ -253,11 +264,24 @@ fn open_url(url: String) -> Result<(), String> {
 /// is there already; `reviewed`: Swiss-Prot entries only. Only on this request of the user (like the PRIDE and OLS
 /// contacts of the SDRF features). -> the FASTA's path.
 #[tauri::command]
-async fn download_proteome(app: AppHandle, proteome: String, reviewed: bool) -> Result<String, String> {
-    if !(proteome.len() == 11 && proteome.starts_with("UP") && proteome[2..].bytes().all(|b| b.is_ascii_digit())) {
-        return Err(format!("{proteome} is not a UniProt proteome id (UP and nine digits, e.g. UP000005640)."));
+async fn download_proteome(
+    app: AppHandle,
+    proteome: String,
+    reviewed: bool,
+) -> Result<String, String> {
+    if !(proteome.len() == 11
+        && proteome.starts_with("UP")
+        && proteome[2..].bytes().all(|b| b.is_ascii_digit()))
+    {
+        return Err(format!(
+            "{proteome} is not a UniProt proteome id (UP and nine digits, e.g. UP000005640)."
+        ));
     }
-    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?.join("databases");
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("databases");
     tauri::async_runtime::spawn_blocking(move || {
         std::fs::create_dir_all(&dir).map_err(|e| format!("{} cannot be made ({e}).", dir.display()))?;
         let path = dir.join(format!("{proteome}{}.fasta", if reviewed { "_reviewed" } else { "" }));
@@ -322,9 +346,11 @@ async fn inspect_files(paths: Vec<String>) -> Result<Vec<files::FileFacts>, Stri
 /// once the rows are there. None for a file that is no mzML (or cannot be read).
 #[tauri::command]
 async fn inspect_spectra(paths: Vec<String>) -> Result<Vec<Option<spectra::SpectraFacts>>, String> {
-    tauri::async_runtime::spawn_blocking(move || paths.iter().map(|p| spectra::inspect_cached(p)).collect())
-        .await
-        .map_err(|e| e.to_string())
+    tauri::async_runtime::spawn_blocking(move || {
+        paths.iter().map(|p| spectra::inspect_cached(p)).collect()
+    })
+    .await
+    .map_err(|e| e.to_string())
 }
 
 /// The cores ProSE's threads may use: the threads' default ("all"). The webview's own count is capped
@@ -412,7 +438,10 @@ async fn save_text(
 /// A binary export (.xlsx): the raw body of the call, the suggested name in the `x-file-name` header
 /// (URI-encoded); the user chooses where, in the system's dialog.
 #[tauri::command]
-async fn save_bytes(app: AppHandle, request: tauri::ipc::Request<'_>) -> Result<Option<String>, String> {
+async fn save_bytes(
+    app: AppHandle,
+    request: tauri::ipc::Request<'_>,
+) -> Result<Option<String>, String> {
     let tauri::ipc::InvokeBody::Raw(body) = request.body() else {
         return Err("The file's contents are missing.".to_string());
     };
@@ -427,7 +456,8 @@ async fn save_bytes(app: AppHandle, request: tauri::ipc::Request<'_>) -> Result<
         let Some(path) = ask_save_path(&app, &name)? else {
             return Ok(None);
         };
-        std::fs::write(&path, body).map_err(|e| format!("{} cannot be written ({e}).", path.display()))?;
+        std::fs::write(&path, body)
+            .map_err(|e| format!("{} cannot be written ({e}).", path.display()))?;
         Ok(Some(path.to_string_lossy().into_owned()))
     })
     .await
@@ -593,7 +623,8 @@ async fn open_design_file(app: AppHandle) -> Result<Option<serde_json::Value>, S
             },
         };
         let Some(path) = chosen else { return Ok(None) };
-        let text = std::fs::read_to_string(&path).map_err(|e| format!("{} cannot be read ({e}).", path.display()))?;
+        let text = std::fs::read_to_string(&path)
+            .map_err(|e| format!("{} cannot be read ({e}).", path.display()))?;
         Ok(Some(serde_json::json!({ "path": path, "text": text })))
     })
     .await
@@ -606,7 +637,10 @@ async fn open_design_file(app: AppHandle) -> Result<Option<serde_json::Value>, S
 async fn read_design_file(path: String) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let p = Path::new(&path);
-        let name = p.file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
+        let name = p
+            .file_name()
+            .map(|n| n.to_string_lossy().to_lowercase())
+            .unwrap_or_default();
         if !p.is_absolute() || ![".tsv", ".txt", ".sdrf"].iter().any(|s| name.ends_with(s)) {
             return Err(format!("{path} is not an SDRF or design.tsv file."));
         }
@@ -622,9 +656,16 @@ async fn read_design_file(path: String) -> Result<String, String> {
 
 /// The data files an SDRF names (`locate`): beside the SDRF at `sdrf`, then below `folder` if given.
 #[tauri::command]
-async fn locate_data_files(sdrf: String, names: Vec<String>, folder: Option<String>) -> Result<Vec<locate::Located>, String> {
+async fn locate_data_files(
+    sdrf: String,
+    names: Vec<String>,
+    folder: Option<String>,
+) -> Result<Vec<locate::Located>, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let base = Path::new(&sdrf).parent().unwrap_or(Path::new("")).to_path_buf();
+        let base = Path::new(&sdrf)
+            .parent()
+            .unwrap_or(Path::new(""))
+            .to_path_buf();
         locate::locate(&base, &names, folder.as_deref().map(Path::new))
     })
     .await
@@ -633,20 +674,37 @@ async fn locate_data_files(sdrf: String, names: Vec<String>, folder: Option<Stri
 
 /// Ontology terms for the SDRF editor (`sdrf_tools::ols_search`), cached in the app's data folder.
 #[tauri::command]
-async fn ols_search(app: AppHandle, query: String, ontologies: Vec<String>, online: bool) -> Result<Vec<sdrf_tools::Term>, String> {
-    let cache = app.path().app_data_dir().map_err(|e| e.to_string())?.join("ols-cache");
-    tauri::async_runtime::spawn_blocking(move || sdrf_tools::ols_search(&cache, &query, &ontologies, online))
-        .await
+async fn ols_search(
+    app: AppHandle,
+    query: String,
+    ontologies: Vec<String>,
+    online: bool,
+) -> Result<Vec<sdrf_tools::Term>, String> {
+    let cache = app
+        .path()
+        .app_data_dir()
         .map_err(|e| e.to_string())?
+        .join("ols-cache");
+    tauri::async_runtime::spawn_blocking(move || {
+        sdrf_tools::ols_search(&cache, &query, &ontologies, online)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// The SDRF `text` checked by sdrf-pipelines' `parse_sdrf validate-sdrf` (`available` false without it).
 #[tauri::command]
-async fn validate_sdrf(app: AppHandle, text: String, template: Option<String>) -> Result<sdrf_tools::Validation, String> {
+async fn validate_sdrf(
+    app: AppHandle,
+    text: String,
+    template: Option<String>,
+) -> Result<sdrf_tools::Validation, String> {
     let tmp = app.path().app_cache_dir().map_err(|e| e.to_string())?;
-    tauri::async_runtime::spawn_blocking(move || sdrf_tools::validate(&tmp, &text, template.as_deref()))
-        .await
-        .map_err(|e| e.to_string())?
+    tauri::async_runtime::spawn_blocking(move || {
+        sdrf_tools::validate(&tmp, &text, template.as_deref())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// The files of a ProteomeXchange project in PRIDE (`pride::project_files`).
@@ -679,13 +737,19 @@ async fn choose_download_folder(app: AppHandle, title: String) -> Result<Option<
 /// Downloads `files` into the folder of `choose_download_folder` (`pride::download`); events
 /// `download://progress`. -> the paths.
 #[tauri::command]
-async fn download_data_files(app: AppHandle, files: Vec<pride::RemoteFile>) -> Result<Vec<String>, String> {
+async fn download_data_files(
+    app: AppHandle,
+    files: Vec<pride::RemoteFile>,
+) -> Result<Vec<String>, String> {
     let folder = pride::chosen_folder()?;
     tauri::async_runtime::spawn_blocking(move || {
         let paths = pride::download(&folder, &files, |p| {
             let _ = app.emit("download://progress", p);
         })?;
-        Ok(paths.iter().map(|p| p.to_string_lossy().into_owned()).collect())
+        Ok(paths
+            .iter()
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect())
     })
     .await
     .map_err(|e| e.to_string())?
@@ -703,12 +767,19 @@ async fn open_qpx_folder(app: AppHandle) -> Result<Option<serde_json::Value>, St
     tauri::async_runtime::spawn_blocking(move || {
         let chosen = match test_dialog_path() {
             Some(path) => Some(path),
-            None => match app.dialog().file().set_title("Open a QPX results folder").blocking_pick_folder() {
+            None => match app
+                .dialog()
+                .file()
+                .set_title("Open a QPX results folder")
+                .blocking_pick_folder()
+            {
                 None => None,
                 Some(p) => Some(p.into_path().map_err(|e| e.to_string())?),
             },
         };
-        let Some(folder) = chosen else { return Ok(None) };
+        let Some(folder) = chosen else {
+            return Ok(None);
+        };
         let stems = history::qpx_stems(&folder)?;
         // (the run and provenance views, small, for the record: PSMs, cutoffs, database)
         let qpx = history::qpx_dir(&folder).ok_or("The folder has no QPX results.")?;
@@ -727,8 +798,16 @@ async fn open_qpx_folder(app: AppHandle) -> Result<Option<serde_json::Value>, St
 /// The QPX folder `folder` (from `open_qpx_folder`) as a new search, with the page's `record` and `inputs`
 /// (search.json and inputs.json) -> the new id.
 #[tauri::command]
-async fn history_import_qpx(app: AppHandle, folder: String, record: String, inputs: String) -> Result<String, String> {
-    on_searches(&app, move |dir| history::import_qpx(&dir, Path::new(&folder), &record, &inputs)).await
+async fn history_import_qpx(
+    app: AppHandle,
+    folder: String,
+    record: String,
+    inputs: String,
+) -> Result<String, String> {
+    on_searches(&app, move |dir| {
+        history::import_qpx(&dir, Path::new(&folder), &record, &inputs)
+    })
+    .await
 }
 
 /// The title of the save dialog of a project file: what it holds, beyond the results.
@@ -810,8 +889,14 @@ fn use_setup_path(app: &AppHandle, state: &AppState, path: &Path) {
             let _ = handles.set_recent(app, list);
         }
     }
-    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-    let name = name.strip_suffix(setup_file::SETUP_EXTENSION).unwrap_or(&name).to_string();
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let name = name
+        .strip_suffix(setup_file::SETUP_EXTENSION)
+        .unwrap_or(&name)
+        .to_string();
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.set_title(&format!("{name} — ProSE"));
     }
@@ -830,7 +915,11 @@ async fn save_project_setup(
     let handle = app.clone();
     let written = tauri::async_runtime::spawn_blocking(move || {
         let state = handle.state::<AppState>();
-        let current = if ask { None } else { state.setup_path.lock().unwrap().clone() };
+        let current = if ask {
+            None
+        } else {
+            state.setup_path.lock().unwrap().clone()
+        };
         let target = match current {
             Some(path) => path,
             None => {
@@ -864,7 +953,10 @@ async fn save_project_setup(
     .map_err(|e| e.to_string())??;
     let Some(path) = written else { return Ok(None) };
     use_setup_path(&app, &app.state::<AppState>(), &path);
-    let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
     Ok(Some(serde_json::json!({ "path": path, "name": name })))
 }
 
@@ -872,12 +964,20 @@ async fn save_project_setup(
 /// current project file as `<name>.sdrf.tsv` (`setup_file::write_sdrf_beside`); a file already there is replaced
 /// only if `overwrite`. -> `{ path, exists }` (`exists`: not written, the page asks first).
 #[tauri::command]
-async fn save_project_sdrf(app: AppHandle, contents: String, overwrite: bool) -> Result<serde_json::Value, String> {
+async fn save_project_sdrf(
+    app: AppHandle,
+    contents: String,
+    overwrite: bool,
+) -> Result<serde_json::Value, String> {
     let setup = app.state::<AppState>().setup_path.lock().unwrap().clone();
-    let Some(setup) = setup else { return Err("Save the project first: its SDRF is written beside it.".into()) };
-    let written = tauri::async_runtime::spawn_blocking(move || setup_file::write_sdrf_beside(&setup, &contents, overwrite))
-        .await
-        .map_err(|e| e.to_string())??;
+    let Some(setup) = setup else {
+        return Err("Save the project first: its SDRF is written beside it.".into());
+    };
+    let written = tauri::async_runtime::spawn_blocking(move || {
+        setup_file::write_sdrf_beside(&setup, &contents, overwrite)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
     Ok(match written {
         Ok(path) => serde_json::json!({ "path": path, "exists": false }),
         Err(path) => serde_json::json!({ "path": path, "exists": true }),
@@ -887,13 +987,17 @@ async fn save_project_sdrf(app: AppHandle, contents: String, overwrite: bool) ->
 /// Opens a project file: the open dialog, or with `recent` the `recent`-th entry of File › Open Recent (the page
 /// never names a path). -> `{ path, text }`, or null if cancelled.
 #[tauri::command]
-async fn open_project_setup(app: AppHandle, recent: Option<usize>) -> Result<Option<serde_json::Value>, String> {
+async fn open_project_setup(
+    app: AppHandle,
+    recent: Option<usize>,
+) -> Result<Option<serde_json::Value>, String> {
     let from_recent = match recent {
         None => None,
         Some(n) => {
             let handles = app.try_state::<menu::MenuHandles<tauri::Wry>>();
             let listed = handles.and_then(|h| h.recent_paths.lock().unwrap().get(n).cloned());
-            let listed = listed.or_else(|| data_dir(&app).and_then(|d| setup_file::recent(&d).get(n).cloned()));
+            let listed = listed
+                .or_else(|| data_dir(&app).and_then(|d| setup_file::recent(&d).get(n).cloned()));
             Some(listed.ok_or("That recent project is no longer listed.")?)
         }
     };
@@ -918,7 +1022,9 @@ async fn open_project_setup(app: AppHandle, recent: Option<usize>) -> Result<Opt
     })
     .await
     .map_err(|e| e.to_string())??;
-    let Some((path, text)) = read else { return Ok(None) };
+    let Some((path, text)) = read else {
+        return Ok(None);
+    };
     use_setup_path(&app, &app.state::<AppState>(), &path);
     Ok(Some(serde_json::json!({ "path": path, "text": text })))
 }
@@ -1004,7 +1110,9 @@ pub fn run() {
         // the menu bar (macOS) or the window's menus (Windows, Linux): `menu`
         .menu(|handle| {
             let (bar, handles) = menu::build(handle)?;
-            let recent = data_dir(handle).map(|d| setup_file::recent(&d)).unwrap_or_default();
+            let recent = data_dir(handle)
+                .map(|d| setup_file::recent(&d))
+                .unwrap_or_default();
             let _ = handles.set_recent(handle, recent);
             handle.manage(handles);
             Ok(bar)

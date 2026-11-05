@@ -3,10 +3,10 @@
 //! `.partial` file was left, with progress, cancellable, checked against the size PRIDE gives. One download at a
 //! time (`CANCEL`).
 
+use crate::net::len;
+pub use crate::net::{allowed_url, fetch, remote_size, CANCEL};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-pub use crate::net::{allowed_url, fetch, remote_size, CANCEL};
-use crate::net::len;
 use std::sync::atomic::Ordering;
 #[cfg(test)]
 use std::time::Duration;
@@ -17,7 +17,11 @@ pub static FOLDER: std::sync::Mutex<Option<PathBuf>> = std::sync::Mutex::new(Non
 
 /// The folder of the last `choose_download_folder`; an error if none was chosen.
 pub fn chosen_folder() -> Result<PathBuf, String> {
-    FOLDER.lock().map_err(|e| e.to_string())?.clone().ok_or_else(|| "Choose the folder for the download first.".to_string())
+    FOLDER
+        .lock()
+        .map_err(|e| e.to_string())?
+        .clone()
+        .ok_or_else(|| "Choose the folder for the download first.".to_string())
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -29,7 +33,9 @@ pub struct RemoteFile {
 }
 
 pub fn valid_accession(pxd: &str) -> bool {
-    (pxd.starts_with("PXD") || pxd.starts_with("MSV")) && pxd.len() >= 9 && pxd[3..].bytes().all(|b| b.is_ascii_digit())
+    (pxd.starts_with("PXD") || pxd.starts_with("MSV"))
+        && pxd.len() >= 9
+        && pxd[3..].bytes().all(|b| b.is_ascii_digit())
 }
 
 /// PRIDE's FTP address as HTTPS (the same server serves both; curl resumes over HTTPS).
@@ -42,7 +48,8 @@ pub fn https_of(url: &str) -> String {
 /// The files of one page of `projects/<PXD>/files` (those with an FTP or HTTP location), and how many entries
 /// the page had (with those without one: the page's length decides whether another page follows).
 pub fn parse_files(body: &str) -> Result<(Vec<RemoteFile>, usize), String> {
-    let v: serde_json::Value = serde_json::from_str(body).map_err(|e| format!("PRIDE answered no JSON ({e})."))?;
+    let v: serde_json::Value =
+        serde_json::from_str(body).map_err(|e| format!("PRIDE answered no JSON ({e})."))?;
     let list = v.as_array().ok_or("PRIDE answered without a file list.")?;
     let files = list
         .iter()
@@ -53,7 +60,11 @@ pub fn parse_files(body: &str) -> Result<(Vec<RemoteFile>, usize), String> {
                 .iter()
                 .filter_map(|l| l["value"].as_str())
                 .find(|u| u.starts_with("ftp://") || u.starts_with("http"))?;
-            Some(RemoteFile { name: name.to_string(), size: f["fileSizeBytes"].as_u64().unwrap_or(0), url: https_of(url) })
+            Some(RemoteFile {
+                name: name.to_string(),
+                size: f["fileSizeBytes"].as_u64().unwrap_or(0),
+                url: https_of(url),
+            })
         })
         .collect();
     Ok((files, list.len()))
@@ -66,7 +77,9 @@ const MAX_PAGES: usize = 100;
 /// All files of the project `pxd`.
 pub fn project_files(pxd: &str) -> Result<Vec<RemoteFile>, String> {
     if !valid_accession(pxd) {
-        return Err(format!("{pxd} is not a ProteomeXchange accession (PXD and digits)."));
+        return Err(format!(
+            "{pxd} is not a ProteomeXchange accession (PXD and digits)."
+        ));
     }
     let mut all = Vec::new();
     for page in 0..MAX_PAGES {
@@ -77,7 +90,10 @@ pub fn project_files(pxd: &str) -> Result<Vec<RemoteFile>, String> {
             return Ok(all);
         }
     }
-    Err(format!("{pxd} has more than {} files in PRIDE; ProSE reads no more of its list.", PAGE_SIZE * MAX_PAGES))
+    Err(format!(
+        "{pxd} has more than {} files in PRIDE; ProSE reads no more of its list.",
+        PAGE_SIZE * MAX_PAGES
+    ))
 }
 
 /// A file name to write into the chosen folder on any system: no folders, nothing hidden, no drive or stream
@@ -85,10 +101,15 @@ pub fn project_files(pxd: &str) -> Result<Vec<RemoteFile>, String> {
 /// `NUL.raw`, `COM1`), no trailing dot or space.
 pub fn safe_name(name: &str) -> bool {
     const RESERVED: [&str; 22] = [
-        "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8", "com9", "lpt1", "lpt2",
-        "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
+        "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8",
+        "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
     ];
-    let device = name.split('.').next().unwrap_or("").trim_end().to_lowercase();
+    let device = name
+        .split('.')
+        .next()
+        .unwrap_or("")
+        .trim_end()
+        .to_lowercase();
     !name.is_empty()
         && !name.starts_with('.')
         && !name.ends_with(['.', ' '])
@@ -109,7 +130,11 @@ pub struct Progress {
 
 /// Downloads `files` into `folder`, skipping those that are there with their size; `progress` is called about
 /// twice a second. Returns the paths written (or found).
-pub fn download(folder: &Path, files: &[RemoteFile], progress: impl Fn(Progress)) -> Result<Vec<PathBuf>, String> {
+pub fn download(
+    folder: &Path,
+    files: &[RemoteFile],
+    progress: impl Fn(Progress),
+) -> Result<Vec<PathBuf>, String> {
     CANCEL.store(false, Ordering::SeqCst);
     let mut done = Vec::new();
     for (i, f) in files.iter().enumerate() {
@@ -117,7 +142,10 @@ pub fn download(folder: &Path, files: &[RemoteFile], progress: impl Fn(Progress)
             return Err(format!("{} is not a file name ProSE writes.", f.name));
         }
         if !allowed_url(&f.url) {
-            return Err(format!("{} has no HTTPS address ({}): the app downloads over HTTPS only.", f.name, f.url));
+            return Err(format!(
+                "{} has no HTTPS address ({}): the app downloads over HTTPS only.",
+                f.name, f.url
+            ));
         }
         // the server's size: PRIDE's file list has outdated sizes for some files (its generated/ ones)
         let size = remote_size(&f.url).unwrap_or(f.size);
@@ -128,7 +156,13 @@ pub fn download(folder: &Path, files: &[RemoteFile], progress: impl Fn(Progress)
         }
         let partial = folder.join(format!("{}.partial", f.name));
         fetch(&f.url, &partial, size, |received| {
-            progress(Progress { file: i, files: files.len(), name: f.name.clone(), received, size })
+            progress(Progress {
+                file: i,
+                files: files.len(),
+                name: f.name.clone(),
+                received,
+                size,
+            })
         })
         .map_err(|e| format!("{}: {e}", f.name))?;
         std::fs::rename(&partial, &path).map_err(|e| e.to_string())?;
@@ -150,12 +184,19 @@ mod tests {
         assert_eq!(
             parse_files(body).unwrap(),
             (
-                vec![RemoteFile { name: "a.raw".into(), size: 12, url: "https://ftp.pride.ebi.ac.uk/pride/data/archive/2012/03/PXD000001/a.raw".into() }],
+                vec![RemoteFile {
+                    name: "a.raw".into(),
+                    size: 12,
+                    url: "https://ftp.pride.ebi.ac.uk/pride/data/archive/2012/03/PXD000001/a.raw"
+                        .into()
+                }],
                 // (the page had two entries: the one without a location counts for the paging)
                 2
             )
         );
-        assert!(valid_accession("PXD000001") && !valid_accession("PXD12;rm") && !valid_accession("PX"));
+        assert!(
+            valid_accession("PXD000001") && !valid_accession("PXD12;rm") && !valid_accession("PX")
+        );
     }
 
     #[test]
@@ -163,14 +204,39 @@ mod tests {
         for ok in ["a.raw", "A1.wiff.scan", "run 1.mzML", "console.raw"] {
             assert!(safe_name(ok), "{ok}");
         }
-        for bad in ["../a", ".hidden", "a/b", "a\\b", "C:x.raw", "foo:stream", "CON", "nul.raw", "com1.txt", "a\u{7}.raw", "a.raw.", "a.raw ", "a*b", ".."] {
+        for bad in [
+            "../a",
+            ".hidden",
+            "a/b",
+            "a\\b",
+            "C:x.raw",
+            "foo:stream",
+            "CON",
+            "nul.raw",
+            "com1.txt",
+            "a\u{7}.raw",
+            "a.raw.",
+            "a.raw ",
+            "a*b",
+            "..",
+        ] {
             assert!(!safe_name(bad), "{bad}");
         }
         assert!(allowed_url("https://ftp.pride.ebi.ac.uk/x"));
-        assert!(!allowed_url("ftp://ftp.pride.ebi.ac.uk/x") && !allowed_url("http://example.org/x") && !allowed_url("file:///etc/hosts"));
+        assert!(
+            !allowed_url("ftp://ftp.pride.ebi.ac.uk/x")
+                && !allowed_url("http://example.org/x")
+                && !allowed_url("file:///etc/hosts")
+        );
         let dir = tmp("proto");
-        let ftp = RemoteFile { name: "x.raw".into(), size: 5, url: "ftp://example.org/x.raw".into() };
-        assert!(download(&dir, &[ftp], |_| {}).unwrap_err().contains("HTTPS"));
+        let ftp = RemoteFile {
+            name: "x.raw".into(),
+            size: 5,
+            url: "ftp://example.org/x.raw".into(),
+        };
+        assert!(download(&dir, &[ftp], |_| {})
+            .unwrap_err()
+            .contains("HTTPS"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -189,7 +255,16 @@ mod tests {
         let b = body();
         std::fs::write(dir.join("f.raw"), b"old and short").unwrap();
         let url = serve(b.clone(), true, None);
-        download(&dir, &[RemoteFile { name: "f.raw".into(), size: b.len() as u64, url }], |_| {}).unwrap();
+        download(
+            &dir,
+            &[RemoteFile {
+                name: "f.raw".into(),
+                size: b.len() as u64,
+                url,
+            }],
+            |_| {},
+        )
+        .unwrap();
         assert_eq!(std::fs::read(dir.join("f.raw")).unwrap(), b);
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -224,13 +299,19 @@ mod tests {
                 let head = if part {
                     format!("HTTP/1.1 206 Partial Content\r\nContent-Length: {}\r\nContent-Range: bytes {from}-{}/{}\r\nConnection: close\r\n\r\n", data.len(), body.len() - 1, body.len())
                 } else {
-                    format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", data.len())
+                    format!(
+                        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                        data.len()
+                    )
                 };
                 let _ = out.write_all(head.as_bytes());
                 if head_only {
                     continue;
                 }
-                let n = match cut { Some(c) if first => c.min(data.len()), _ => data.len() };
+                let n = match cut {
+                    Some(c) if first => c.min(data.len()),
+                    _ => data.len(),
+                };
                 let _ = out.write_all(&data[..n]);
                 first = false;
             }
@@ -254,11 +335,21 @@ mod tests {
         let dir = tmp("resume");
         let b = body();
         let url = serve(b.clone(), true, Some(100_000));
-        let f = RemoteFile { name: "f.raw".into(), size: b.len() as u64, url };
-        assert_eq!(download(&dir, std::slice::from_ref(&f), |_| {}).unwrap(), vec![dir.join("f.raw")]);
+        let f = RemoteFile {
+            name: "f.raw".into(),
+            size: b.len() as u64,
+            url,
+        };
+        assert_eq!(
+            download(&dir, std::slice::from_ref(&f), |_| {}).unwrap(),
+            vec![dir.join("f.raw")]
+        );
         assert_eq!(std::fs::read(dir.join("f.raw")).unwrap(), b);
         // there with its size: not downloaded again
-        assert_eq!(download(&dir, &[f], |_| {}).unwrap(), vec![dir.join("f.raw")]);
+        assert_eq!(
+            download(&dir, &[f], |_| {}).unwrap(),
+            vec![dir.join("f.raw")]
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -268,8 +359,15 @@ mod tests {
         let b = body();
         std::fs::write(dir.join("f.raw.partial"), &b[..50_000]).unwrap();
         let url = serve(b.clone(), false, None);
-        let f = RemoteFile { name: "f.raw".into(), size: b.len() as u64, url };
-        download(&dir, &[f], |p| assert!(p.received <= p.size, "{} > {}", p.received, p.size)).unwrap();
+        let f = RemoteFile {
+            name: "f.raw".into(),
+            size: b.len() as u64,
+            url,
+        };
+        download(&dir, &[f], |p| {
+            assert!(p.received <= p.size, "{} > {}", p.received, p.size)
+        })
+        .unwrap();
         assert_eq!(std::fs::read(dir.join("f.raw")).unwrap(), b);
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -282,11 +380,19 @@ mod tests {
         big.extend_from_slice(&b[..1000]);
         std::fs::write(dir.join("f.raw.partial"), &big).unwrap();
         let url = serve(b.clone(), true, None);
-        let ok = RemoteFile { name: "f.raw".into(), size: b.len() as u64, url: url.clone() };
+        let ok = RemoteFile {
+            name: "f.raw".into(),
+            size: b.len() as u64,
+            url: url.clone(),
+        };
         download(&dir, &[ok], |_| {}).unwrap();
         assert_eq!(std::fs::read(dir.join("f.raw")).unwrap(), b);
         // PRIDE lists another size than the server gives (its list is outdated for some files): the server's counts
-        let outdated = RemoteFile { name: "g.raw".into(), size: b.len() as u64 + 10, url: url.clone() };
+        let outdated = RemoteFile {
+            name: "g.raw".into(),
+            size: b.len() as u64 + 10,
+            url: url.clone(),
+        };
         download(&dir, &[outdated], |p| assert_eq!(p.size, b.len() as u64)).unwrap();
         assert_eq!(std::fs::read(dir.join("g.raw")).unwrap(), b);
         assert_eq!(remote_size(&url), Some(b.len() as u64));
@@ -296,7 +402,11 @@ mod tests {
     #[test]
     fn refuses_other_addresses() {
         let dir = tmp("refuse");
-        let f = RemoteFile { name: "x.txt".into(), size: 5, url: "file:///etc/hosts".into() };
+        let f = RemoteFile {
+            name: "x.txt".into(),
+            size: 5,
+            url: "file:///etc/hosts".into(),
+        };
         assert!(download(&dir, &[f], |_| {}).is_err());
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -307,7 +417,10 @@ mod tests {
     #[ignore]
     fn live_pride_download_cancelled_and_resumed() {
         let files = project_files("PXD000001").unwrap();
-        let f = files.into_iter().find(|f| f.name == "PRIDE_Exp_Complete_Ac_22134.pride.mgf.gz").unwrap();
+        let f = files
+            .into_iter()
+            .find(|f| f.name == "PRIDE_Exp_Complete_Ac_22134.pride.mgf.gz")
+            .unwrap();
         // (PRIDE's list says 16,448,103 bytes for this file; the server has 5,984,662)
         let size = remote_size(&f.url).unwrap();
         let dir = tmp("live");
@@ -326,7 +439,10 @@ mod tests {
         assert!(e.contains("cancelled"), "{e}");
         let partial = len(&dir.join(format!("{}.partial", f.name)));
         assert!(partial > 0 && partial < size, "{partial}");
-        download(&dir, std::slice::from_ref(&f), |p| assert!(p.received <= p.size)).unwrap();
+        download(&dir, std::slice::from_ref(&f), |p| {
+            assert!(p.received <= p.size)
+        })
+        .unwrap();
         assert_eq!(len(&dir.join(&f.name)), size);
         let _ = std::fs::remove_dir_all(&dir);
     }

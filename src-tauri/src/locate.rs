@@ -18,13 +18,19 @@ pub struct Located {
 }
 
 /// The extensions of mass spectrometry data files that a data file's stem leaves out (one, after a `.gz`).
-const STEM_EXTENSIONS: [&str; 8] = ["mzml", "mzxml", "mzpeak", "mgf", "raw", "d", "wiff", "wiff2"];
+const STEM_EXTENSIONS: [&str; 8] = [
+    "mzml", "mzxml", "mzpeak", "mgf", "raw", "d", "wiff", "wiff2",
+];
 
 /// A data file's stem, in lower case: no folders, no `.gz`, no mass spectrometry extension (`A1.wiff` and
 /// `a1.mzML.gz` are `a1`). The same rule as `runStem` in src/lib/design/sdrf-table.ts; both are tested on
 /// src/lib/design/sdrf-fixtures/stems.json.
 pub fn data_file_stem(name: &str) -> String {
-    let base = name.rsplit(['/', '\\']).next().unwrap_or(name).to_lowercase();
+    let base = name
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or(name)
+        .to_lowercase();
     let base = base.strip_suffix(".gz").unwrap_or(&base).to_string();
     match base.rfind('.') {
         Some(i) if i > 0 && STEM_EXTENSIONS.contains(&&base[i + 1..]) => base[..i].to_string(),
@@ -103,7 +109,9 @@ pub fn locate(base: &Path, names: &[String], folder: Option<&Path>) -> Vec<Locat
     let mut stack: Vec<(PathBuf, usize)> = vec![(folder.to_path_buf(), 0)];
     let mut seen = 0usize;
     while let Some((dir, depth)) = stack.pop() {
-        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
         for entry in entries.flatten() {
             seen += 1;
             if seen > MAX_ENTRIES {
@@ -114,7 +122,9 @@ pub fn locate(base: &Path, names: &[String], folder: Option<&Path>) -> Vec<Locat
                 continue;
             }
             let path = entry.path();
-            let Ok(kind) = entry.file_type() else { continue };
+            let Ok(kind) = entry.file_type() else {
+                continue;
+            };
             // (a symbolic link could lead out of the folder searched)
             if kind.is_symlink() {
                 continue;
@@ -122,7 +132,11 @@ pub fn locate(base: &Path, names: &[String], folder: Option<&Path>) -> Vec<Locat
             let is_dir = kind.is_dir();
             if let Some(hits) = wanted.get(&name.to_lowercase()) {
                 for &(i, exact) in hits {
-                    let slot = if exact { &mut out[i].exact } else { &mut out[i].mzml };
+                    let slot = if exact {
+                        &mut out[i].exact
+                    } else {
+                        &mut out[i].mzml
+                    };
                     // (a .d is a folder; an mzML is a file)
                     if slot.is_none() && (exact || !is_dir) {
                         *slot = Some(text(&path));
@@ -144,8 +158,10 @@ mod tests {
 
     #[test]
     fn the_stem_rule_is_the_front_ends() {
-        let table: Vec<(String, String)> =
-            serde_json::from_str(include_str!("../../src/lib/design/sdrf-fixtures/stems.json")).unwrap();
+        let table: Vec<(String, String)> = serde_json::from_str(include_str!(
+            "../../src/lib/design/sdrf-fixtures/stems.json"
+        ))
+        .unwrap();
         for (name, expected) in table {
             assert_eq!(data_file_stem(&name), expected, "{name}");
         }
@@ -162,7 +178,10 @@ mod tests {
         std::fs::write(root.join("sdrf/a.mzML"), "").unwrap();
         std::fs::write(root.join("data/deep/C1.mzML.gz"), "").unwrap();
         std::fs::write(root.join("data/.hidden/D1.mzML"), "").unwrap();
-        let names: Vec<String> = ["a.mzML", "b1.d", "C1.raw", "D1.mzML"].iter().map(|s| s.to_string()).collect();
+        let names: Vec<String> = ["a.mzML", "b1.d", "C1.raw", "D1.mzML"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
 
         let near = locate(&root.join("sdrf"), &names, None);
         assert!(near[0].exact.as_deref().unwrap().ends_with("sdrf/a.mzML"));
@@ -185,16 +204,33 @@ mod tests {
         std::fs::create_dir_all(root.join("outside")).unwrap();
         std::fs::write(root.join("outside/secret.raw"), "").unwrap();
         std::fs::write(root.join("sdrf/sub/x.raw"), "").unwrap();
-        let names: Vec<String> = ["../outside/secret.raw", "sub/x.raw", "/etc/hosts", "C:x.raw", "a\u{1}.raw", "..", "linked.raw"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
+        let names: Vec<String> = [
+            "../outside/secret.raw",
+            "sub/x.raw",
+            "/etc/hosts",
+            "C:x.raw",
+            "a\u{1}.raw",
+            "..",
+            "linked.raw",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
         #[cfg(unix)]
-        std::os::unix::fs::symlink(root.join("outside/secret.raw"), root.join("sdrf/linked.raw")).unwrap();
+        std::os::unix::fs::symlink(
+            root.join("outside/secret.raw"),
+            root.join("sdrf/linked.raw"),
+        )
+        .unwrap();
         for l in locate(&root.join("sdrf"), &names, Some(&root.join("sdrf"))) {
             assert_eq!(l, Located::default());
         }
-        assert!(plain_name("A1.wiff") && plain_name("run.d") && !plain_name("a/b") && !plain_name("x:y"));
+        assert!(
+            plain_name("A1.wiff")
+                && plain_name("run.d")
+                && !plain_name("a/b")
+                && !plain_name("x:y")
+        );
         let _ = std::fs::remove_dir_all(&root);
     }
 }

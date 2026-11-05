@@ -31,10 +31,9 @@
 //!   handler), at the end of its current step; a later start of the app sweeps the folder.
 
 use crate::args::{
-    build_args_with, command_line, humanize, ini_of, split_search_args, COMMAND_FILE, INI_FILE, input_placements, input_records_with, reserved_stem,
-    with_contaminants, InputLinks, InputRecord, Placement, SearchRequest, DATABASE_FILE,
-    DATABASE_RECORD,
-    DATABASE_SOURCE,
+    build_args_with, command_line, humanize, ini_of, input_placements, input_records_with,
+    reserved_stem, split_search_args, with_contaminants, InputLinks, InputRecord, Placement,
+    SearchRequest, COMMAND_FILE, DATABASE_FILE, DATABASE_RECORD, DATABASE_SOURCE, INI_FILE,
 };
 use crate::decoys::DecoyRules;
 use crate::history::{finish_partial, lock_partial, remove_partial, with_backoff};
@@ -1268,8 +1267,11 @@ fn prepare_folder(
     fs::write(dir.join("inputs.json"), json)
         .map_err(|e| format!("inputs.json cannot be written ({e})."))?;
     if let Some(sdrf) = &request.sdrf {
-        fs::write(dir.join(crate::args::SDRF_FILE), crate::args::sdrf_for_inputs(sdrf, records))
-            .map_err(|e| format!("{} cannot be written ({e}).", crate::args::SDRF_FILE))?;
+        fs::write(
+            dir.join(crate::args::SDRF_FILE),
+            crate::args::sdrf_for_inputs(sdrf, records),
+        )
+        .map_err(|e| format!("{} cannot be written ({e}).", crate::args::SDRF_FILE))?;
     }
     if request.contaminants {
         let crap =
@@ -1301,20 +1303,32 @@ fn prepare_folder(
 
 /// Writes the folder's [`INI_FILE`] of the `-Search:` arguments of `args` and its [`COMMAND_FILE`]; the arguments
 /// for the tool: the others, and `-ini` with the file.
-fn write_ini_and_command(folder: &Path, args: Vec<std::ffi::OsString>) -> Result<Vec<std::ffi::OsString>, String> {
+fn write_ini_and_command(
+    folder: &Path,
+    args: Vec<std::ffi::OsString>,
+) -> Result<Vec<std::ffi::OsString>, String> {
     let (mut tool_args, search) = split_search_args(&args);
     let ini = folder.join(INI_FILE);
-    fs::write(&ini, ini_of(&search)?).map_err(|e| format!("{INI_FILE} cannot be written ({e})."))?;
+    fs::write(&ini, ini_of(&search)?)
+        .map_err(|e| format!("{INI_FILE} cannot be written ({e})."))?;
     tool_args.push("-ini".into());
     tool_args.push(ini.into_os_string());
     let after = |flag: &str| -> Vec<std::ffi::OsString> {
-        let at = tool_args.iter().position(|a| a == flag).map_or(tool_args.len(), |k| k + 1);
-        tool_args[at..].iter().take_while(|a| !a.to_string_lossy().starts_with('-')).cloned().collect()
+        let at = tool_args
+            .iter()
+            .position(|a| a == flag)
+            .map_or(tool_args.len(), |k| k + 1);
+        tool_args[at..]
+            .iter()
+            .take_while(|a| !a.to_string_lossy().starts_with('-'))
+            .cloned()
+            .collect()
     };
     let inputs = after("-in");
     let database = after("-database").into_iter().next().unwrap_or_default();
     let line = command_line("ProSE", &tool_args, &inputs, &database, folder);
-    fs::write(folder.join(COMMAND_FILE), format!("{line}\n")).map_err(|e| format!("{COMMAND_FILE} cannot be written ({e})."))?;
+    fs::write(folder.join(COMMAND_FILE), format!("{line}\n"))
+        .map_err(|e| format!("{COMMAND_FILE} cannot be written ({e})."))?;
     Ok(tool_args)
 }
 

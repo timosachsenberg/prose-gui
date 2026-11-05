@@ -67,14 +67,20 @@ fn attr<'a>(tag: &'a str, key: &str) -> Option<&'a str> {
 fn params(text: &str) -> impl Iterator<Item = (&str, &str, &str)> {
     text.split("<cvParam").skip(1).filter_map(|t| {
         let t = &t[..t.find('>').unwrap_or(t.len())];
-        Some((attr(t, "accession")?, attr(t, "name")?, attr(t, "value").unwrap_or("")))
+        Some((
+            attr(t, "accession")?,
+            attr(t, "name")?,
+            attr(t, "value").unwrap_or(""),
+        ))
     })
 }
 
 /// The header facts: peak picking among the data processing, the analyzer of each instrument configuration.
 fn header(head: &str, facts: &mut SpectraFacts) {
     if let Some(at) = head.find("<dataProcessingList") {
-        let end = head[at..].find("</dataProcessingList").map_or(head.len(), |e| at + e);
+        let end = head[at..]
+            .find("</dataProcessingList")
+            .map_or(head.len(), |e| at + e);
         facts.peak_picking = params(&head[at..end]).any(|(acc, _, _)| acc == "MS:1000035");
     }
     let mut rest = head;
@@ -82,8 +88,17 @@ fn header(head: &str, facts: &mut SpectraFacts) {
         let block = &rest[at..];
         let end = block.find("</analyzer").unwrap_or(block.len());
         // the analyzer's type: the term that is no property of it (accuracy, resolution, ...)
-        const PROPERTIES: [&str; 6] = ["MS:1000014", "MS:1000022", "MS:1000024", "MS:1000025", "MS:1000011", "MS:1000105"];
-        if let Some((_, name, _)) = params(&block[..end]).find(|(acc, _, _)| !PROPERTIES.contains(acc)) {
+        const PROPERTIES: [&str; 6] = [
+            "MS:1000014",
+            "MS:1000022",
+            "MS:1000024",
+            "MS:1000025",
+            "MS:1000011",
+            "MS:1000105",
+        ];
+        if let Some((_, name, _)) =
+            params(&block[..end]).find(|(acc, _, _)| !PROPERTIES.contains(acc))
+        {
             facts.analyzers.push(name.to_string());
         }
         rest = &block[end..];
@@ -139,10 +154,15 @@ fn spectrum(text: &str, facts: &mut SpectraFacts, centres: &mut HashMap<i64, u64
         }
     }
     if let Some(at) = activation_at {
-        let block = &text[at..text[at..].find("</activation").map_or(text.len(), |e| at + e)];
+        let block = &text[at..text[at..]
+            .find("</activation")
+            .map_or(text.len(), |e| at + e)];
         // the dissociation method: the terms that are not an energy
         for (acc, name, _) in params(block) {
-            if !matches!(acc, "MS:1000045" | "MS:1000509" | "MS:1002013" | "MS:1000138" | "MS:1002680") {
+            if !matches!(
+                acc,
+                "MS:1000045" | "MS:1000509" | "MS:1002013" | "MS:1000138" | "MS:1002680"
+            ) {
                 *facts.activation.entry(name.to_string()).or_default() += 1;
             }
         }
@@ -174,7 +194,10 @@ pub fn inspect_reader(reader: impl Read) -> io::Result<SpectraFacts> {
         let text = String::from_utf8_lossy(&buf).into_owned();
         let mut consumed = 0;
         if !header_done {
-            if let Some(at) = text.find("<spectrumList").or_else(|| (n == 0).then_some(text.len())) {
+            if let Some(at) = text
+                .find("<spectrumList")
+                .or_else(|| (n == 0).then_some(text.len()))
+            {
                 header(&text[..at], &mut facts);
                 header_done = true;
                 consumed = at;
@@ -242,12 +265,19 @@ static CACHE: Mutex<Option<HashMap<Key, Option<SpectraFacts>>>> = Mutex::new(Non
 pub fn inspect_cached(path: &str) -> Option<SpectraFacts> {
     let meta = fs::metadata(path).ok()?;
     let key = (path.to_string(), meta.len(), meta.modified().ok());
-    if let Some(hit) = CACHE.lock().ok()?.get_or_insert_with(HashMap::new).get(&key) {
+    if let Some(hit) = CACHE
+        .lock()
+        .ok()?
+        .get_or_insert_with(HashMap::new)
+        .get(&key)
+    {
         return hit.clone();
     }
     let facts = inspect(Path::new(path)).ok().flatten();
     if let Ok(mut cache) = CACHE.lock() {
-        cache.get_or_insert_with(HashMap::new).insert(key, facts.clone());
+        cache
+            .get_or_insert_with(HashMap::new)
+            .insert(key, facts.clone());
     }
     facts
 }
@@ -268,7 +298,10 @@ mod tests {
         assert_eq!(f.ms2_centroid, 139);
         assert_eq!(f.ms2_profile, 0);
         assert_eq!(f.ms2_with_charge, 139);
-        assert_eq!(f.activation.get("collision-induced dissociation"), Some(&139));
+        assert_eq!(
+            f.activation.get("collision-induced dissociation"),
+            Some(&139)
+        );
         assert_eq!(f.ms2_analyzer.get("ion trap"), Some(&139));
         assert_eq!(f.analyzers, vec!["orbitrap".to_string()]);
         assert!(f.isolation_centres > 100);
@@ -282,7 +315,10 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("prose-spectra-{}", std::process::id()));
         fs::create_dir_all(&dir).unwrap();
         let gz = dir.join("a.mzML.gz");
-        let mut enc = flate2::write::GzEncoder::new(fs::File::create(&gz).unwrap(), flate2::Compression::fast());
+        let mut enc = flate2::write::GzEncoder::new(
+            fs::File::create(&gz).unwrap(),
+            flate2::Compression::fast(),
+        );
         enc.write_all(&fs::read(example()).unwrap()).unwrap();
         enc.finish().unwrap();
         let path = gz.to_string_lossy().into_owned();
@@ -306,7 +342,9 @@ mod tests {
                  <binaryDataArrayList><binary>AAAA</binary></binaryDataArrayList></spectrum>"
             )
         };
-        let body: String = (0..1200).map(|i| spectrum(i, 400.0 + 25.0 * (i % 24) as f64)).collect();
+        let body: String = (0..1200)
+            .map(|i| spectrum(i, 400.0 + 25.0 * (i % 24) as f64))
+            .collect();
         let text = format!(
             "<mzML><dataProcessingList><cvParam accession=\"MS:1000035\" name=\"peak picking\"/></dataProcessingList>\
              <spectrumList count=\"1200\">{body}</spectrumList></mzML>"

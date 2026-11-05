@@ -21,7 +21,9 @@ pub fn allowed_url(url: &str) -> bool {
 /// curl for `url` with the protocols restricted (`PROTO`); an error for an address that is not HTTPS.
 fn curl(url: &str) -> Result<Command, String> {
     if !allowed_url(url) {
-        return Err(format!("{url} is no HTTPS address: the app connects over HTTPS only."));
+        return Err(format!(
+            "{url} is no HTTPS address: the app connects over HTTPS only."
+        ));
     }
     let mut cmd = Command::new("curl");
     cmd.args(["--proto", PROTO, "--proto-redir", PROTO]);
@@ -35,20 +37,29 @@ pub fn get_text(url: &str, max_seconds: u32, what: &str) -> Result<String, Strin
         .output()
         .map_err(|e| format!("curl cannot be started ({e})."))?;
     if !out.status.success() {
-        return Err(format!("{what} cannot be reached ({}).", String::from_utf8_lossy(&out.stderr).trim()));
+        return Err(format!(
+            "{what} cannot be reached ({}).",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
     }
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
 /// The size the server gives for `url` (the Content-Length of a HEAD request, after redirects); None if it says none.
 pub fn remote_size(url: &str) -> Option<u64> {
-    let out = curl(url).ok()?.args(["-sIL", "--connect-timeout", "30", "--max-time", "60", url]).output().ok()?;
+    let out = curl(url)
+        .ok()?
+        .args(["-sIL", "--connect-timeout", "30", "--max-time", "60", url])
+        .output()
+        .ok()?;
     if !out.status.success() {
         return None;
     }
     let head = String::from_utf8_lossy(&out.stdout);
     // (the last response's: a redirect has its own)
-    let last = head.rsplit("\r\n\r\n").find(|block| !block.trim().is_empty())?;
+    let last = head
+        .rsplit("\r\n\r\n")
+        .find(|block| !block.trim().is_empty())?;
     last.lines()
         .filter_map(|l| l.split_once(':'))
         .find(|(k, _)| k.trim().eq_ignore_ascii_case("content-length"))
@@ -114,7 +125,8 @@ pub fn fetch(url: &str, partial: &Path, size: u64, progress: impl Fn(u64)) -> Re
         if overrun || (size > 0 && received > size) {
             // (more bytes than the file has: never keep them)
             let _ = std::fs::remove_file(partial);
-            last = format!("the server sent more than the {size} bytes it gives as the file's size");
+            last =
+                format!("the server sent more than the {size} bytes it gives as the file's size");
             continue;
         }
         if status.success() {
@@ -138,22 +150,36 @@ pub fn fetch(url: &str, partial: &Path, size: u64, progress: impl Fn(u64)) -> Re
     Err(format!("could not be downloaded ({last})."))
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn only_https_leaves_the_app() {
-        for url in ["http://example.org/x", "ftp://ftp.pride.ebi.ac.uk/x", "file:///etc/hosts", "scp://h/x", "-o/tmp/x"] {
+        for url in [
+            "http://example.org/x",
+            "ftp://ftp.pride.ebi.ac.uk/x",
+            "file:///etc/hosts",
+            "scp://h/x",
+            "-o/tmp/x",
+        ] {
             assert!(curl(url).is_err(), "{url}");
-            assert!(get_text(url, 1, "x").unwrap_err().contains("HTTPS"), "{url}");
+            assert!(
+                get_text(url, 1, "x").unwrap_err().contains("HTTPS"),
+                "{url}"
+            );
             assert_eq!(remote_size(url), None);
         }
-        let args: Vec<String> = curl("https://example.org/").unwrap().get_args().map(|a| a.to_string_lossy().into_owned()).collect();
+        let args: Vec<String> = curl("https://example.org/")
+            .unwrap()
+            .get_args()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
         assert_eq!(args[..4], ["--proto", PROTO, "--proto-redir", PROTO]);
         let dir = std::env::temp_dir().join(format!("prose-net-{}", std::process::id()));
-        assert!(fetch("ftp://x/y", &dir.join("y.partial"), 0, |_| {}).unwrap_err().contains("HTTPS"));
+        assert!(fetch("ftp://x/y", &dir.join("y.partial"), 0, |_| {})
+            .unwrap_err()
+            .contains("HTTPS"));
     }
 
     /// Against the real servers (network; `cargo test -- --ignored`): OLS answers, and a UniProt stream of unknown
@@ -161,14 +187,21 @@ mod tests {
     #[test]
     #[ignore]
     fn live_ols_and_uniprot_over_https() {
-        let ols = get_text("https://www.ebi.ac.uk/ols4/api/search?q=liver&ontology=uberon&rows=1", 30, "OLS").unwrap();
+        let ols = get_text(
+            "https://www.ebi.ac.uk/ols4/api/search?q=liver&ontology=uberon&rows=1",
+            30,
+            "OLS",
+        )
+        .unwrap();
         assert!(ols.contains("UBERON"));
         let dir = std::env::temp_dir().join(format!("prose-net-live-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let partial = dir.join("p.fasta.partial");
         let url = "https://rest.uniprot.org/uniprotkb/stream?compressed=false&format=fasta&query=accession%3AP02768";
         fetch(url, &partial, 0, |_| {}).unwrap();
-        assert!(std::fs::read_to_string(&partial).unwrap().starts_with(">sp|P02768|ALBU_HUMAN"));
+        assert!(std::fs::read_to_string(&partial)
+            .unwrap()
+            .starts_with(">sp|P02768|ALBU_HUMAN"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
