@@ -9,7 +9,7 @@ import { isDesktop, onMenuAction, openUrl, setMenuState, errorText } from './des
 import { openHelp } from './help-link.svelte'
 import { openProjectFile, openQpxFolderFile, saveProjectFile } from './history/history.svelte'
 import { newSetup, openProject, saveProject } from './project/project.svelte'
-import { exportCsv, exportIdXML, exportXlsx } from './results/exports'
+import { exportCsv, exportIdXML, exportMethods, exportXlsx } from './results/exports'
 import { resultsViewFor } from './results/view.svelte'
 import { navigate, router } from './route.svelte'
 import { openResult } from './search/session.svelte'
@@ -84,6 +84,9 @@ export async function menuAction(id: string): Promise<void> {
       return
     case 'export-idxml':
       if (result) return attempt('idXML export', () => exportIdXML(result))
+      return
+    case 'export-methods':
+      if (result) return attempt('Methods section', () => exportMethods(result))
       return
     case 'export-archive':
       if (result)

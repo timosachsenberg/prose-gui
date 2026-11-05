@@ -7,7 +7,7 @@
 //! search asks first: `close_requested`); full screen is the system's (macOS) or the window's (F11).
 //!
 //! The page's ids: `new-search`, `open-project`, `save-project`, `save-project-as`, `open-qpx`, `import-results`,
-//! `export-csv`, `export-xlsx`, `export-idxml`, `export-archive`, `view-search`, `view-results`, `view-history`,
+//! `export-csv`, `export-xlsx`, `export-idxml`, `export-methods`, `export-archive`, `view-search`, `view-results`, `view-history`,
 //! `view-help`, `theme-system`, `theme-light`, `theme-dark`, `help`, `help-troubleshooting`, `help-shortcuts`,
 //! `help-webapp`, `help-issue`, and `recent:<n>` (the n-th recent project, `setup_file::recent`).
 
@@ -82,6 +82,12 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<(Menu<R>, MenuHand
         .item(&csv)
         .item(&xlsx)
         .item(&item(app, "export-idxml", "idXML…", None)?)
+        .item(&item(
+            app,
+            "export-methods",
+            "Methods section (.txt)…",
+            None,
+        )?)
         .separator()
         .item(&item(
             app,

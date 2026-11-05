@@ -85,30 +85,31 @@ test.describe('example', () => {
     }
   })
 
-  test('the methods text: the numbers and settings of the provenance', async ({ page }) => {
+  test('the methods section: the numbers and settings of the provenance', async ({ page }) => {
     const f = await loadFixture('example')
     await openTab(page, 'Overview')
-    const text = (await page.getByText(/files? (was|were) searched with ProSE/).innerText()).trim()
-    expect(text).toContain(`${f.runs.length} files were searched with ProSE ${f.toolVersion} (OpenMS)`)
-    expect(text).toContain(`${count(Number(f.search.get('db_target_proteins')))} target entries`)
-    expect(text).toContain(`${count(Number(f.search.get('db_decoy_proteins')))} decoys (${f.search.get('decoy_mode')})`)
-    expect(text).toContain(`Enzyme: ${f.search.get('enzyme')}.`)
-    for (const [key, name] of [
-      ['missed_cleavages', 'peptide:missed_cleavages'],
-      ['peptide_min_length', 'peptide:min_size'],
-      ['peptide_max_length', 'peptide:max_size'],
-      ['precursor_mass_tolerance_lower', 'precursor:mass_tolerance_lower'],
-      ['precursor_mass_tolerance_upper', 'precursor:mass_tolerance_upper'],
-      ['fragment_mass_tolerance', 'fragment:mass_tolerance'],
-      ['fragment_mass_tolerance_unit', 'fragment:mass_tolerance_unit'],
-      ['min_charge', 'precursor:min_charge'],
-      ['max_charge', 'precursor:max_charge'],
-    ]) {
-      expect(text, key).toContain(`${name} = ${f.search.get(key)}`)
-    }
+    const text = (await page.getByTestId('methods-text').innerText()).replace(/\s+/g, ' ')
+    const S = (key: string) => f.search.get(key)!
+    const words = ['No', 'One', 'Two', 'Three', 'Four', 'Five']
+    expect(text).toContain(`${words[f.runs.length]} LC-MS/MS ${f.runs.length === 1 ? 'run' : 'runs'} (mzML`)
+    expect(text).toContain(`searched with ProSE (OpenMS ${f.toolVersion}) [1]`)
+    expect(text).toContain(`${count(Number(S('db_target_proteins')))} target sequences`)
+    expect(text).toContain(`${S('enzyme')} was set as the enzyme with full specificity and up to ${S('missed_cleavages')} missed cleavages`)
+    expect(text).toContain(`peptides of ${S('peptide_min_length')} to ${S('peptide_max_length')} residues`)
+    expect(S('precursor_mass_tolerance_lower')).toBe(S('precursor_mass_tolerance_upper'))
+    expect(text).toContain(`The precursor mass tolerance was ±${S('precursor_mass_tolerance_lower')} ${S('precursor_mass_tolerance_unit')}`)
+    expect(text).toContain(`the fragment mass tolerance ${S('fragment_mass_tolerance')} ${S('fragment_mass_tolerance_unit')}`)
+    expect(text).toContain(`Precursor charges ${S('min_charge')} to ${S('max_charge')} were searched`)
+    expect(text).toContain(`${S('fixed_modifications')} was set as a fixed modification`)
     expect(text.includes('PSMs were rescored with Percolator')).toBe(f.runs.some((r) => r.rescored))
-    expect(text).toContain(`PSMs were filtered at ${FIXTURE_PSM_FDR * 100} % PSM-level FDR (target-decoy). No peptide-level FDR was estimated.`)
-    expect(text).toContain(f.fdr.get('protein_fdr_applied') === 'true' ? 'protein-level FDR' : 'No protein-level FDR was applied')
+    expect(text).toContain(`PSMs were filtered at ${FIXTURE_PSM_FDR * 100}% PSM-level FDR`)
+    expect(text).toContain('No peptide-level FDR was applied')
+    expect(text).toContain(f.fdr.get('protein_fdr_applied') === 'true' ? 'protein-level FDR with the picked-protein approach' : 'No protein-level FDR was applied')
+    // the references, numbered as cited; Copy and Export › Methods section have the same text
+    await expect(page.getByTestId('methods-references').locator('li').first()).toContainText('[1] Pfeuffer J, Bielow C, et al. OpenMS 3')
+    await page.getByRole('button', { name: 'Export', exact: true }).click()
+    await expect(page.getByRole('menu').getByRole('menuitem', { name: 'Methods section (.txt)' })).toBeVisible()
+    await page.keyboard.press('Escape')
     // the Engine fact names the same version
     await expect(page.getByText(`ProSE ${/^\d+\.\d+/.exec(f.toolVersion)![0]}`, { exact: true })).toBeVisible()
   })

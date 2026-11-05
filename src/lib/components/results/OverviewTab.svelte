@@ -1,7 +1,8 @@
 <script lang="ts">
   // The Overview tab: what was searched and how (the settings that matter for reading the numbers, and
   // the engine: the ProSE tool's version), a table of the searched files with what the search reports
-  // of each, and, for an open search, the mass shifts the PSMs carry. The key figures stand above the tabs.
+  // of each, the methods section for a publication, and, for an open search, the mass shifts the PSMs carry. The
+  // key figures stand above the tabs.
   import FaqLink from '$lib/components/help/FaqLink.svelte'
   import * as Table from '$lib/components/ui/table'
   import { formatPercent, formatQ } from '$lib/format/fdr'
@@ -13,7 +14,8 @@
   import type { ResultsView } from '$lib/results/view.svelte'
   import { toolState } from '$lib/search/tool.svelte'
   import { openHelp } from '$lib/help-link.svelte'
-  import { methodsText } from '$lib/results/methods'
+  import { resultMethods, searchVersion } from '$lib/results/exports'
+  import { methodsPlainText } from '$lib/results/methods'
   import DeltaMassPanel from './DeltaMassPanel.svelte'
   import GuidanceNotices from './GuidanceNotices.svelte'
   import DiagnosisCard from './DiagnosisCard.svelte'
@@ -47,9 +49,7 @@
 
   // the tool that searched: ProSE's version as the result's provenance records it, else that of the stored search or
   // of this session's tool ('unknown': History did not know it)
-  const version = $derived(
-    result.outcome.toolVersion || [result.stored?.moduleVersion, toolState.info?.version].find((v) => v !== undefined && v !== '' && v !== 'unknown') || '',
-  )
+  const version = $derived(searchVersion(result))
   const engine = $derived.by(() => {
     const short = /^\d+\.\d+/.exec(version)?.[0] ?? version
     return {
@@ -77,13 +77,13 @@
   )
   const ppm = (e: { median: number; mad: number } | null) => (e ? `${e.median.toFixed(2)} ± ${e.mad.toFixed(2)}` : '–')
 
-  const methods = $derived(methodsText({ summary, settings, version, accepted: result.accepted }))
+  const methods = $derived(resultMethods(result))
   let copied = $state(false)
   // ('Copied', or why not: a clipboard the system refused)
   let copyFailed = $state(false)
   async function copyMethods() {
     try {
-      await navigator.clipboard.writeText(methods)
+      await navigator.clipboard.writeText(methodsPlainText(methods))
       copied = true
       copyFailed = false
     } catch {
@@ -237,11 +237,33 @@
 
   <section aria-labelledby="overview-methods" data-testid="methods">
     <div class="mb-1 flex items-center gap-2">
-      <h2 id="overview-methods" class="text-[13px] font-semibold">Methods text</h2>
-      <button type="button" class="rounded border px-2 py-0.5 text-xs hover:bg-muted" onclick={copyMethods}>{copied ? 'Copied' : copyFailed ? 'Copy failed: select the text' : 'Copy'}</button>
+      <h2 id="overview-methods" class="text-[13px] font-semibold">Methods section</h2>
+      <button type="button" class="rounded border px-2 py-0.5 text-xs hover:bg-muted" onclick={copyMethods} data-testid="copy-methods"
+        >{copied ? 'Copied' : copyFailed ? 'Copy failed: select the text' : 'Copy'}</button>
       <CommandLine id={result.id} />
     </div>
-    <p class="max-w-[60rem] rounded-lg border bg-background px-3 py-2 text-xs leading-relaxed select-text">{methods}</p>
+    <p class="mb-2 max-w-[60rem] text-xs text-muted-foreground">
+      For the methods of a publication: the search as ProSE ran it, with references. Copy pastes the paragraphs and the
+      references as plain text; Export › Methods section saves them.
+    </p>
+    <div class="max-w-[60rem] rounded-lg border bg-background px-3 py-2 text-xs leading-relaxed select-text" data-testid="methods-text">
+      {#each methods.paragraphs as paragraph, i (i)}
+        <p class="mb-2">{paragraph}</p>
+      {/each}
+      {#if methods.references.length > 0}
+        <p class="mt-3 mb-1 font-medium">References</p>
+        <ol class="flex flex-col gap-0.5" data-testid="methods-references">
+          {#each methods.references as reference, i (i)}
+            <li>[{i + 1}] {reference}</li>
+          {/each}
+        </ol>
+      {/if}
+    </div>
+    <ul class="mt-2 flex max-w-[60rem] list-disc flex-col gap-0.5 pl-5 text-xs text-amber-700 dark:text-amber-400" data-testid="methods-notes">
+      {#each methods.notes as note (note)}
+        <li>{note}</li>
+      {/each}
+    </ul>
   </section>
 
   {#if summary.openSearch}

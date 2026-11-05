@@ -47,7 +47,7 @@
     <li>
       Some red flags (profile spectra, no MS2 spectra, DIA data) offer <b>Search anyway</b>: it searches the files as they are, changes
       nothing in them, and is remembered on this computer for this version of each file (its size and modification time): a file that
-      changes is checked again; the notice “Searched anyway: …” has <b>Ask again</b> to take it back. It is recorded with the search, so Re-run does not ask again for unchanged files, and the methods text
+      changes is checked again; the notice “Searched anyway: …” has <b>Ask again</b> to take it back. It is recorded with the search, so Re-run does not ask again for unchanged files, and the methods section
       names profile spectra and missing MS2 spectra when ProSE confirmed them. A database with far more or fewer decoys than targets is
       no red flag: ProSE refuses it, so Start stays blocked until you click <b>Generate decoys</b>.
     </li>

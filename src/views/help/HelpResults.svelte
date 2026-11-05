@@ -25,8 +25,10 @@
     <li><b>Sample chemistry:</b> the share of peptides with a cysteine against the share expected from the proteins, missed cleavages and non-specific ends (and, for a TMT or iTRAQ label searched as variable, its share on K): signs that the alkylation, enzyme or label of the search do not match the sample.</li>
   </ul>
   <p>
-    Always there, below them: the <b>Methods text</b>, the search described for a paper (“Copy”), and “Copy command line”, ProSE’s
-    command as the app ran it. After it, for an open search, <b>Mass shifts</b>: the frequent mass differences; a shift is a mass
+    Always there, below them: the <b>Methods section</b>, the search described for the methods of a publication, with numbered
+    references (“Copy”, or Export › Methods section): the settings as ProSE recorded them, and only the FDR filters it applied. It
+    leaves to you what the app cannot know (the database release in brackets, the chromatography and the acquisition). Beside it
+    “Copy command line”, ProSE’s command as the app ran it. After it, for an open search, <b>Mass shifts</b>: the frequent mass differences; a shift is a mass
     difference, not an identified modification.
   </p>
   <p>
