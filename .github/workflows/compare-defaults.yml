@@ -53,8 +53,9 @@ jobs:
           for f in $runs; do curl -sfL --retry 3 "$PB$f" -o "$data/$f" & done; wait
           ls -la "$data"
           curl -sfL --retry 3 "${PB}ProteoBenchFASTA_MixedSpecies_HYE.fasta" -o "$RUNNER_TEMP/hye-raw.fasta"
-          echo "HYE FASTA: $(grep -c '^>' "$RUNNER_TEMP/hye-raw.fasta") entries"; grep '^>' "$RUNNER_TEMP/hye-raw.fasta" | head -3
-          grep '^>' "$RUNNER_TEMP/hye-raw.fasta" | grep -oE '_(HUMAN|YEAST|ECOLI)\b' | sort | uniq -c
+          echo "HYE FASTA: $(grep -c '^>' "$RUNNER_TEMP/hye-raw.fasta") entries"; { grep '^>' "$RUNNER_TEMP/hye-raw.fasta" | head -3; } || true
+          { grep '^>' "$RUNNER_TEMP/hye-raw.fasta" | grep -oE '_(HUMAN|YEAST|ECOLI)\b' | sort | uniq -c; } || true
+          echo "contaminants: $(grep -c '^>[a-z]*|Cont_' "$RUNNER_TEMP/hye-raw.fasta" || true)"
           echo "decoy-like: $(grep -cE '^>(rev_|REV_|DECOY_|decoy_)' "$RUNNER_TEMP/hye-raw.fasta" || true)"
           awk '/^>/{keep = ($0 !~ /^>(rev_|REV_|DECOY_|decoy_)/)} keep' "$RUNNER_TEMP/hye-raw.fasta" > "$RUNNER_TEMP/hye.fasta"
           curl -sfL --retry 3 "$BRASSICA" -o "$RUNNER_TEMP/brassica.fasta"
