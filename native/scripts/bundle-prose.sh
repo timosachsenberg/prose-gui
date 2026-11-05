@@ -305,12 +305,17 @@ fi
 # The Thermo RAW reader's managed half (WITH_THERMO_RAW): ThermoWrapperManaged.dll, its runtimeconfig and Thermo's
 # CommonCore assemblies, in bin/managed, where the bridge looks when OpenMS' share directory has no copy
 # (ThermoRawScanReader.cpp resolveManagedDirectory; on the build machine that directory is the source tree's, so
-# share/OpenMS of the bundle would not be asked). It runs on .NET 8 or later: the .NET 10 bundled below.
+# share/OpenMS of the bundle would not be asked). It runs on .NET 8 or later: the .NET 10 bundled below. The build
+# has it in managed/ beside the OpenMS library (openms-thermo-bridge's openms_thermo_bridge_copy_runtime_files:
+# $<TARGET_FILE_DIR:OpenMS>/managed): lib/managed on Linux and macOS, bin/managed on Windows, where the DLLs are.
 dotnet_version=
-if [ -f "$BUILD/lib/managed/ThermoWrapperManaged.dll" ]; then
-  cp -R "$BUILD/lib/managed" "$OUT/bin/managed"
-  bundle_dotnet
-fi
+for managed in "$BUILD/lib/managed" "$BUILD/bin/managed"; do
+  if [ -f "$managed/ThermoWrapperManaged.dll" ]; then
+    cp -R "$managed" "$OUT/bin/managed"
+    bundle_dotnet
+    break
+  fi
+done
 
 # --- Licences -------------------------------------------------------------------------------------
 lic=$share/LICENSES
