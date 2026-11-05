@@ -44,17 +44,26 @@ libglvnd-gles` (Fedora).
 - Disk: each search keeps ProSE's QPX outputs, most of it the spectra of the PSMs (the QPX mz view of each input: the
   100 most intense peaks per 100 m/z and every annotated peak): about 3.6 MB per thousand PSMs of an Orbitrap HCD
   run with ~1,100 peaks per MS2 spectrum (2.8 MB the input's mz view, 0.5 MB its psm file with PeptDeep's
-  predictions, 0.3 MB the merged psm file of all inputs), under 1 MB for the example.
+  predictions, 0.3 MB the merged psm file of all inputs), under 1 MB for the example. For many or large inputs,
+  choose a searches folder on a drive with room before searching ("Where the data is").
 
 ## Where the data is
 
-- The searches (History): a folder per search in the app's data folder, `searches/<id>/`: ProSE's outputs, the
-  record `search.json`, `proteins.fasta` (the proteins of the result, so that the search opens without its
-  database), `prose.ini` (the parameters ProSE was given; ProSE's defaults of the recorded version for the rest),
-  `command.txt` (its command line, the paths as placeholders) and links to the inputs. The app's data folder is
+- The searches (History): a folder per search, `<id>/`: ProSE's outputs, the record `search.json`, `proteins.fasta`
+  (the proteins of the result, so that the search opens without its database), `prose.ini` (the parameters ProSE was
+  given; ProSE's defaults of the recorded version for the rest), `command.txt` (its command line, the paths as
+  placeholders) and links to the inputs. They are in the searches folder, which New search and History show under
+  their title: by default `searches/` in the app's data folder, which is
   - Linux: `~/.local/share/org.openms.prose.desktop/` (`$XDG_DATA_HOME`)
   - macOS: `~/Library/Application Support/org.openms.prose.desktop/`
-  - Windows: `%APPDATA%\org.openms.prose.desktop\`
+  - Windows: `%APPDATA%\org.openms.prose.desktop\` (on the system drive, C:)
+- **Another searches folder** (e.g. on a drive with more room, before searching many files): "Change…" beside the
+  folder, in New search or History, and choose an empty folder (the dialog can make a new one) or one that holds
+  ProSE's searches only. The searches to come, and results archives opened, go there; "Use the default folder" goes
+  back. The searches saved so far stay where they are, and History keeps listing them (with their size, and Delete to
+  free the space). To move them as well, close ProSE and move their folders into the new folder: History finds them
+  there. ProSE keeps nothing but its searches in that folder, and never lists, deletes or cleans up anything else in
+  it (`src-tauri/src/location.rs`; the choice is kept in the app's data folder, `searches-folder.json`).
 - The log of the last search that failed: `logs/last-failure.log` there (the error names it).
 - Presets: the app's webview keeps them, on this computer.
 - The spectrum files (mzML, mzPeak, Thermo .raw, Bruker .d) and the FASTA are read where they are: never copied, and
