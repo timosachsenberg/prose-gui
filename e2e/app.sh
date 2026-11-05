@@ -12,4 +12,6 @@ shift
 export XDG_DATA_HOME=$home
 # the file that the specs choose in place of the system dialogs (debug builds only; see lib.rs)
 export PROSE_TEST_DIALOG_PATH=$home/chosen.prose
+# the folder that the specs choose in place of the folder dialog of the searches folder (debug builds only)
+export PROSE_TEST_FOLDER_DIALOG_PATH=$home/chosen-folder
 exec "$(dirname "${BASH_SOURCE[0]}")/../src-tauri/target/debug/prose-desktop" "$@"
