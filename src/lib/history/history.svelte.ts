@@ -537,8 +537,9 @@ export function dismissSaveStatus(): void {
 /**
  * The ProSE command line of search `id` (its `command.txt`, written by the shim; guidance G8), the parameters in
  * its `prose.ini`. The paths are placeholders (`<input 1>`, `<database>`, `<search folder>`); `withPaths` puts in
- * the inputs' paths (inputs.json: names only for an archive) and the user's database. Null for a search made
- * before the app wrote it.
+ * the inputs' paths (inputs.json: names only for an archive) and the user's database when ProSE searched it as it is
+ * (database.json). With contaminants it searched the folder's copy with cRAP appended, which is not kept: `<database>`
+ * stays, as the user's FASTA alone would be another search. Null for a search made before the app wrote it.
  */
 export async function commandLineOf(id: string, withPaths: boolean): Promise<string | null> {
   const text = async (name: string) => new TextDecoder().decode(await backend.read(id, name))
@@ -556,16 +557,11 @@ export async function commandLineOf(id: string, withPaths: boolean): Promise<str
   } catch {
     // (no inputs.json: the placeholders stay)
   }
-  for (const name of ['database.json', 'database-source.json']) {
-    try {
-      const path = (JSON.parse(await text(name)) as { path?: string }).path
-      if (path) {
-        line = line.replaceAll('<database>', quote(path))
-        break
-      }
-    } catch {
-      // (not there)
-    }
+  try {
+    const path = (JSON.parse(await text('database.json')) as { path?: string }).path
+    if (path) line = line.replaceAll('<database>', quote(path))
+  } catch {
+    // (not there: a search with contaminants, whose database was the folder's copy with cRAP, or an archive's)
   }
   return line
 }
