@@ -7,6 +7,7 @@
   import * as Popover from '$lib/components/ui/popover'
   import * as Tooltip from '$lib/components/ui/tooltip'
   import { formatPercent, formatQ } from '$lib/format/fdr'
+  import { parseSdrfTable, sdrfFilterOptions } from '$lib/design/sdrf-table'
   import { CURATION_FILTERS, PEPTIDE_CURATION_FILTERS, type CurationFilter } from '$lib/results/curation'
   import CurationMenu from './CurationMenu.svelte'
   import { formatCount, parseAccession } from '$lib/results/display'
@@ -96,6 +97,11 @@
     })),
   ])
 
+  /** The SDRF columns the result's files can be filtered by (a result started with an SDRF). */
+  const sdrfOptions = $derived(
+    view.result.sdrf ? sdrfFilterOptions(parseSdrfTable(view.result.sdrf.text), view.result.design.rows.map((r) => r.fileName)) : [],
+  )
+
   // PSMs: the charges the result has, the range filters, and the targets and decoys the filters keep
   const charges = $derived.by(() => {
     if (level.level !== 'psms') return []
@@ -132,7 +138,7 @@
   }
   const narrowed = $derived(
     level.level === 'psms' &&
-      ((level.filters.charges?.length ?? 0) > 0 || (level.filters.ranges?.length ?? 0) > 0 || level.filters.text !== ''),
+      ((level.filters.charges?.length ?? 0) > 0 || (level.filters.ranges?.length ?? 0) > 0 || level.filters.text !== '' || level.filters.sdrf !== undefined),
   )
   // (a search without decoys, or whose PSM FDR was skipped everywhere, has no decoys to estimate from)
   const td = $derived(narrowed && psmFdrApplied && !psmFdrOff(view.result.outcome.summary) ? targetDecoyOf(view.model, level.filters) : null)
@@ -229,6 +235,12 @@
       <span class="max-w-[16rem] truncate">Peptide: {peptide}</span><XIcon class="size-3 shrink-0" aria-hidden="true" /><span class="sr-only">(remove the filter)</span>
     </button>
   {/if}
+  {#if level.filters.sdrf}
+    {@const f = level.filters.sdrf}
+    <button type="button" class={chip} title="{f.files.length} of {view.result.design.rows.length} files" data-testid="sdrf-filter-chip" onclick={() => (level.filters.sdrf = undefined)}>
+      <span class="max-w-[18rem] truncate">{f.column.replace(/^(factor value|characteristics)\[(.*)\]$/i, '$2')}: {f.value}</span><XIcon class="size-3 shrink-0" aria-hidden="true" /><span class="sr-only">(remove the filter)</span>
+    </button>
+  {/if}
   {#if charges.length > 1}
     <div class="flex items-center gap-1" role="group" aria-label="Precursor charges">
       <span class="text-xs text-muted-foreground">z</span>
@@ -281,6 +293,21 @@
         <DropdownMenu.Label class="text-xs text-muted-foreground">Range</DropdownMenu.Label>
         {#each Object.entries(RANGE_KEYS) as [key, label] (key)}
           <DropdownMenu.Item onSelect={() => addRange(key as RangeKey)}>{label}</DropdownMenu.Item>
+        {/each}
+      {/if}
+      {#if sdrfOptions.length > 0}
+        <DropdownMenu.Separator />
+        <DropdownMenu.Label class="text-xs text-muted-foreground">SDRF</DropdownMenu.Label>
+        {#each sdrfOptions as option (option.column)}
+          <DropdownMenu.Sub>
+            <DropdownMenu.SubTrigger>{option.column}</DropdownMenu.SubTrigger>
+            <DropdownMenu.SubContent>
+              {#each option.values as v (v.value)}
+                <DropdownMenu.Item onSelect={() => (level.filters.sdrf = { column: option.column, value: v.value, files: v.files })}
+                  >{v.value} <span class="ml-auto pl-3 text-muted-foreground">{v.files.length} {v.files.length === 1 ? 'file' : 'files'}</span></DropdownMenu.Item>
+              {/each}
+            </DropdownMenu.SubContent>
+          </DropdownMenu.Sub>
         {/each}
       {/if}
     </DropdownMenu.Content>

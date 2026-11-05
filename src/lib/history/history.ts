@@ -22,6 +22,7 @@
 
 import { strToU8, unzipSync } from 'fflate'
 import type { DesignResolution } from '../design/model'
+import { withoutLocalPaths } from '../design/sdrf-table'
 import { readSearch, RUNS, type ByteRange, type SearchFiles } from '../results/read'
 import type { ResultTables } from '../results/types'
 import { formatBytes } from '../format/bytes'
@@ -79,6 +80,8 @@ export type SearchRecord = {
   proteinFdr: number
   /** The time of the search proper, in seconds. */
   seconds: number
+  /** The SDRF of the search (New search's, with its edits); absent without one. */
+  sdrf?: { name: string; text: string }
   /** The instrument of each searched mzML, by file name. */
   instruments?: Record<string, string>
   /** Set (by the Rust side) on a search made of a results archive: it reads only the files of its folder. */
@@ -211,6 +214,7 @@ export function endedRecordOf(search: EndedSearch, name: string, toolVersion: st
     proteinFdr: search.proteinFdr,
     seconds: search.seconds,
     // (no path of this computer: the record goes into results archives)
+    ...(search.sdrf ? { sdrf: { name: search.sdrf.name, text: withoutLocalPaths(search.sdrf.text) } } : {}),
     ...(search.instruments ? { instruments: search.instruments } : {}),
     ...(search.accepted ? { accepted: search.accepted } : {}),
     ...(search.warned ? { warned: search.warned } : {}),
@@ -261,6 +265,8 @@ export function parseRecord(text: string, kind: 'results archive' | 'search' = '
   }
   const settings = value.settings
   if (!isObject(settings) || !isObject(settings.parameters) || !Array.isArray(settings.fixedMods)) throw bad('settings is missing')
+  const sdrf = value.sdrf
+  if (sdrf !== undefined && (!isObject(sdrf) || typeof sdrf.name !== 'string' || typeof sdrf.text !== 'string')) throw bad('sdrf is broken')
   const accepted = value.accepted
   const checkList = (v: unknown) => v === undefined || (Array.isArray(v) && v.every((a) => isObject(a) && typeof a.id === 'string' && Array.isArray(a.files)))
   if (!checkList(accepted)) throw bad('accepted is broken')
@@ -275,6 +281,7 @@ export function resultFromRecord(record: SearchRecord, outcome: OpenResult['outc
     stored: { name: record.name, appVersion: record.appVersion, moduleVersion: record.toolVersion },
     outcome,
     design: record.design,
+    ...(record.sdrf ? { sdrf: record.sdrf } : {}),
     ...(record.instruments ? { instruments: record.instruments } : {}),
     ...(record.accepted ? { accepted: record.accepted } : {}),
     ...(record.warned ? { warned: record.warned } : {}),

@@ -169,10 +169,10 @@ class SearchForm {
   /** What the last "Remove all" or "Start over" removed, for its Undo (until files or a database are chosen again). */
   removed = $state<Removed | null>(null)
   /**
-   * The setup that opening a search from History (Re-run, Settings, a guidance re-run) replaced, for its Undo. Until a
-   * search starts or another is opened.
+   * The setup that opening a search from History (Re-run, Settings, a guidance re-run) replaced, for its Undo; `sdrf` is
+   * the SDRF session's (`SdrfSession.snapshot`). Until a search starts or another is opened.
    */
-  replaced = $state.raw<{ by: string; form: FormSnapshot } | null>(null)
+  replaced = $state.raw<{ by: string; form: FormSnapshot; sdrf: unknown } | null>(null)
 
   /** Files, database, notices and settings as they are (`replaced`). */
   snapshot(): FormSnapshot {

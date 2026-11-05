@@ -145,7 +145,8 @@ ctest --test-dir /scratch/sachsenb/openms-pr10564/build/native-release \
 (`-qpx_extended`, the optional columns and footer metadata of the QPX psm view the app reads: all scores,
 native ID, isotope error, protein mappings, the filtered peaks and PeptDeep's predictions, the run's statistics; the
 pooled and singleton protein groups, `-keep_decoys`; see `docs/parity.md`) has everything the app needs; mzPeak input
-since #10771. Before, the pin
+since #10771. `-sdrf` (the QPX run and sample views from an SDRF) is not in `develop` yet (it is on `okohlbacher/OpenMS`
+`prose/integration`): the app reads the tool's help and passes the SDRF only to a ProSE that has it. Before, the pin
 was the branch `claude/prose-desktop-pin` (develop with the pull requests not merged yet). Since develop `d60780f605`
 (#10740) the ProSE tool has defaults of its own (`toolSearchDefaults_`, ProSE.cpp): `decoys generate` with `decoy_method
 keep_termini`, `Acetyl (Protein N-term)` among the variable modifications, `rescoring:terminal_features` and

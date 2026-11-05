@@ -10,11 +10,14 @@ import { DECOY_LABELS } from '../settings/labels'
 import { PROSE_PARAMETERS } from '../settings/prose'
 import { boundsMessage, invertedRanges, outOfBounds, rangeMessage } from '../settings/ranges'
 import { keepsOpenResult, showFinished } from './finished'
+import { sdrfSession } from '../design/sdrf-session.svelte'
+import { withoutLocalPaths } from '../design/sdrf-table'
 import { CRAP_PROTEINS, searchForm as form } from './form.svelte'
 import { runSearch, searchRun } from './session.svelte'
 import { toolState } from './tool.svelte'
 import { ms2Analyzer, spectraChecks } from './spectra'
-import { databaseChecks } from './database'
+import { databaseChecks, sdrfOrganisms } from './database'
+import { sdrfChemistryChecks } from './chemistry'
 import { accept, acceptedOf, firstBlock, isAccepted, unaccept, ION_TRAP_FRAGMENT_DA, ionTrapPpm, loadAccepted, startChecks, warnedOf, withoutExpected, type Check, type Stamp } from './checks'
 import { plausibilityChecks } from './plausibility'
 
@@ -36,7 +39,8 @@ function adviceChecks(): Check[] {
   // (each file once: its path, name, instrument model and spectra facts)
   const files = form.files.map((r) => ({ path: r.file.path, name: r.file.name, instrument: /NT=([^;]*)/.exec(r.instrument ?? '')?.[1] ?? null, facts: r.spectraFacts }))
   const out: (Check | null)[] = [
-    ...databaseChecks(form.database?.summary, String(form.value('decoys')), (v) => form.setParam('decoys', v), form.database ? { path: form.database.file.path, proteins: form.database.proteins } : undefined),
+    ...sdrfChemistryChecks(sdrfSession.table, form.value<string[]>('modifications:fixed') ?? [], form.value<string[]>('modifications:variable') ?? []),
+    ...databaseChecks(form.database?.summary, String(form.value('decoys')), sdrfOrganisms(sdrfSession.table), (v) => form.setParam('decoys', v), form.database ? { path: form.database.file.path, proteins: form.database.proteins } : undefined),
     ...spectraChecks(files),
     ionTrapPpm(
       files.map((f) => ({ ...f, ms2Analyzer: f.facts ? ms2Analyzer(f.facts) : null })),
@@ -51,6 +55,15 @@ function adviceChecks(): Check[] {
       files,
       set: (name, value) => form.setParam(name, value),
     }),
+    // (the SDRF still fills the design and is checked; ProSE just does not get it)
+    sdrfSession.table && toolState.info?.sdrf === false
+      ? {
+          id: 'sdrf-not-passed',
+          level: 'info',
+          source: 'sdrf',
+          message: `This ProSE has no -sdrf option: ${sdrfSession.name} fills the design table and is checked against the search, but ProSE does not get it, so its QPX output names one sample per file.`,
+        }
+      : null,
   ]
   return out.filter((c): c is Check => c !== null)
 }
@@ -124,6 +137,7 @@ class SearchPlan {
       adding: form.adding > 0,
       inspecting: form.files.some((r) => r.spectraFacts === undefined),
       invalidField: Object.values(form.invalidFields)[0] ?? null,
+      sdrfProblem: sdrfSession.problem,
       invalidCell: (() => {
         const cells = form.invalidCellList
         return cells.length > 0 ? { label: cells[0].label, text: cells[0].text, more: cells.length - 1 } : null
@@ -201,6 +215,7 @@ export function searchRequest(): SearchRequest | null {
   if (searchPlan.chimericBlocked) delete parameters['chimeric:enabled']
   if (searchPlan.fdrBlocked) for (const name of FDR_PARAMETERS) delete parameters[name]
   return {
+    ...(toolState.info?.sdrf && sdrfSession.table ? { sdrf: withoutLocalPaths(sdrfSession.text()) } : {}),
     files: form.files.map((r) => ({ id: r.id, path: r.file.path })),
     database: form.database.file.path,
     contaminants: form.contaminants,
@@ -221,6 +236,7 @@ export async function startSearch(): Promise<void> {
   const values = $state.snapshot(form.values) as Record<string, unknown>
   const id = await runSearch(request, {
     design: $state.snapshot(form.design),
+    ...(sdrfSession.table ? { sdrf: { name: sdrfSession.name, text: sdrfSession.text() } } : {}),
     ...(searchPlan.acceptedChecks.length > 0 ? { accepted: $state.snapshot(searchPlan.acceptedChecks) } : {}),
     ...(searchPlan.warnedChecks.length > 0 ? { warned: $state.snapshot(searchPlan.warnedChecks) } : {}),
     // by file name, as the results name the runs: a name two files share (in different folders) is left out, since it

@@ -13,7 +13,7 @@
 export type CheckLevel = 'block' | 'warn' | 'info'
 
 /** What a check looks at. */
-export type CheckSource = 'files' | 'spectra' | 'design' | 'database' | 'settings' | 'tool'
+export type CheckSource = 'files' | 'spectra' | 'design' | 'sdrf' | 'database' | 'settings' | 'tool'
 
 /** What fixes a check, as a button. */
 export type CheckAction = { label: string; run: () => void }
@@ -41,12 +41,13 @@ export type AcceptedCheck = {
   stamps?: Record<string, string>
 }
 
-/** What the start checks look at: the form, its database, the settings and the tool, as plain values. */
+/** What the start checks look at: the form, its database, the SDRF, the settings and the tool, as plain values. */
 export type StartState = {
   files: { path: string; name: string; problem: string | null }[]
   adding: boolean
   /** The spectra of some file are still being inspected (their red flags are not known yet). */
   inspecting: boolean
+  sdrfProblem: string | null
   /** The first settings field whose text is not valid (`SearchForm.invalidFields`). */
   invalidField?: { label: string; text: string; hint: string } | null
   /** The first design cell that is not valid, and how many more there are. */
@@ -63,7 +64,7 @@ export type StartState = {
 
 /**
  * The checks that keep the search from starting, in the order New search names them (the first one is the plan
- * line's): files, the files' problems, the design, the database, the settings, the tool.
+ * line's): files, the SDRF, the files' problems, the design, the database, the settings, the tool.
  */
 export function startChecks(s: StartState): Check[] {
   const out: Check[] = []
@@ -72,6 +73,7 @@ export function startChecks(s: StartState): Check[] {
   if (s.files.length === 0) block('no-files', 'files', 'Add spectrum files (mzML, mzPeak, Thermo .raw, Bruker .d) to start.')
   if (s.adding) block('adding', 'files', 'Adding files…')
   else if (s.inspecting) block('inspecting', 'spectra', 'Checking the spectra of the files…')
+  if (s.sdrfProblem) block('sdrf', 'sdrf', s.sdrfProblem)
   const unsearchable = s.files.filter((f) => f.problem)
   if (unsearchable.length === 1) block('file-problem', 'files', `${unsearchable[0].problem} Remove it to start the search.`, [unsearchable[0].path])
   if (unsearchable.length > 1) {

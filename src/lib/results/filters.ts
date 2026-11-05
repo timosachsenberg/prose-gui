@@ -30,6 +30,11 @@ export type FilterState = {
   peptideFilter?: number
   /** PSMs: by their curation mark (`ResultModel.curation`); peptides: by the marks of their PSMs (curation.ts). */
   curation: CurationFilter
+  /**
+   * An SDRF column's value (`factor value[treatment]` = EGF): only the searched files (design rows, `psms.file`)
+   * whose SDRF rows have it; peptides and proteins with a PSM in one of them.
+   */
+  sdrf?: { column: string; value: string; files: number[] }
   /** PSMs: only these precursor charges (empty or absent: all). */
   charges?: number[]
   /** PSMs: numeric ranges, each inclusive; a PSM without the value (NaN) fails a range on it. */
@@ -74,6 +79,16 @@ export function targetDecoyOf(m: ResultModel, f: FilterState): { targets: number
   let decoys = 0
   for (const i of rows) decoys += m.tables.psms.decoy[i]
   return { targets: rows.length - decoys, decoys }
+}
+
+/** Per peptide: a PSM within the search's PSM FDR in one of the files of `f.sdrf`; null without that filter. */
+function sdrfPeptides(m: ResultModel, f: FilterState): Uint8Array | null {
+  if (!f.sdrf) return null
+  const files = new Set(f.sdrf.files)
+  const ps = m.tables.psms
+  const found = new Uint8Array(m.tables.peptides.count)
+  for (let i = 0; i < ps.count; i++) if (files.has(ps.file[i]) && passesQ(ps.qValue[i], m.psmFdr, m.psmFdr)) found[ps.peptide[i]] = 1
+  return found
 }
 
 /**
@@ -196,6 +211,12 @@ export function applyFilters(m: ResultModel, level: Level, f: FilterState): Uint
     const limit = qLimit(f.maxQ, m.proteinFdr)
     const tokens = words(f.text)
     const texts = tokens.length > 0 ? proteinText(m) : []
+    const inFiles = sdrfPeptides(m, f)
+    const { offsets, peptide } = m.protein.members
+    const foundInFiles = (p: number) => {
+      for (let i = offsets[p]; i < offsets[p + 1]; i++) if (inFiles![peptide[i]]) return true
+      return false
+    }
     for (let p = 0; p < pr.count; p++) {
       if (!f.showDecoys && pr.decoy[p]) continue
       if (f.hideContaminants && m.protein.contaminant[p]) continue
@@ -206,6 +227,7 @@ export function applyFilters(m: ResultModel, level: Level, f: FilterState): Uint
       if (m.protein.peptides[p] < f.minPeptides) continue
       if (tokens.length > 0 && !matches(texts[p], tokens)) continue
       if (f.minReplicatesInCondition > 0 && !foundInReplicates(m, p, f.minReplicatesInCondition)) continue
+      if (inFiles && !foundInFiles(p)) continue
       out[kept++] = p
     }
     return out.slice(0, kept)
@@ -215,9 +237,10 @@ export function applyFilters(m: ResultModel, level: Level, f: FilterState): Uint
     const out = new Uint32Array(pt.count)
     const limit = qLimit(f.maxQ, m.psmFdr)
     const mask = peptideMask(m, f)
+    const inFiles = sdrfPeptides(m, f)
     const marks = f.curation !== 'any' ? peptideMarks(m) : null
     for (let k = 0; k < pt.count; k++) {
-      if (!mask[k] || (!f.showDecoys && pt.decoy[k]) || !passesQ(m.peptide.bestQ[k], limit, m.psmFdr)) continue
+      if (!mask[k] || (inFiles && !inFiles[k]) || (!f.showDecoys && pt.decoy[k]) || !passesQ(m.peptide.bestQ[k], limit, m.psmFdr)) continue
       if (marks && !peptidePassesCuration(marks, k, f.curation)) continue
       out[kept++] = k
     }
@@ -228,7 +251,9 @@ export function applyFilters(m: ResultModel, level: Level, f: FilterState): Uint
   const limit = qLimit(f.maxQ, m.psmFdr)
   const mask = peptideMask(m, f)
   const only = f.peptideFilter
+  const files = f.sdrf ? new Set(f.sdrf.files) : null
   for (let i = 0; i < ps.count; i++) {
+    if (files && !files.has(ps.file[i])) continue
     const k = ps.peptide[i]
     if (!mask[k] || (!f.showDecoys && ps.decoy[i]) || !passesQ(ps.qValue[i], limit, m.psmFdr)) continue
     if (only !== undefined && k !== only) continue // an index that is no peptide matches nothing

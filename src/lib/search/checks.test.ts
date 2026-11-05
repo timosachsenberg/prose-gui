@@ -8,6 +8,7 @@ const ready: StartState = {
   files: [{ path: '/r/a.mzML', name: 'a.mzML', problem: null }],
   adding: false,
   inspecting: false,
+  sdrfProblem: null,
   invalidCell: null,
   database: { name: 'db.fasta', error: null, counted: true, problem: null },
   inverted: null,

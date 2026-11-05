@@ -1,7 +1,7 @@
 <script lang="ts">
   // New search (mockup 1): spectra with the experimental design, the protein database, the search
-  // settings and rescoring (the numbered steps 1 to 4), with a sticky footer to start the search. Spectra and a FASTA
-  // can be dropped anywhere on the window (from the file manager: their paths, desktop.ts).
+  // settings and rescoring (the numbered steps 1 to 4), with a sticky footer to start the search. Spectra, a FASTA and an
+  // SDRF or design.tsv can be dropped anywhere on the window (from the file manager: their paths, desktop.ts).
   import CheckNotices from '$lib/components/search/CheckNotices.svelte'
   import DatabaseCard from '$lib/components/search/DatabaseCard.svelte'
   import DesignTable from '$lib/components/search/DesignTable.svelte'
@@ -10,6 +10,7 @@
   import SearchFooter from '$lib/components/search/SearchFooter.svelte'
   import SettingsCard from '$lib/components/search/SettingsCard.svelte'
   import { Button } from '$lib/components/ui/button'
+  import { addAnyFiles } from '$lib/design/sdrf-session.svelte'
   import { onFileDrop } from '$lib/desktop'
   import { searchForm as form } from '$lib/search/form.svelte'
   import { undoReplace } from '$lib/history/history.svelte'
@@ -34,7 +35,7 @@
     let gone = false
     void onFileDrop({
       over: (on) => (dragging = on),
-      drop: (paths) => void form.addFiles(paths),
+      drop: (paths) => void addAnyFiles(paths),
     }).then((unlisten) => (gone ? unlisten() : (stop = unlisten)))
     return () => {
       gone = true

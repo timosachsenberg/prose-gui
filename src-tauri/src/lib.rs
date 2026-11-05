@@ -13,6 +13,9 @@
 //! - `inspect_spectra(paths)` -> per path the facts of its first MS2 spectra, or null (`spectra`)
 //! - `cpu_count()` -> the cores the search's threads may use
 //! - `example_files()` -> `{ spectra: [path, path], database }`
+//! - `open_design_file()` -> `{ path, text }` of an SDRF or design.tsv chosen (null if cancelled);
+//!   `read_design_file(path)` -> the text of one given by path (Add files, drop);
+//!   `locate_data_files(sdrf, names, folder?)` -> `[{ exact?, mzml? }]` (`locate`)
 //! - `save_text(name, contents)` and `save_search_file(searchId, name, suggested)`: a save dialog of
 //!   the system, then the file written where the user chose (-> the path, or null if cancelled)
 //! - History (`history`): `history_list()` -> entries (a folder with a broken record, or none, has
@@ -39,6 +42,7 @@ pub mod content;
 pub mod decoys;
 pub mod files;
 pub mod history;
+pub mod locate;
 pub mod net;
 pub mod progress;
 pub mod run;
@@ -591,6 +595,73 @@ async fn open_archive_file(app: AppHandle) -> Result<Response, String> {
     .map(Response::new)
 }
 
+/// An SDRF or design.tsv: the open dialog, then `{ path, text }` of the file chosen, or null if cancelled.
+#[tauri::command]
+async fn open_design_file(app: AppHandle) -> Result<Option<serde_json::Value>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let chosen = match test_dialog_path() {
+            Some(path) => Some(path),
+            None => match app
+                .dialog()
+                .file()
+                .set_title("Load a design (SDRF or design.tsv)")
+                .add_filter("SDRF, design.tsv", &["tsv", "txt", "sdrf"])
+                .blocking_pick_file()
+            {
+                None => None,
+                Some(p) => Some(p.into_path().map_err(|e| e.to_string())?),
+            },
+        };
+        let Some(path) = chosen else { return Ok(None) };
+        let text = std::fs::read_to_string(&path)
+            .map_err(|e| format!("{} cannot be read ({e}).", path.display()))?;
+        Ok(Some(serde_json::json!({ "path": path, "text": text })))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// The text of a design file the user gave by path (Add files, or dropped): an SDRF or design.tsv only (`.tsv`,
+/// `.txt`, `.sdrf`), at most 50 MB, as `open_design_file` reads the one it asks for.
+#[tauri::command]
+async fn read_design_file(path: String) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let p = Path::new(&path);
+        let name = p
+            .file_name()
+            .map(|n| n.to_string_lossy().to_lowercase())
+            .unwrap_or_default();
+        if !p.is_absolute() || ![".tsv", ".txt", ".sdrf"].iter().any(|s| name.ends_with(s)) {
+            return Err(format!("{path} is not an SDRF or design.tsv file."));
+        }
+        let meta = std::fs::metadata(p).map_err(|e| format!("{path} cannot be read ({e})."))?;
+        if !meta.is_file() || meta.len() > 50 * 1024 * 1024 {
+            return Err(format!("{path} is not a design file of at most 50 MB."));
+        }
+        std::fs::read_to_string(p).map_err(|e| format!("{path} cannot be read ({e})."))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// The data files an SDRF names (`locate`): beside the SDRF at `sdrf`, then below `folder` if given.
+#[tauri::command]
+async fn locate_data_files(
+    sdrf: String,
+    names: Vec<String>,
+    folder: Option<String>,
+) -> Result<Vec<locate::Located>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let base = Path::new(&sdrf)
+            .parent()
+            .unwrap_or(Path::new(""))
+            .to_path_buf();
+        locate::locate(&base, &names, folder.as_deref().map(Path::new))
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
 /// A QPX results folder (ProSE run by hand or on a cluster): the folder dialog, then its runs' stems
 /// (`history::qpx_stems`) -> `{ folder, stems }`, or null if cancelled.
 #[tauri::command]
@@ -837,6 +908,9 @@ pub fn run() {
             save_curation,
             open_archive_file,
             open_qpx_folder,
+            open_design_file,
+            read_design_file,
+            locate_data_files,
             history_import_qpx,
             save_archive_file,
             answer_close

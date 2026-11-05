@@ -35,6 +35,8 @@ export type OpenResult = {
   /** The search's cutoffs (q-values). */
   psmFdr: number
   proteinFdr: number
+  /** The SDRF loaded in New search, with the design table's edits (`SdrfSession.text`). */
+  sdrf?: { name: string; text: string }
   /** The instrument of each searched mzML (NT=..;AC=..), by file name, for the SDRF export. */
   instruments?: Record<string, string>
   /** The spectra of each mzML's header when the search started, by file name (guidance G11: spectra searched). */

@@ -25,6 +25,7 @@ import {
   type EndedSearch,
   type OpenResult,
 } from '../search/session.svelte'
+import { sdrfSession } from '../design/sdrf-session.svelte'
 import { searchForm } from '../search/form.svelte'
 import { canSearchAgain, parametersToSearchAgain, searchAgain, searchPlan, startSearch } from '../search/plan.svelte'
 import { acceptedKeys } from '../search/checks'
@@ -313,8 +314,10 @@ export async function reopenInNewSearch(id: string, start: boolean, changes: Rec
   const ordered = [...inputs].sort((a, b) => a.index - b.index)
   navigate({ view: 'search' })
   // what New search held is replaced: kept for Undo (`undoReplace`)
-  const held = searchForm.files.length > 0 || searchForm.database !== null
-  searchForm.replaced = held ? { by: record.name, form: searchForm.snapshot() } : null
+  const held = searchForm.files.length > 0 || searchForm.database !== null || sdrfSession.table !== null
+  searchForm.replaced = held ? { by: record.name, form: searchForm.snapshot(), sdrf: sdrfSession.table ? sdrfSession.snapshot() : null } : null
+  // the SDRF of another experiment must not travel with this search; this one's is loaded again by hand
+  sdrfSession.clear()
   const complete = await searchForm.restoreSearch({
     name: record.name,
     inputs: ordered.map((i, k) => {
@@ -327,10 +330,13 @@ export async function reopenInNewSearch(id: string, start: boolean, changes: Rec
   })
   // the red flags searched anyway then are not asked again (they are recorded per file: `checks.ts`)
   if (record.accepted) searchPlan.accepted = new Set([...searchPlan.accepted, ...acceptedKeys(record.accepted)])
+  if (record.sdrf) searchForm.notices.push(`“${record.name}” was searched with the SDRF ${record.sdrf.name}. Add it again (Add files…) to search with its metadata.`)
   if (!start) return false
-  // Re-run starts only the same search: every file and the database found
-  if (!complete) {
-    searchForm.notices.push('Re-run did not start: check the files and the database above, then start the search.')
+  // Re-run starts only the same search: every file and the database found, no SDRF to load again
+  if (!complete || record.sdrf) {
+    searchForm.notices.push(
+      !complete ? 'Re-run did not start: check the files and the database above, then start the search.' : 'Re-run did not start: add the SDRF again, then start the search.',
+    )
     return false
   }
   // (the proteins of the database are counted and the spectra checked in the background: start once the form allows
@@ -349,12 +355,14 @@ export async function reopenInNewSearch(id: string, start: boolean, changes: Rec
   return true
 }
 
-/** Undo of `searchForm.replaced`: the files, database and settings New search held before a search was opened. */
+/** Undo of `searchForm.replaced`: the files, database, settings and SDRF New search held before a search was opened. */
 export function undoReplace(): void {
   const r = searchForm.replaced
   if (!r) return
   searchForm.replaced = null
   searchForm.restoreSnapshot(r.form)
+  if (r.sdrf) sdrfSession.restore(r.sdrf as ReturnType<typeof sdrfSession.snapshot>)
+  else sdrfSession.clear()
 }
 
 /**

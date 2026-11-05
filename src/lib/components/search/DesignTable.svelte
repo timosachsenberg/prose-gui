@@ -16,7 +16,8 @@
   import type { Notice as DesignNotice } from '$lib/design/model'
   import { applyDesign, designFromNames } from '$lib/design/paste'
   import { parseSdrf } from '$lib/design/sdrf'
-  import { chooseFiles, saveText } from '$lib/desktop'
+  import { sdrfSession, addAnyFiles } from '$lib/design/sdrf-session.svelte'
+  import { chooseFiles, isDesktop, saveText } from '$lib/desktop'
   import { cn } from '$lib/utils'
   import { formatBytes } from '$lib/format/bytes'
   import { searchForm as form } from '$lib/search/form.svelte'
@@ -26,6 +27,8 @@
   import DesignCell from './DesignCell.svelte'
   import NoticeList from './NoticeList.svelte'
   import PasteDialog from './PasteDialog.svelte'
+  import SdrfPanel from './SdrfPanel.svelte'
+  import SdrfStatusCell from './SdrfStatusCell.svelte'
 
   let designInput = $state<HTMLInputElement | null>(null)
   let pasteOpen = $state(false)
@@ -37,7 +40,7 @@
 
   async function add() {
     const paths = await chooseFiles('spectra')
-    if (paths.length > 0) await form.addFiles(paths)
+    if (paths.length > 0) await addAnyFiles(paths)
   }
 
   /** The folder of a path (shown beside the name: two files of one name stay apart). */
@@ -141,8 +144,6 @@
       {#if multi}
         <Button variant="ghost" size="sm" class={headerButton + ' text-muted-foreground'} onclick={() => (pasteOpen = true)}
           >Paste from spreadsheet</Button>
-        <Button variant="outline" size="sm" class={headerButton} onclick={() => designInput?.click()}
-          >Load design (SDRF, design.tsv)</Button>
         {#if duplicate}
           <!-- aria-disabled, not disabled: the button stays focusable, so that its tooltip says why -->
           <Tooltip.Root>
@@ -162,6 +163,10 @@
         {:else}
           <Button variant="outline" size="sm" class={headerButton} onclick={saveDesign}>Save design.tsv</Button>
         {/if}
+      {/if}
+      <!-- (in the app, Add files takes an SDRF or design.tsv too) -->
+      {#if !isDesktop()}
+        <Button variant="outline" size="sm" class={headerButton} onclick={() => designInput?.click()}>Load design (SDRF, design.tsv)</Button>
       {/if}
       <Button variant="ghost" size="sm" class={headerButton + ' text-muted-foreground'} disabled={form.busy} onclick={() => form.removeAllFiles()}
         >Remove all</Button>
@@ -193,11 +198,13 @@
             {status.differ.size === 1 ? 'file differs' : 'files differ'} (marked){/if}{#if unchecked > 0}; {unchecked} {unchecked === 1 ? 'file' : 'files'} not checked{/if}{:else if inspecting}Reading the spectra's flags…{:else}{unchecked} {unchecked === 1 ? 'file' : 'files'} not checked (New search looks into mzML only){/if}{#if unchecked > 0}<FaqLink faq="faq-conversion" label="Why ›" />{/if}
       </p>
     {/if}
+    <SdrfPanel />
     <!-- a bounded scroll box: long or wide tables scroll inside it, and it is the sticky header's context -->
     <div class="relative max-h-[70vh] w-full overflow-auto" data-testid="design-scroll">
       <table class={cn('w-full table-fixed border-collapse tabular-nums', minWidth)}>
         <thead>
           <tr class="text-left text-xs text-muted-foreground">
+            {#if sdrfSession.path}<th scope="col" class="{th} w-[64px]" title="The SDRF's data file was found">Exists</th>{/if}
             <th scope="col" class={th}>File</th>
             {#if multi}
               <th scope="col" class="{th} w-[140px]">Condition</th>
@@ -221,6 +228,7 @@
             {@const name = file.file.name}
             {@const folder = folderOf(file.file.path)}
             <tr class={cn('border-b last:border-b-0', file.problem && 'bg-destructive/5')} data-problem={file.problem ? '' : undefined}>
+              {#if sdrfSession.path}<td class="px-2.5 py-1.5"><SdrfStatusCell path={file.file.path} /></td>{/if}
               <th scope="row" class="truncate px-2.5 py-1.5 text-left font-normal" title={file.file.path}
                 ><span class="font-mono text-[12.5px]">{name}</span>{#if folder}<span
                     class="ml-2 text-xs text-muted-foreground"

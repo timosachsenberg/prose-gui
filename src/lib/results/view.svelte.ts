@@ -413,6 +413,7 @@ export class ResultsView {
       text: '',
       maxQ: m.psmFdr,
       proteinFilter: 'protein' in what ? index : undefined,
+      sdrf: undefined,
       charges: undefined,
       ranges: undefined,
       peptideFilter: 'peptide' in what ? index : undefined,
@@ -424,7 +425,7 @@ export class ResultsView {
 
   /**
    * Opens PSM `i` (a row of `tables.psms`) in the PSM view, from the PSM table: the PSMs tab with the
-   * PSM selected. A filter that hides it is lifted (text, protein and peptide filters, the cutoff,
+   * PSM selected. A filter that hides it is lifted (text, protein, peptide and SDRF filters, the cutoff,
    * contaminants or decoys as far as it is one), so that it is a row of the list beside the view.
    */
   openPsm(i: number): void {
@@ -440,6 +441,7 @@ export class ResultsView {
         maxQ: m.psmFdr,
         proteinFilter: undefined,
         peptideFilter: undefined,
+        sdrf: undefined,
         charges: undefined,
         ranges: undefined,
         hideContaminants: m.peptide.contaminant[ps.peptide[i]] ? false : f.hideContaminants,
@@ -471,6 +473,7 @@ export class ResultsView {
       maxQ: m.psmFdr,
       proteinFilter: protein,
       peptideFilter: peptide ?? undefined,
+      sdrf: undefined,
       charges: undefined,
       ranges: undefined,
       hideContaminants: m.peptide.contaminant[ps.peptide[i]] ? false : restore.hideContaminants,

@@ -158,7 +158,8 @@ native/scripts/in-env.sh e2e/run.sh e2e/screens.shot.ts # screenshots into docs/
 ```
 
 The OpenMS the app's ProSE is built from is pinned in `native/OPENMS_COMMIT` (a full commit hash) and
-`native/OPENMS_REPO` (its repository, `owner/name`): `develop` of OpenMS/OpenMS. To move the pin, build and test the
+`native/OPENMS_REPO` (its repository, `owner/name`): `develop` of OpenMS/OpenMS. Its ProSE has no `-sdrf` yet (the
+app then does not pass the SDRF; `okohlbacher/OpenMS` `prose/integration` has it). To move the pin, build and test the
 new commit and make the parameter table and the fixtures again (`native/README.md`, "Moving the pin to another
 repository or commit").
 

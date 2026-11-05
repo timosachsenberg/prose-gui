@@ -1,9 +1,10 @@
 // What New search says about the chosen FASTA (guidance G6): a one-line summary of its entries for the database
 // card (organisms, header style, isoforms, contaminants, decoys), and the checks on it: decoys in the database
-// while the setting generates more, and decoys that are too few or too many for its targets. A FASTA of several
+// while the setting generates more, and an SDRF organism that is not the database's main one. A FASTA of several
 // organisms is not warned about by itself: xenografts, host-pathogen and spike-in samples need one.
 
 import type { FastaSummary } from '../desktop'
+import type { SdrfTable } from '../design/sdrf-table'
 import type { Check } from './checks'
 
 /** "Homo sapiens (20,401 of 20,420 entries) · UniProt headers · 1,532 isoforms · 116 contaminants · no decoys" */
@@ -24,6 +25,18 @@ export function fastaLine(s: FastaSummary, proteins: number): string {
   return parts.join(' · ')
 }
 
+/** The genus and species of an organism name, lower case ("homo sapiens" of "Homo sapiens (Human)"). */
+const species = (name: string) => name.toLowerCase().replace(/\(.*?\)/g, ' ').trim().split(/\s+/).slice(0, 2).join(' ')
+
+/** The organisms of an SDRF's characteristics[organism] column (distinct, as written). */
+export function sdrfOrganisms(table: SdrfTable | null): string[] {
+  if (!table) return []
+  const col = table.headers.findIndex((h) => h.trim().toLowerCase() === 'characteristics[organism]')
+  if (col < 0) return []
+  const values = table.rows.map((r) => (r[col] ?? '').trim()).filter((v) => v !== '' && !/^not (available|applicable)$/i.test(v))
+  return [...new Set(values)]
+}
+
 /**
  * The decoys of a database, per target, that a target-decoy FDR can rest on: about one each. Outside this range
  * (a few stray decoys, or decoys added twice) the FDR is not what it says.
@@ -31,11 +44,13 @@ export function fastaLine(s: FastaSummary, proteins: number): string {
 export const DECOY_RATIO = { min: 0.5, max: 2 }
 
 /**
- * The checks of the database: its decoys against the setting and against its targets. `database`: its path (what an accepted red flag is kept for) and its entries (null while counting).
+ * The checks of the database: its decoys against the setting and against its targets, the SDRF's organism against its
+ * main one. `database`: its path (what an accepted red flag is kept for) and its entries (null while counting).
  */
 export function databaseChecks(
   s: FastaSummary | undefined,
   decoySetting: string,
+  sdrfOrganism: string[],
   setDecoys: (v: string) => void,
   database?: { path: string; proteins: number | null },
 ): Check[] {
@@ -69,6 +84,19 @@ export function databaseChecks(
       message: `The database has decoys of its own (${s.decoys.toLocaleString('en-US')}, marked ${s.decoyMarker}). With Generate, the default, ProSE removes them and makes one decoy per target itself. To search with the database’s decoys instead, use them.`,
       action: { label: 'Use the database’s decoys', run: () => setDecoys('auto') },
     })
+  }
+  const main = s.organisms[0]?.[0]
+  if (main && sdrfOrganism.length > 0) {
+    const all = new Set(s.organisms.map(([o]) => species(o)))
+    const missing = sdrfOrganism.filter((o) => !all.has(species(o)) && species(o) !== species(main))
+    if (missing.length > 0) {
+      out.push({
+        id: 'organism-mismatch',
+        level: 'warn',
+        source: 'database',
+        message: `The SDRF names ${missing.join(', ')} as the organism, but the database's entries are mostly ${main}. Check that it is the right database.`,
+      })
+    }
   }
   return out
 }
