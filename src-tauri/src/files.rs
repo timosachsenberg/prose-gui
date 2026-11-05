@@ -394,10 +394,11 @@ pub fn inspect(path: &str) -> FileFacts {
         } else {
             content::mzml(file, &name)
         };
-        facts.instrument = content::mzml_instrument(file);
-        mzml.map(|m| {
+        // (the instrument from the head just read: the file is not opened twice)
+        mzml.map(|(m, instrument)| {
             facts.spectra = m.spectra;
             facts.problem = m.problem;
+            facts.instrument = instrument;
         })
     };
     if let Err(e) = counted {
