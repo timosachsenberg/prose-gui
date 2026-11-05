@@ -1,6 +1,6 @@
 <script lang="ts">
   // The one filter row of a level: text, the q-value cutoff (tightening the search's only), and on
-  // proteins the minimum peptides and "found in"; contaminants and decoys as chips; "n of total".
+  // proteins the minimum peptides and "found in", on PSMs the curation; contaminants and decoys as chips; "n of total".
   import FdrInput from '$lib/components/FdrInput.svelte'
   import ChoiceSelect from '$lib/components/search/ChoiceSelect.svelte'
   import * as DropdownMenu from '$lib/components/ui/dropdown-menu'
@@ -8,6 +8,8 @@
   import * as Tooltip from '$lib/components/ui/tooltip'
   import { formatPercent, formatQ } from '$lib/format/fdr'
   import { parseSdrfTable, sdrfFilterOptions } from '$lib/design/sdrf-table'
+  import { CURATION_FILTERS, PEPTIDE_CURATION_FILTERS, type CurationFilter } from '$lib/results/curation'
+  import CurationMenu from './CurationMenu.svelte'
   import { formatCount, parseAccession } from '$lib/results/display'
   import { hiddenContaminants, psmValue, RANGE_KEYS, targetDecoyOf, type RangeKey } from '$lib/results/filters'
   import { psmFdrOff, PSM_FDR_SKIPPED_WHY } from '$lib/results/overview'
@@ -214,6 +216,15 @@
     {/if}
   {/if}
 
+  {#if level.level !== 'proteins'}
+    <ChoiceSelect
+      class="w-auto"
+      ariaLabel="Curation"
+      value={level.filters.curation}
+      options={level.level === 'psms' ? CURATION_FILTERS : PEPTIDE_CURATION_FILTERS}
+      onChange={(v) => (level.filters.curation = v as CurationFilter)} />
+  {/if}
+
   {#if protein}
     <button type="button" class={chip} title={protein.accession} onclick={() => (level.filters.proteinFilter = undefined)}>
       Protein: {protein.id}<XIcon class="size-3" aria-hidden="true" /><span class="sr-only">(remove the filter)</span>
@@ -265,6 +276,9 @@
     <button type="button" class={chip} onclick={() => (level.filters.showDecoys = false)}>
       Decoys shown<XIcon class="size-3" aria-hidden="true" /><span class="sr-only">(hide them)</span>
     </button>
+  {/if}
+  {#if level.level === 'psms'}
+    <CurationMenu {view} {level} />
   {/if}
   <DropdownMenu.Root>
     <DropdownMenu.Trigger

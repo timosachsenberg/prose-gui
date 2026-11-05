@@ -30,6 +30,7 @@
 //                 search's tables; filters as results/filters.ts `FilterState`, NaN written as null)
 
 import { HELP_PAGES, views, type HelpPage, type View } from '../route'
+import { CURATION_FILTERS } from '../results/curation'
 import type { FilterState } from '../results/filters'
 import type { Level } from '../results/model'
 import type { PanelTab, SortState, Tab } from '../results/view.svelte'
@@ -123,6 +124,8 @@ function filtersOf(v: unknown): FilterState | null {
   if (!isObject(v)) return null
   const f = { ...v } as Record<string, unknown>
   f.maxQ = typeof f.maxQ === 'number' ? f.maxQ : NaN
+  // (a project of a build before PSM curation has none: all PSMs)
+  f.curation = CURATION_FILTERS.some((c) => c.value === f.curation) ? f.curation : 'any'
   if (Array.isArray(f.ranges)) {
     f.ranges = f.ranges.filter(isObject).map((r) => ({ ...r, min: num(r.min) ?? -Infinity, max: num(r.max) ?? Infinity }))
   }

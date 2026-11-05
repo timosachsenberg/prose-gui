@@ -26,7 +26,8 @@
 //!   file), `save_project_file(searchId, name)` (a save dialog, then the search's project zip written there
 //!   entry by entry: `project`; events `project://progress` `{ searchId, written, total }`),
 //!   `open_project_file()` (the open dialog, then the bytes of the file chosen; empty if
-//!   cancelled) and `history_import(body)` (the entries of a project in a fresh folder -> the new id). At
+//!   cancelled) and `history_import(body)` (the entries of a project in a fresh folder -> the new id),
+//!   `save_curation(searchId, curation)` (the user's marks of the PSMs: the folder's `curation.json`). At
 //!   startup the partial folders of interrupted searches are swept (`history::sweep`).
 //!
 //! - Projects (`setup_file`): `save_project_setup(name, contents, ask)` (the save dialog unless `ask` is false and a
@@ -533,6 +534,14 @@ async fn history_save_proteins(
 ) -> Result<(), String> {
     on_searches(&app, move |dir| {
         history::save_proteins(&dir, &search_id, &proteins)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn save_curation(app: AppHandle, search_id: String, curation: String) -> Result<(), String> {
+    on_searches(&app, move |dir| {
+        history::save_curation(&dir, &search_id, &curation)
     })
     .await
 }
@@ -1067,6 +1076,7 @@ pub fn run() {
             history_delete,
             history_files,
             history_import,
+            save_curation,
             open_project_file,
             open_qpx_folder,
             open_design_file,

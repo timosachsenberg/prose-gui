@@ -1,5 +1,5 @@
-// The exports of the Export menu: the current view as CSV, the design, the search's idXML, the methods section;
-// each saved where the user chooses (the system's save dialog).
+// The exports of the Export menu: the current view as CSV, TSV or Excel, the curated PSMs as TSV, the design, the
+// search's idXML, the methods section; each saved where the user chooses (the system's save dialog).
 
 import { writeDesignTsv } from '../design/design-tsv'
 import { saveBytes, saveSearchFile, saveText } from '../desktop'
@@ -9,8 +9,10 @@ import { defaultsOf } from '../settings/parameters'
 import { PROSE_PARAMETERS } from '../settings/prose'
 import { CRAP_PROTEINS } from '../search/form.svelte'
 import { toolState } from '../search/tool.svelte'
+import { toTsv } from './csv'
 import { resultName } from './display'
 import { methodsPlainText, methodsSection, type MethodsSection } from './methods'
+import { csvColumns } from './table-columns'
 import type { ResultsView } from './view.svelte'
 
 /** The name of a result's exports (see `resultName`). */
@@ -51,16 +53,16 @@ export async function exportMethods(result: OpenResult): Promise<void> {
 const painted = () => new Promise<void>((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)))
 
 /**
- * The current level's view as `<name>-<level>.csv` (`view.exporting` meanwhile); false on a tab
+ * The current level's view as `<name>-<level>.csv` or `.tsv` (`view.exporting` meanwhile); false on a tab
  * without a table or while an export runs.
  */
-export async function exportCsv(view: ResultsView): Promise<boolean> {
+export async function exportCsv(view: ResultsView, format: 'csv' | 'tsv' = 'csv'): Promise<boolean> {
   const level = view.level
   if (!level || view.exporting) return false
   view.exporting = true
   try {
     await painted()
-    await saveText(`${exportName(view.result)}-${level.level}.csv`, level.csv())
+    await saveText(`${exportName(view.result)}-${level.level}.${format}`, format === 'csv' ? level.csv() : level.tsv())
     return true
   } finally {
     view.exporting = false
@@ -75,6 +77,28 @@ export async function exportXlsx(view: ResultsView): Promise<boolean> {
   try {
     await painted()
     await saveBytes(`${exportName(view.result)}-${level.level}.xlsx`, level.xlsx())
+    return true
+  } finally {
+    view.exporting = false
+  }
+}
+
+/**
+ * The curated PSMs as `<name>-curated-psms.tsv`: every PSM with a mark or a note, whatever the PSM table's filters,
+ * in its order, with its visible columns and the Curation and Curation note columns (also when hidden). False when no
+ * PSM has either or while an export runs.
+ */
+export async function exportCurated(view: ResultsView): Promise<boolean> {
+  if (view.exporting) return false
+  const rows = view.curatedRows()
+  if (rows.length === 0) return false
+  view.exporting = true
+  try {
+    await painted()
+    const columns = csvColumns(view.psms.visible)
+    for (const id of ['curation', 'curationNote']) if (!columns.includes(id)) columns.push(id)
+    const text = toTsv(view.model, 'psms', rows, columns, view.psms.filters)
+    await saveText(`${exportName(view.result)}-curated-psms.tsv`, text)
     return true
   } finally {
     view.exporting = false

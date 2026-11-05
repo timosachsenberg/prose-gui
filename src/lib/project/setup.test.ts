@@ -37,10 +37,10 @@ const setup = (): ProjectSetup => ({
       panelPeptide: null,
       psm: 7,
       levels: {
-        proteins: { filters: { text: 'ALB', maxQ: 0.01, minPeptides: 2, minReplicatesInCondition: 0, hideContaminants: true, showDecoys: false }, sort: { key: 'psms', dir: 'desc' }, hidden: [], selected: 3 },
-        peptides: { filters: { text: '', maxQ: NaN, minPeptides: 0, minReplicatesInCondition: 0, hideContaminants: true, showDecoys: false }, sort: { key: 'psms', dir: 'desc' }, hidden: ['length'], selected: null },
+        proteins: { filters: { text: 'ALB', maxQ: 0.01, minPeptides: 2, minReplicatesInCondition: 0, hideContaminants: true, showDecoys: false, curation: 'any' }, sort: { key: 'psms', dir: 'desc' }, hidden: [], selected: 3 },
+        peptides: { filters: { text: '', maxQ: NaN, minPeptides: 0, minReplicatesInCondition: 0, hideContaminants: true, showDecoys: false, curation: 'any' }, sort: { key: 'psms', dir: 'desc' }, hidden: ['length'], selected: null },
         psms: {
-          filters: { text: '', maxQ: 0.01, minPeptides: 0, minReplicatesInCondition: 0, hideContaminants: true, showDecoys: true, charges: [2, 3], ranges: [{ key: 'rt', min: 100, max: Infinity }] },
+          filters: { text: '', maxQ: 0.01, minPeptides: 0, minReplicatesInCondition: 0, hideContaminants: true, showDecoys: true, curation: 'accepted', charges: [2, 3], ranges: [{ key: 'rt', min: 100, max: Infinity }] },
           sort: { key: 'qValue', dir: 'asc' },
           hidden: [],
           selected: 7,

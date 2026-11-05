@@ -64,6 +64,21 @@ libglvnd-gles` (Fedora).
   nothing is written beside them. Deleting a
   search in History removes its folder; uninstalling leaves the data folder, which can be deleted by hand.
 
+## Curating PSMs
+
+In the PSM view, **Accept** and **Reject** (keys A and R; pressing again takes the mark away) mark the open PSM, and
+**Note** keeps an optional line of text on it (saved when the field loses the focus or on Enter). The PSM table shows
+the mark in its Curation column (the note in its Note column, under Columns) and filters by it (Curated, Accepted,
+Rejected, Not curated); with the table at Not curated, marking a PSM goes on to the next one. **Mark shown** accepts,
+rejects or unmarks every PSM the table shows (e.g. all PSMs of a peptide after "All n in the PSM table"), with Undo.
+The Peptides table counts the accepted (✓) and rejected (✗) PSMs of each peptide and filters by them (With an
+accepted PSM, ...).
+
+Export › TSV (current view) saves the table as shown (Export › CSV or Excel for spreadsheets), and Export › Curated PSMs (TSV)
+every marked or noted PSM, whatever the filters, with its mark and note. The marks and notes are saved in the
+search's folder as `curation.json` (`src/lib/results/curation.ts`: each PSM by its file, native ID, peptide and
+charge), so they stay with the search in History and go with its results archive.
+
 ## Menus
 
 The desktop app has native menus (Tauri's menu API, `src-tauri/src/menu.rs`): on macOS the menu bar with the app menu
@@ -110,9 +125,10 @@ is refused. A project is not a results archive: it holds paths and settings, no 
 Export › Results archive (`.prose`) writes a search as one zip, which History › Import results archive opens on
 another computer (in the code and the file's checks it is still the "project file" of `history.ts` and `project.rs`).
 It holds the search's folder as the app keeps it: ProSE's outputs (the QPX Parquet files, the idXML, the
-open-search tables), `search.json`, `proteins.fasta`, and `inputs.json` with the files' names only. Left out are
-ProSE's log, the database copy with the contaminants, `database.json` (the path of a database searched without
-them) and `database-source.json` (the path of one searched with them, for Re-run). **ProSE's outputs name folders of the computer that searched** (e.g. the database's path and all of ProSE's
+open-search tables), `search.json`, `proteins.fasta`, `curation.json` (if PSMs were curated), and `inputs.json` with the
+files' names only. Left out are ProSE's log, the database copy with the contaminants, `database.json` (the path of a
+database searched without them) and `database-source.json` (the path of one searched with them, for Re-run). **ProSE's
+outputs name folders of the computer that searched** (e.g. the database's path and all of ProSE's
 parameters in the QPX provenance view, the input and database paths in the idXML), and the project carries them as they are: share it
 where that is fine. A search saved by an earlier version of the app (with `summary.yaml` and OpenMS' own Parquet
 files, or without the QPX run and provenance views) does not open in this one: History and Import results archive say so. A results archive holds at

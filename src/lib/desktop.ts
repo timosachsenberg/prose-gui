@@ -5,7 +5,7 @@
 // Commands (src-tauri/src/lib.rs): tool_info, start_search, cancel_search, read_search_file,
 // inspect_files, cpu_count, example_files, save_text, save_search_file, history_list, history_save_record,
 // history_save_proteins, history_rename, history_delete, history_files, history_import, open_project_file,
-// save_project_file, open_design_file, locate_data_files, answer_close, save_project_setup, open_project_setup, forget_project_setup, menu_state. Events:
+// save_project_file, save_curation, open_design_file, locate_data_files, answer_close, save_project_setup, open_project_setup, forget_project_setup, menu_state. Events:
 // search://progress, search://done, search://failed, project://progress, app://close-requested, menu://action. The system's dialogs open one at a time (`oneDialog`). The window's
 // theme (`windowTheme`, `onWindowThemeChanged`, `setWindowTheme`).
 
@@ -337,6 +337,25 @@ export function downloadProteome(proteome: string, reviewed: boolean): Promise<s
 export function saveBytes(name: string, contents: Uint8Array): Promise<string | null> {
   if (!isDesktop()) return Promise.resolve(browserDownload(name, new Blob([contents as Uint8Array<ArrayBuffer>], { type: 'application/octet-stream' })))
   return oneDialog(null, () => invoke<string | null>('save_bytes', contents, { headers: { 'x-file-name': encodeURIComponent(name) } }))
+}
+
+/**
+ * The PSM curation of search `searchId`: its folder's `curation.json` (results/curation.ts), read with
+ * read_search_file and written with save_curation. Null outside the desktop app (the marks then last the session).
+ */
+export function curationStoreFor(searchId: string): { load(): Promise<string | null>; save(text: string): Promise<void> } | null {
+  if (!isDesktop()) return null
+  return {
+    async load() {
+      try {
+        return new TextDecoder('utf-8', { fatal: true }).decode(await readSearchFile(searchId, 'curation.json'))
+      } catch (e) {
+        if ((e as { notFound?: boolean })?.notFound) return null
+        throw new Error(errorText(e))
+      }
+    },
+    save: (curation) => invoke('save_curation', { searchId, curation }),
+  }
 }
 
 /** Copies a file of a search (e.g. `merged.idXML`) to where the user chooses, suggesting `suggested`. */
