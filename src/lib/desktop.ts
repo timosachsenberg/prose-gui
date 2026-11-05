@@ -6,7 +6,7 @@
 // inspect_files, cpu_count, example_files, save_text, save_search_file, history_list, history_save_record,
 // history_save_proteins, history_rename, history_delete, history_files, history_import, open_archive_file,
 // save_archive_file, save_curation, open_design_file, locate_data_files, answer_close, save_project_setup,
-// open_project_setup, forget_project_setup, menu_state, searches_location, choose_searches_folder,
+// open_project_setup, use_opened_project_setup, forget_project_setup, menu_state, searches_location, choose_searches_folder,
 // use_default_searches_folder. Events: search://progress, search://done, search://failed, archive://progress,
 // app://close-requested, menu://action. The system's dialogs open one at a time (`oneDialog`). The window's
 // theme (`windowTheme`, `onWindowThemeChanged`, `setWindowTheme`).
@@ -538,6 +538,15 @@ function pickTextFile(accept: string): Promise<{ path: string; text: string } | 
     document.body.append(input)
     input.click()
   })
+}
+
+/**
+ * The file `openProjectSetup` read is the window's project, now that the page has read it as one: Save writes there,
+ * it is first under Open Recent, and the window's title names it. A file the page refuses never becomes that.
+ */
+export function useOpenedProjectSetup(): Promise<void> {
+  if (!isDesktop()) return Promise.resolve()
+  return invoke<void>('use_opened_project_setup').catch(() => undefined)
 }
 
 /** No current project (File › New Search): the next Save asks where, the window's title is the app's again. */

@@ -6,8 +6,8 @@ mod common;
 use common::*;
 use prose_desktop_lib::args::{
     build_args, build_args_with, humanize, input_placements, input_records_with, input_stem,
-    is_input_link, link_name, max_stem, with_contaminants, InputLinks, Placement, SearchRequest,
-    MAX_STEM,
+    is_input_link, link_name, max_stem, with_contaminants, with_idxml_option, InputLinks,
+    Placement, SearchRequest, MAX_STEM,
 };
 use prose_desktop_lib::decoys::DecoyRules;
 use prose_desktop_lib::progress::ProgressTracker;
@@ -1473,6 +1473,30 @@ fn the_tools_version_is_read_from_its_help() {
     assert_eq!(tool::parse_version("nothing"), None);
 }
 
+/// A one-input search's idXML goes by the option the tool lists: `-out`, or `-out_idxml` for a ProSE older than
+/// OpenMS 3.7 (whose help lists that and no `-out`); the command line then has that option in place of `-out`.
+#[test]
+fn a_one_input_searchs_idxml_takes_the_option_the_tool_lists() {
+    let new = "Options (mandatory options marked with '*'):\n  -in <files>*        Input files\n  -out <file>         Output idXML\n  -out_qpx <dir>      QPX\n";
+    let old = "Options (mandatory options marked with '*'):\n  -in <files>*        Input files\n  -out_idxml <file>   Output idXML\n  -out_qpx <dir>      QPX\n";
+    assert_eq!(tool::idxml_option(new), "-out");
+    assert_eq!(tool::idxml_option(old), "-out_idxml");
+    assert_eq!(tool::idxml_option("Version: 9.9.9"), "-out");
+    let i = inputs();
+    let out = i.dir.path().join("o");
+    let args = with_idxml_option(
+        args_of(&request(&[&i.mzml], &i.fasta, false, json!({})), &out),
+        "-out_idxml",
+    );
+    assert_eq!(
+        values_of(&args, "-out_idxml"),
+        vec![out.join("search.idXML").into_os_string()]
+    );
+    assert!(!has(&args, "-out"));
+    // the fake tool lists neither: `-out`
+    assert_eq!(tool::idxml_option_of(&fake_prose()), "-out");
+}
+
 /// `tool::probe` of a script this test process has just written. Another test's child, forked while the script was
 /// open for writing, holds that descriptor until its own exec; meanwhile exec of the script fails with ETXTBSY ("Text
 /// file busy", os error 26). A test-only race (the app never runs a file it wrote): retried for up to 2 s.
@@ -2019,6 +2043,27 @@ fn inputs_of_different_names_go_to_the_tool_by_their_own_paths() {
             .iter()
             .any(|n| n.ends_with(".mzML") || n.ends_with(".gz")),
         "{names:?}"
+    );
+}
+
+/// Windows' way, run on every platform: two Bruker folders of one name would need links in the search folder,
+/// which Windows makes of files only; the search is refused before anything runs, and says to rename one.
+#[test]
+fn bruker_folders_of_one_name_are_refused_with_windows_links() {
+    let run = Run::with_links(InputLinks::PathsOrHardLinks);
+    let i = inputs();
+    let first = i.dir.path().join("run1/sample.d");
+    let second = i.dir.path().join("run2/sample.d");
+    fs::create_dir_all(&first).unwrap();
+    fs::create_dir_all(&second).unwrap();
+    let (id, _rx) = run.start(
+        request(&[&first, &second], &i.fasta, false, json!({})),
+        None,
+    );
+    let e = id.unwrap_err();
+    assert!(
+        e.contains("Bruker folder") && e.contains("same name") && e.contains("Rename the folder"),
+        "{e}"
     );
 }
 

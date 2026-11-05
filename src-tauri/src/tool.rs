@@ -1,9 +1,11 @@
 //! Finding the ProSE tool, asking it for its version, and building the command that runs it.
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::{Mutex, OnceLock};
 
 /// What the front end learns of the tool (`tool_info`).
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -190,6 +192,45 @@ pub fn has_onnx(path: &Path) -> bool {
             .models
             .iter()
             .all(|m| inside(m) && root.join(m).is_file())
+}
+
+/// The option of a one-input search's idXML: `-out` (OpenMS 3.7 and later), or `-out_idxml` for a tool whose help
+/// lists that and no `-out` (an older ProSE, given by PROSE_BIN or found on the PATH).
+pub fn idxml_option(help: &str) -> &'static str {
+    let lists = |option: &str| {
+        help.lines()
+            .any(|l| l.trim_start().starts_with(&format!("{option} ")))
+    };
+    if !lists("-out") && lists("-out_idxml") {
+        "-out_idxml"
+    } else {
+        "-out"
+    }
+}
+
+/// [`idxml_option`] of the tool at `path`, from its `--help`: asked once per path while the app runs; `-out` if
+/// the tool does not answer.
+pub fn idxml_option_of(path: &Path) -> &'static str {
+    static SEEN: OnceLock<Mutex<HashMap<PathBuf, &'static str>>> = OnceLock::new();
+    let seen = SEEN.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Some(option) = seen.lock().unwrap().get(path) {
+        return option;
+    }
+    let option = command(path)
+        .arg("--help")
+        .stdin(Stdio::null())
+        .output()
+        .map(|o| {
+            // (OpenMS tools print their help to stderr)
+            idxml_option(&format!(
+                "{}\n{}",
+                String::from_utf8_lossy(&o.stdout),
+                String::from_utf8_lossy(&o.stderr)
+            ))
+        })
+        .unwrap_or("-out");
+    seen.lock().unwrap().insert(path.to_path_buf(), option);
+    option
 }
 
 /// Runs `path --helphelp` (the help with the advanced options, where `-sdrf` is) and reads the version; fails if
