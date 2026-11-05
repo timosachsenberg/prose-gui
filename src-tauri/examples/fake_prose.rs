@@ -184,7 +184,11 @@ fn main() {
         let name = base(f);
         let name = name.strip_suffix(".gz").unwrap_or(&name);
         let name = name.strip_suffix(".mzML").unwrap_or(name);
-        fs::write(qpx.join("runs").join(format!("{name}.psm.parquet")), "psm\n").unwrap();
+        fs::write(
+            qpx.join("runs").join(format!("{name}.psm.parquet")),
+            "psm\n",
+        )
+        .unwrap();
     }
     fs::write(qpx.join("quantms.psm.parquet"), "psm\n").unwrap();
     say("[ProSE] ===================== Search Report =====================".to_string());
