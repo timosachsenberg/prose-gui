@@ -108,6 +108,8 @@ pub fn find_proteomes(name: &str) -> Result<Vec<ProteomeHit>, String> {
     }
     let mut hits = Vec::new();
     for (taxid, _, rank) in taxa(name, 8)? {
+        // (`fields` keeps the answer small; UniProt sends proteomeType and strain with every entry anyway, and
+        // offers no field to ask for them: parse_proteomes reads both)
         let url = format!("https://rest.uniprot.org/proteomes/search?query=organism_id:{taxid}&fields=upid,organism,organism_id,protein_count&format=json&size=5");
         hits.extend(parse_proteomes(
             &net::get_text(&url, 20, "UniProt")?,

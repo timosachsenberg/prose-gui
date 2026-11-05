@@ -218,8 +218,9 @@ pub fn mzml_instrument(path: &Path) -> Option<Instrument> {
     instrument_of(&String::from_utf8_lossy(&head))
 }
 
-/// The facts of a plain mzML: its head and its tail, nothing in between.
-pub fn mzml(path: &Path, name: &str) -> io::Result<MzmlFacts> {
+/// The facts of a plain mzML: its head and its tail, nothing in between; with the instrument its head names
+/// ([`instrument_of`]).
+pub fn mzml(path: &Path, name: &str) -> io::Result<(MzmlFacts, Option<Instrument>)> {
     use io::{Seek, SeekFrom};
     let mut file = fs::File::open(path)?;
     let size = file.metadata()?.len();
@@ -232,37 +233,46 @@ pub fn mzml(path: &Path, name: &str) -> io::Result<MzmlFacts> {
     } else {
         tail = head.clone();
     }
-    Ok(judge_mzml(name, size, &head, &tail))
+    Ok((
+        judge_mzml(name, size, &head, &tail),
+        instrument_of(&String::from_utf8_lossy(&head)),
+    ))
 }
 
 /// The facts of an `.mzML.gz`: decompressed once, as a stream (gzip's own checksum and length at its end find a
-/// file that was cut off or damaged), its head and tail judged as a plain mzML's.
-pub fn mzml_gz(path: &Path, name: &str) -> io::Result<MzmlFacts> {
+/// file that was cut off or damaged), its head and tail judged as a plain mzML's; with the instrument its head names.
+pub fn mzml_gz(path: &Path, name: &str) -> io::Result<(MzmlFacts, Option<Instrument>)> {
     let mut file = fs::File::open(path)?;
     let mut magic = [0u8; 2];
     let got = file.read(&mut magic)?;
     if got == 0 {
-        return Ok(judge_mzml(name, 0, &[], &[]));
+        return Ok((judge_mzml(name, 0, &[], &[]), None));
     }
     if got < 2 || magic != [0x1f, 0x8b] {
-        return Ok(MzmlFacts {
-            spectra: None,
-            problem: Some(format!(
-                "{name} is not gzip-compressed, though its name ends in .gz."
-            )),
-        });
+        return Ok((
+            MzmlFacts {
+                spectra: None,
+                problem: Some(format!(
+                    "{name} is not gzip-compressed, though its name ends in .gz."
+                )),
+            },
+            None,
+        ));
     }
     let file = fs::File::open(path)?;
     let decoder = flate2::read::MultiGzDecoder::new(io::BufReader::with_capacity(1 << 20, file));
     match head_and_tail(decoder) {
-        Ok((head, tail, size)) => Ok(judge_mzml(name, size, &head, &tail)),
+        Ok((head, tail, size)) => Ok((
+            judge_mzml(name, size, &head, &tail),
+            instrument_of(&String::from_utf8_lossy(&head)),
+        )),
         Err(e) if e.kind() == io::ErrorKind::UnexpectedEof || e.kind() == io::ErrorKind::InvalidInput || e.kind() == io::ErrorKind::InvalidData => {
-            Ok(MzmlFacts {
+            Ok((MzmlFacts {
                 spectra: None,
                 problem: Some(format!(
                     "{name} is incomplete or damaged: it cannot be decompressed to its end. The file was cut off, e.g. by an interrupted copy or download."
                 )),
-            })
+            }, None))
         }
         Err(e) => Err(e),
     }
@@ -470,9 +480,13 @@ impl FastaScan {
                 s.isoforms += 1;
             }
         }
-        let lower = header.to_ascii_lowercase();
-        if accession.starts_with("CON__") || lower.contains("crap") || lower.contains("contaminant")
-        {
+        // (the words cRAP or contaminant(s) in the header, not inside another word: "Scrapie-responsive protein" is none)
+        let marked = header.split(|c: char| !c.is_ascii_alphanumeric()).any(|w| {
+            ["crap", "contaminant", "contaminants"]
+                .iter()
+                .any(|m| w.eq_ignore_ascii_case(m))
+        });
+        if accession.starts_with("CON__") || marked {
             s.contaminants += 1;
         }
         self.decoys.count(accession, "DECOY_");
@@ -707,6 +721,13 @@ mod tests {
             (s.uniprot, s.isoforms, s.contaminants, s.decoys),
             (3, 1, 1, 1)
         );
+        // a contaminant by its header's words, not by letters inside another word
+        let words = fasta_of(
+            b">sp|O75711|SCRG1_HUMAN Scrapie-responsive protein 1 OS=Homo sapiens\nMKV\n>P00761|cRAP-001 Trypsin\nIVGG\n\
+>Q1 Keratin CONTAMINANT\nMSC\n",
+            "db.fasta",
+        );
+        assert_eq!(words.summary.contaminants, 2);
         // one decoy of five is no decoy database by OpenMS' rule, but ProSE's literal check finds DECOY_
         assert_eq!(s.decoy_marker.as_deref(), Some("DECOY_…"));
         assert_eq!(fasta_of(b">a\nPEPTIDE\n", "x").summary.decoy_marker, None);
