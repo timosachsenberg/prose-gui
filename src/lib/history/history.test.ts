@@ -167,8 +167,8 @@ describe('a saved search', () => {
       asked.push(name)
       return read(id, name, range)
     }
-    // 77 target PSMs in each of the example's two files
-    expect(await psmsOfSearch(backend, '7-0')).toBe(154)
+    // 66 target PSMs in each of the example's two files
+    expect(await psmsOfSearch(backend, '7-0')).toBe(132)
     expect(asked).toEqual([RUNS])
     await expect(psmsOfSearch(backend, 'missing')).rejects.toThrow()
     backend.folders.get('7-0')!.set(RUNS, strToU8('not parquet'))

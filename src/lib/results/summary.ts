@@ -36,8 +36,8 @@ export interface RunRow {
   psm_fdr_applied?: boolean | null
   /**
    * MS2 spectra of the run recorded in profile mode (ProSE searches them as they are), and MS2 spectra it did not
-   * search because their recorded precursor charge is outside the charge range. Undefined: the run view has no such
-   * column (ProSE before it); null: a null value.
+   * search because their recorded precursor charge is outside the charge range (ProSE since the pin d60780f605).
+   * Undefined: the run view has no such column (ProSE before it, app 0.2.0 and earlier); null: a null value.
    */
   profile_spectra_count?: number | null
   charge_out_of_range_spectra_count?: number | null

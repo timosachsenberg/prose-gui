@@ -6,7 +6,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { zstdDecompressSync } from 'node:zlib'
 import { parquetReadObjects } from 'hyparquet'
-import { clearSearches, freshForm, openFirstPsm, runExample, searchesDir, waitForResults } from './lib.ts'
+import { clearSearches, clickSpectrum, freshForm, jsClick, labelledMzs, openFirstPsm, residuePair, runExample, searchesDir, textOf, waitForResults } from './lib.ts'
 
 const enabled = Boolean(process.env.PROSE_BIN)
 
@@ -76,7 +76,7 @@ describe('the example search', () => {
     expect(widths.sequence).toBeLessThan(widths.dejavu - 10)
   })
 
-  it('the example search shows 154 PSMs', async () => {
+  it('the example search shows 132 PSMs', async () => {
     await $('header').waitForDisplayed({ timeout: 20000 })
     await $('button=Try the example').click()
     // the two files in the design table, the database counted
@@ -109,7 +109,7 @@ describe('the example search', () => {
     })
     const count = $('[data-testid="psm-count"]')
     await count.waitForDisplayed({ timeout: 20000 })
-    await expect(count).toHaveText(expect.stringContaining('154'))
+    await expect(count).toHaveText(expect.stringContaining('132'))
     expect(await $('[data-testid="result-chip"]').getProperty('textContent')).toContain('Ecoli · 2 files')
     // real data: the first PSM's precursor error is not 0 ppm, its peaks have intensities of their own
     await openFirstPsm()
@@ -130,6 +130,49 @@ describe('the example search', () => {
     expect(strip.unit).toBe('Da')
     expect(strip.dots).toBeGreaterThan(5)
     expect(strip.unaligned).toEqual([])
+
+    // the PSM table stands under the spectrum, with the keyboard focus: the arrow keys go through the PSMs
+    await expect($('[data-testid="psm-list"] [role="grid"][aria-label="PSMs"]')).toBeDisplayed()
+    expect(await browser.execute(() => document.activeElement?.closest('[data-testid="psm-list"]') !== null)).toBe(true)
+    const first = await textOf('[data-testid="psm-header"]')
+    await browser.keys('ArrowDown')
+    await browser.waitUntil(async () => (await textOf('[data-testid="psm-header"]')) !== first, {
+      timeout: 5000,
+      timeoutMsg: 'ArrowDown in the PSM table did not show the next PSM',
+    })
+    await browser.keys('ArrowUp')
+    await browser.waitUntil(async () => (await textOf('[data-testid="psm-header"]')) === first, { timeout: 5000, timeoutMsg: 'ArrowUp did not go back' })
+    await browser.waitUntil(async () => !(await $('[data-testid="spectrum-loading"]').isExisting()), { timeout: 10000 })
+    // the mass errors collapse (and come back)
+    await jsClick(await $('[data-testid="mass-errors-toggle"]'))
+    await browser.waitUntil(async () => (await $$('[data-testid="error-dot"]')).length === 0, { timeout: 5000, timeoutMsg: 'the mass errors stayed' })
+    await jsClick(await $('[data-testid="mass-errors-toggle"]'))
+    await browser.waitUntil(async () => (await $$('[data-testid="error-dot"]')).length > 0, { timeout: 5000, timeoutMsg: 'the mass errors did not come back' })
+
+    // Measure: two clicks on two annotated peaks a residue apart, a bracket with their Δm/z and the residue (among the
+    // closest three: at the example's 0.5 Da, residues of near mass match too); Esc then leaves the tool (and the next
+    // Esc closes the view)
+    await $('[data-testid="tool-measure"]').click()
+    expect(await $('[data-testid="tool-measure"]').getAttribute('aria-pressed')).toBe('true')
+    const [from, to] = await residuePair()
+    await clickSpectrum(from)
+    await $('[data-testid="measure-start"]').waitForExist({ timeout: 5000, timeoutMsg: 'the first click marked no peak' })
+    await clickSpectrum(to)
+    await $('[data-testid="measurement"]').waitForExist({ timeout: 5000, timeoutMsg: 'the second click made no measurement' })
+    const measured = String(await $('[data-testid="measurement"]').getAttribute('data-text'))
+    expect(measured.startsWith(`Δ${to.delta.toFixed(3)} ≈ `)).toBe(true)
+    expect(measured.split(' ≈ ')[1].replace(/\?$/, '').split(' / ')).toContain(to.residue)
+    expect(await $('[data-testid="clear-measurements"]').isEnabled()).toBe(true)
+    // the bracket hides no label of the peaks it measures
+    expect(await labelledMzs()).toEqual(expect.arrayContaining([from.mz, to.mz]))
+    await browser.keys('Escape')
+    await browser.waitUntil(async () => (await $('[data-testid="tool-measure"]').getAttribute('aria-pressed')) === 'false', {
+      timeout: 5000,
+      timeoutMsg: 'Esc did not leave the Measure tool',
+    })
+    await expect($('[data-testid="psm-view"]')).toBeDisplayed()
+    await browser.keys('Escape')
+    await $('[data-testid="psm-view"]').waitForDisplayed({ reverse: true, timeout: 5000 })
   })
 
   it('Remove all and Start over empty the form, give back the preset\'s tolerance and protein FDR, and can be undone', async () => {
@@ -221,7 +264,7 @@ describe('the example search', () => {
     expect(existsSync(join(searchesDir(), searchId, 'proteins.fasta'))).toBe(true)
     expect(existsSync(join(searchesDir(), searchId, 'database.fasta'))).toBe(false)
     // the record's PSMs (written when ProSE ended, from its QPX run view) are the result's
-    expect(await row().$('[data-column="psms"]').getProperty('textContent')).toBe('154')
+    expect(await row().$('[data-column="psms"]').getProperty('textContent')).toBe('132')
 
     await row().$('button=Rename').click()
     await row().$('input').waitForDisplayed()
@@ -240,6 +283,6 @@ describe('the example search', () => {
     await browser.waitUntil(async () => (await browser.getUrl()).endsWith(`#/results/${searchId}`), { timeout: 30000 })
     const count = $('[data-testid="psm-count"]')
     await count.waitForDisplayed({ timeout: 30000 })
-    await expect(count).toHaveText(expect.stringContaining('154'))
+    await expect(count).toHaveText(expect.stringContaining('132'))
   })
 })

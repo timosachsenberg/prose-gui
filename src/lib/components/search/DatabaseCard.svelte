@@ -58,7 +58,7 @@
       <Label for="decoys" class="text-xs">Decoys</Label>
       <ChoiceSelect
         id="decoys"
-        value={String(form.value('decoys') ?? 'auto')}
+        value={String(form.value('decoys') ?? 'generate')}
         options={decoyOptions}
         onChange={(v) => form.setParam('decoys', v)} />
     </div>

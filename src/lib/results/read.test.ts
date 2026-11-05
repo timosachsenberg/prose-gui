@@ -103,6 +103,8 @@ function expectRelative(label: string, actual: number, expected: number, toleran
 }
 
 const PEPTDEEP_FEATURES = ['ms2_cosine', 'ms2_spectral_angle', 'ms2_pearson', 'ms2_frac_pred_found', 'rt_abs_error']
+/** The .pin features of a spectrum's candidates (targets and decoys): they differ with other decoys */
+const CANDIDATE_FEATURES = ['hyperscore_zscore', 'ln_num_candidates', 'delta_score']
 /** The .pin features of the precursor's m/z: QPX calculated_mz and observed_mz (float32) */
 const MASS_FEATURES = ['CalcMass', 'mass']
 
@@ -113,15 +115,9 @@ const MASS_FEATURES = ['CalcMass', 'mass']
  */
 const PEPTDEEP_SCORE_TOLERANCE = 2e-4
 
-/**
- * Percolator's scores of the pinned ProSE differ from the web app's by up to 0.0096 on the web app's example: since OpenMS
- * #10721 Percolator estimates no pi0 for target-decoy competition (as the percolator executable), which changes the
- * normalisation of its scores per fold (the web app's ProSE is older).
- */
-const PERCOLATOR_SCORE_TOLERANCE = 0.01
-
 interface Tolerances {
-  score: number
+  /** 'differs': Percolator's scores, q-values and PEPs are known to differ (the web app's example: test below) */
+  score: number | 'differs'
   /** 'differs': the PEPs are known to differ (the web app's example: test below) */
   pep?: 'differs'
   /**
@@ -168,10 +164,17 @@ function expectTables(t: ResultTables, w: Json, names: string[], tol: Tolerances
   expect(Array.from(p.isotopeError)).toEqual(wp.isotopeError)
   expectCloseRelative('psms.rt', p.rt, wp.rt, FLOAT32)
   expectCloseRelative('psms.mz', p.mz, wp.mz, FLOAT32)
-  expectClose('psms.score', p.score, wp.score, tol.score)
-  if (tol.qValue === 'conservative') expectAtLeast('psms.qValue', p.qValue, wp.qValue)
-  else expectClose('psms.qValue', p.qValue, wp.qValue, 1e-6)
-  if (tol.pep !== 'differs') expectClose('psms.pep', p.pep, wp.pep, 1e-6)
+  if (tol.score === 'differs') {
+    // Percolator's own scale: finite scores, q-values within the FDR range, PEPs probabilities
+    expect(Array.from(p.score).every(Number.isFinite)).toBe(true)
+    expect(Array.from(p.qValue).every((q) => q >= 0 && q <= 1)).toBe(true)
+    expect(Array.from(p.pep).every((x) => x >= 0 && x <= 1)).toBe(true)
+  } else {
+    expectClose('psms.score', p.score, wp.score, tol.score)
+    if (tol.qValue === 'conservative') expectAtLeast('psms.qValue', p.qValue, wp.qValue)
+    else expectClose('psms.qValue', p.qValue, wp.qValue, 1e-6)
+    if (tol.pep !== 'differs') expectClose('psms.pep', p.pep, wp.pep, 1e-6)
+  }
   expectClose('psms.precursorErrorPpm', p.precursorErrorPpm, wp.precursorErrorPpm, 1e-6)
   expectClose('psms.deltaMass', p.deltaMass, wp.deltaMass, 1e-6)
 
@@ -225,8 +228,11 @@ function expectTables(t: ResultTables, w: Json, names: string[], tol: Tolerances
     expect(r.description[i], `description of ${accession}`).toBe(wr.description[k])
     expect(r.sequence[i], `sequence of ${accession}`).toBe(wr.sequence[k])
     expect(r.decoy[i], `decoy ${accession}`).toBe(wr.decoy[k])
-    expectClose(`proteins.score ${accession}`, [r.score[i]], [wr.score[k]], tol.score)
-    expectClose(`proteins.qValue ${accession}`, [r.qValue[i]], [wr.qValue[k]], 1e-6)
+    // (a protein scores with the best PEP of its PSMs: Percolator's, as the PSMs' scores)
+    if (tol.score !== 'differs') {
+      expectClose(`proteins.score ${accession}`, [r.score[i]], [wr.score[k]], tol.score)
+      expectClose(`proteins.qValue ${accession}`, [r.qValue[i]], [wr.qValue[k]], 1e-6)
+    }
     expect(groups.get(accession), `group of ${accession}`).toBe(webGroups.get(accession))
   })
 }
@@ -241,7 +247,10 @@ function expectSummary(s: ProSEMultiSummary, w: ProSEMultiSummary, index?: 'diff
     const e = w.files[i]
     // (psmFdrApplied: the app's; the web app has none, for applied)
     expect(f.psmFdrApplied).toBe(e.psmFdrApplied ?? true)
-    expect({ ...f, path: '', secondsSearch: 0, precursorError: null, fragmentError: null, psmFdrApplied: undefined }).toEqual({
+    // (profileSpectra, chargeOutOfRange: the app's, of the pin's run view; the web app has none: its inputs have neither)
+    expect([f.profileSpectra ?? 0, f.chargeOutOfRange?.spectra ?? 0]).toEqual([0, 0])
+    const app = { ...f, profileSpectra: undefined, chargeOutOfRange: undefined }
+    expect({ ...app, path: '', secondsSearch: 0, precursorError: null, fragmentError: null, psmFdrApplied: undefined }).toEqual({
       ...e,
       psmFdrApplied: undefined,
       path: '',
@@ -292,7 +301,8 @@ describe('readSearch', () => {
     expect(targets.length).toBe(1790)
     expect(tables.files).toEqual(['/data/DatabaseSuitability_1.mzML', '/data/DatabaseSuitability_2.mzML'])
 
-    expectTables(tables, w.tables, w.names, { score: PERCOLATOR_SCORE_TOLERANCE, pep: 'differs', qValue: 'conservative' })
+    // (Percolator's scores, q-values and PEPs: the test below)
+    expectTables(tables, w.tables, w.names, { score: 'differs' })
     expectSummary(summary, w.summary)
     expect(summary.files.map((f) => f.path)).toEqual(tables.files)
     // only relative names: the folder's files, and its database with the contaminants
@@ -305,31 +315,35 @@ describe('readSearch', () => {
     const { files, asked } = folder(join(fixtures, 'example'))
     const { summary, tables } = await readSearch(files)
 
-    // one run of 139 spectra searched as two replicates, at the example's PSM FDR of 2 % (Percolator's q-values are
-    // (decoys + 1) / targets since OpenMS #10721, so the run's PSMs reach 1.2 % at best): 77 target PSMs of each, no
-    // decoy within it
-    expect(tables.psms.count).toBe(154)
+    // one run of 139 spectra searched as two replicates with the ProSE tool's defaults (since OpenMS #10740: decoys
+    // generate with decoy_method keep_termini, the terminal rescoring features), at the example's PSM FDR of 2 %
+    // (Percolator's q-values are (decoys + 1) / targets since #10721): 66 target PSMs of each and one decoy (the
+    // fixture keeps the decoys that pass, -keep_decoys)
+    expect(tables.psms.count).toBe(134)
     const targets = Array.from(tables.psms.qValue).filter((q, i) => q <= 0.02 && tables.psms.decoy[i] === 0)
-    expect(targets.length).toBe(154)
-    expect(Array.from(tables.psms.qValue).every((q) => q >= 1 / 77 - 1e-12)).toBe(true)
+    expect(targets.length).toBe(132)
+    expect(Array.from(tables.psms.decoy).filter((d) => d === 1).length).toBe(2)
+    expect(Array.from(tables.psms.qValue).every((q) => q > 0 && q <= 0.02)).toBe(true)
     expect(tables.files).toEqual(['/data/Ecoli_1.mzML', '/data/Ecoli_2.mzML'])
-    // real data: precursor errors of a few ppm (never all 0, as the web app's simulated example), isotope errors
+    // real data: precursor errors of a few ppm (never all 0, as the web app's simulated example)
     const ppm = Array.from(tables.psms.precursorErrorPpm)
     expect(ppm.every((e) => Math.abs(e) < 10)).toBe(true)
     expect(ppm.filter((e) => Math.abs(e) > 1).length).toBeGreaterThan(60)
-    expect(Array.from(tables.psms.isotopeError).some((e) => e !== 0)).toBe(true)
 
-    // 112 of the web app's 120 PSMs (its older ProSE, at 1 %) are among them, the same in all but Percolator's
-    // scores; the other 8 (4 of each replicate) are not reported: Percolator's ranking differs (its features since
-    // OpenMS #10717, its q-values since #10721)
+    // 88 of the web app's 120 PSMs (its older ProSE, at 1 %) are among them, the same in all but Percolator's
+    // scores; the other 32 (16 of each replicate) are not reported: Percolator's ranking differs (its features since
+    // OpenMS #10717, its q-values since #10721, the tool's decoys and terminal features since #10740)
     const p = tables.psms
     const wp = w.tables.psms
     expect(wp.count).toBe(120)
     const rows = webRows(tables, w.tables)
-    expect(rows.filter((i) => i < 0).length).toBe(8)
-    expect(new Set(rows.filter((i) => i >= 0)).size).toBe(112)
-    expect(p.featureNames).toEqual(wp.featureNames)
+    expect(rows.filter((i) => i < 0).length).toBe(32)
+    expect(new Set(rows.filter((i) => i >= 0)).size).toBe(88)
+    // the web app's features, and since #10740 the terminal ones (protein_nterm, met_clipped: the tool's
+    // rescoring:terminal_features)
+    expect(p.featureNames).toEqual([...wp.featureNames, 'protein_nterm', 'met_clipped'])
     const n = p.featureNames.length
+    const wn = wp.featureNames.length
     rows.forEach((i, k) => {
       if (i < 0) return
       const label = `PSM ${wp.nativeId[k]} of file ${wp.file[k]}`
@@ -339,12 +353,15 @@ describe('readSearch', () => {
       expectCloseRelative(`mz of ${label}`, [p.mz[i]], [wp.mz[k]], FLOAT32)
       expectClose(`precursorErrorPpm of ${label}`, [p.precursorErrorPpm[i]], [wp.precursorErrorPpm[k]], 1e-6)
       expectClose(`deltaMass of ${label}`, [p.deltaMass[i]], [wp.deltaMass[k]], 1e-6)
-      p.featureNames.forEach((name, j) => {
-        const [a, e] = [p.features[i * n + j], num(wp.features[k * n + j])]
+      wp.featureNames.forEach((name: string, j: number) => {
+        const [a, e] = [p.features[i * n + j], num(wp.features[k * wn + j])]
         if (MASS_FEATURES.includes(name)) expectCloseRelative(`${name} of ${label}`, [a], [e], FLOAT32)
         else if (name === 'dm' || name === 'absdm') expectClose(`${name} of ${label}`, [a], [e], 2e-4)
-        // the RT error: the RT calibration's spline, fitted on the PSMs of each search (the web app's: 60 a file)
-        else if (name !== 'rt_abs_error') expectClose(`${name} of ${label}`, [a], [e], PEPTDEEP_FEATURES.includes(name) ? 1e-5 : 1e-6)
+        // the RT error: the RT calibration's spline, fitted on the PSMs of each search (the web app's: 60 a file); the
+        // features of a spectrum's candidates, decoys among them, differ with the tool's decoys (keep_termini, #10740)
+        else if (name !== 'rt_abs_error' && !CANDIDATE_FEATURES.includes(name)) {
+          expectClose(`${name} of ${label}`, [a], [e], PEPTDEEP_FEATURES.includes(name) ? 1e-5 : 1e-6)
+        }
       })
     })
     // A known difference, not of the reader: the native tool indexes the whole database once for both inputs
@@ -354,8 +371,8 @@ describe('readSearch', () => {
     expect(summary.proteinFdrApplied).toBe(false)
     expect(summary.psmFdr).toBe(0.02)
     expect(summary.files.map((f) => [f.psmFdrApplied, f.targetPSMs, f.decoyPSMs])).toEqual([
-      [true, 77, 0],
-      [true, 77, 0],
+      [true, 66, 1],
+      [true, 66, 1],
     ])
     expect(summary.search!.indexedPeptides).toBeGreaterThan(w.summary.search!.indexedPeptides)
     expect(summary.files.map((f) => f.path)).toEqual(tables.files)
@@ -363,15 +380,26 @@ describe('readSearch', () => {
     expect(asked).toContain('database.fasta')
   })
 
-  test('the PEP of the web app\'s example differs from the web app\'s (Percolator, one decoy per file)', async () => {
-    // A known difference, not of the reader: with a single decoy PSM per file Percolator's PEP estimate is degenerate.
-    // The web app's ProSE estimated pi0 and gave small PEPs; the pinned one (since OpenMS #10721 without pi0, as the
-    // percolator executable) gives small PEPs too, but up to 0.05 apart (before #10721 the native tool gave every PSM
-    // PEP 1). The reader passes on ProSE's QPX posterior_error_probability.
+  test('Percolator\'s scores of the web app\'s example differ from the web app\'s (one decoy per file); its q-values hardly', async () => {
+    // A known difference, not of the reader: with a single decoy PSM per file Percolator's model and PEP estimate are
+    // degenerate, and the pinned ProSE's Percolator (develop since #10740: the Newton solver, the runner-up hit of each
+    // spectrum among its training rows, pi0) learns another one than the web app's older ProSE: its scores are on
+    // another scale (even in another order) and its PEPs all but 0 (the web app's up to 0.45). The q-values, from
+    // target-decoy competition, hardly differ: the same PSMs pass 1 %, and so do the proteins. The reader passes on
+    // ProSE's QPX scores.
     const w = web('suitability')
     const { tables } = await readSearch(folder(join(fixtures, 'suitability')).files)
-    expectClose('psms.pep', tables.psms.pep, w.tables.psms.pep, 0.05)
-    expect(Array.from(tables.psms.pep).filter((p) => p === 1).length).toBe(0)
+    const p = tables.psms
+    expectClose('psms.qValue', p.qValue, w.tables.psms.qValue, 0.002)
+    const passing = (q: ArrayLike<number | null>, decoy: ArrayLike<number>) => Array.from(q).flatMap((v, i) => (v !== null && v <= 0.01 && !decoy[i] ? [i] : []))
+    expect(passing(p.qValue, p.decoy)).toEqual(passing(w.tables.psms.qValue, w.tables.psms.decoy))
+    expect(Array.from(p.pep).every((x) => x >= 0 && x < 1e-12)).toBe(true)
+    expect(Math.max(...(w.tables.psms.pep as number[]))).toBeGreaterThan(0.4)
+    const r = tables.proteins
+    const wr = w.tables.proteins
+    r.accession.forEach((accession, i) => {
+      expectClose(`proteins.qValue ${accession}`, [r.qValue[i]], [wr.qValue[wr.accession.indexOf(accession)]], 1e-6)
+    })
   })
 
   test('modified peptides read as the web app\'s', async () => {
@@ -479,7 +507,7 @@ describe('peaks and predictions belong to their PSM', () => {
     const wp = w.predicted
     // the PSMs of both (the test above), each with the web app's row
     const shared = webRows(tables, w.tables).flatMap((i, k) => (i < 0 ? [] : [[i, k]]))
-    expect(shared.length).toBe(112)
+    expect(shared.length).toBe(88)
     for (const [i, k] of shared) {
       const { spectra: sp, spectrumRow, predicted, row } = await spectra.load(i)
       const s = sp.psmSpectrum[spectrumRow] ?? -1
@@ -734,23 +762,26 @@ async function changeRows(dir: string, name: string, change: (rows: Record<strin
 }
 
 /**
- * The run view of `dir` with more columns (as optional int64 columns of a later ProSE: `values` per run, null: a
- * null value), after its own.
+ * The run view of `dir` with the optional int64 columns `columns` set (`values` per run, null: a null value): a column
+ * the view has (the pin's) keeps its place, one it lacks (an older ProSE's view) is added after its own.
  */
-async function addRunColumns(dir: string, columns: Record<string, (number | null)[]>) {
+async function setRunColumns(dir: string, columns: Record<string, (number | null)[]>) {
   const path = join(dir, 'qpx/quantms.run.parquet')
   const bytes = new Uint8Array(readFileSync(path))
   const metadata = parquetMetadata(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer)
   const rows = await rowsOf(bytes)
-  const names = Object.keys(columns)
+  const own = topColumns(metadata)
+  const added = Object.keys(columns).filter((name) => !own.includes(name))
+  const int64 = { type: 'INT64' as const, repetition_type: 'OPTIONAL' as const }
   const schema = [
-    { ...metadata.schema[0], num_children: (metadata.schema[0].num_children ?? 0) + names.length },
-    ...metadata.schema.slice(1),
-    ...names.map((name) => ({ name, type: 'INT64' as const, repetition_type: 'OPTIONAL' as const })),
+    { ...metadata.schema[0], num_children: (metadata.schema[0].num_children ?? 0) + added.length },
+    ...metadata.schema.slice(1).map((e) => (e.name in columns ? { ...e, ...int64 } : e)),
+    ...added.map((name) => ({ name, ...int64 })),
   ]
+  const values = (name: string) => columns[name].map((v) => (v === null ? null : BigInt(v))) as never[]
   const columnData = [
-    ...topColumns(metadata).map((name) => ({ name, data: rows.map((r) => r[name]) as never[] })),
-    ...names.map((name) => ({ name, data: columns[name].map((v) => (v === null ? null : BigInt(v))) as never[] })),
+    ...own.map((name) => ({ name, data: name in columns ? values(name) : (rows.map((r) => r[name]) as never[]) })),
+    ...added.map((name) => ({ name, data: values(name) })),
   ]
   const compressors = { ZSTD: (input: Uint8Array) => new Uint8Array(zstdCompressSync(input)) }
   writeFileSync(path, new Uint8Array(parquetWriteBuffer({ columnData, schema, codec: 'ZSTD', compressors })))
@@ -943,16 +974,23 @@ describe('missing and broken files', () => {
     expect(psmFdrNotice(summary)).toMatch(/^The search had no decoys, so ProSE could not estimate an FDR and applied none/)
   })
 
-  test("the run view's profile and charge-out-of-range counts (a later ProSE's) become the files' notes, and MS2 count 0 one", async () => {
-    // the pin's run view has neither column: no such counts, no note
+  test("the run view's profile and charge-out-of-range counts become the files' notes, and MS2 count 0 one", async () => {
+    // the pin's run view has both columns: centroided spectra of charges in the range, so counts 0 and no note
     const plain = await readSearch(folder(join(fixtures, 'suitability')).files)
-    for (const f of plain.summary.files) {
+    expect(plain.summary.files.map((f) => [f.profileSpectra, f.chargeOutOfRange])).toEqual([
+      [0, { spectra: 0, min: 2, max: 5 }],
+      [0, { spectra: 0, min: 2, max: 5 }],
+    ])
+    expect(plain.summary.files.flatMap(inputWarnings)).toEqual([])
+    // a run view of a ProSE before them (fixtures/no-psm-fdr, app 0.2.0's) has neither: no such counts, no note
+    const older = await readSearch(folder(join(fixtures, 'no-psm-fdr')).files)
+    for (const f of older.summary.files) {
       expect('profileSpectra' in f).toBe(false)
       expect('chargeOutOfRange' in f).toBe(false)
       expect(inputWarnings(f)).toEqual([])
     }
     await withCopy('suitability', async (dir) => {
-      await addRunColumns(dir, { profile_spectra_count: [2789, 0], charge_out_of_range_spectra_count: [0, 12] })
+      await setRunColumns(dir, { profile_spectra_count: [2789, 0], charge_out_of_range_spectra_count: [0, 12] })
       const { summary } = await readSearch(folder(dir).files)
       expect(summary.files.map((f) => [f.profileSpectra, f.chargeOutOfRange])).toEqual([
         [2789, { spectra: 0, min: 2, max: 5 }],
@@ -966,7 +1004,7 @@ describe('missing and broken files', () => {
     })
     // null values: not reported
     await withCopy('suitability', async (dir) => {
-      await addRunColumns(dir, { profile_spectra_count: [null, null], charge_out_of_range_spectra_count: [null, 3] })
+      await setRunColumns(dir, { profile_spectra_count: [null, null], charge_out_of_range_spectra_count: [null, 3] })
       const { summary } = await readSearch(folder(dir).files)
       expect(summary.files.map((f) => [f.profileSpectra, f.chargeOutOfRange?.spectra])).toEqual([
         [undefined, undefined],

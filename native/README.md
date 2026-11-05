@@ -143,7 +143,11 @@ ctest --test-dir /scratch/sachsenb/openms-pr10564/build/native-release \
 since #10676 (`-qpx_extended`, the optional columns and footer metadata of the QPX psm view the app reads: all scores,
 native ID, isotope error, protein mappings, the filtered peaks and PeptDeep's predictions, the run's statistics; the
 pooled and singleton protein groups, `-keep_decoys`; see `docs/parity.md`) has everything the app needs. Before, the pin
-was the branch `claude/prose-desktop-pin` (develop with the pull requests not merged yet). The per-input QPX files are in
+was the branch `claude/prose-desktop-pin` (develop with the pull requests not merged yet). Since develop `d60780f605`
+(#10740) the ProSE tool has defaults of its own (`toolSearchDefaults_`, ProSE.cpp): `decoys generate` with `decoy_method
+keep_termini`, `Acetyl (Protein N-term)` among the variable modifications, `rescoring:terminal_features` and
+`rescoring:stratum_q_values` on (ProSEAlgorithm keeps `auto`, `reverse`, `Oxidation (M)` and both off), and peptide-level
+rescoring; `-write_ini` gives them, so the parameter table has them. The per-input QPX files are in
 `qpx/runs/`; the reader also reads the layout of app 0.1.x (per-input files next to `quantms.*`). CI checks the commit out
 of OpenMS/OpenMS; it never builds from local state. Build it with
 
@@ -327,12 +331,12 @@ into the AppDir with the relative helper path the GTK plugin writes on a normal 
 ## AppImage smoke test
 
 ```bash
-native/scripts/smoke-appimage.sh src-tauri/target/release/bundle/appimage/ProSE_0.1.4_amd64.AppImage \
+native/scripts/smoke-appimage.sh src-tauri/target/release/bundle/appimage/ProSE_0.2.0_amd64.AppImage \
   --hide-openms /scratch/sachsenb/openms-desktop/build
 ```
 
 The AppImage runs with `--appimage-extract-and-run` under `xvfb-run` and is driven through WebDriver
-(`e2e/appimage.smoke.ts`): the example with PeptDeep gives 154 PSMs and the PeptDeep mirror. tauri-driver and
+(`e2e/appimage.smoke.ts`): the example with PeptDeep gives 132 PSMs and the PeptDeep mirror. tauri-driver and
 WebKitWebDriver are not in the AppImage; they run from the toolchain (here `in-env.sh`, in CI the runner's
 packages) and drive the AppImage's own webview over WebKit's automation protocol, which release builds allow when
 `TAURI_WEBVIEW_AUTOMATION=true` (tauri-driver sets it). The application tauri-driver starts is
@@ -393,3 +397,14 @@ Windows installer), each from its platform's artifact; the release carries them 
 release (`https://github.com/timosachsenberg/prose-gui/releases/latest`). It fails with a message when there is no
 such run (tag a commit of `main` whose run passed), a package is missing or its artifact has expired (`gh run rerun <run>`, then
 re-run the release job).
+
+To publish the draft, either click Publish on GitHub or run Actions › "Publish release"
+(`.github/workflows/publish-release.yml`) with the version. It publishes only the one draft release of
+`desktop-native-v<version>` whose tag is on `main` and which carries all six packages, and marks it the latest
+release; anything else stops it with a message.
+
+A tag can be made from the web too: Actions › "Tag release" (`.github/workflows/tag-release.yml`) with the version
+tags `main`'s head (after checking that the version is `main`'s and that `main`'s run of it passed) and starts the
+release job on the tag. With `publish` checked it waits for the release job and then publishes the draft: a whole
+release in one run. Before that, the version is set on `main` with `node scripts/bump-version.mjs <version>` (through a
+pull request). The steps for a Claude session are in `CLAUDE.md`, "Releasing".
