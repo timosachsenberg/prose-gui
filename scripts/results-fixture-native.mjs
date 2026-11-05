@@ -69,9 +69,12 @@ try {
   // the user's files: the mzML under each name
   const data = join(work, 'data')
   mkdirSync(data)
-  const paths = search.names.map((name) => {
+  // (branch claude/compare-defaults: a case's `mzMLs`, distinct files, each under its own name)
+  const sources = search.mzMLs ?? search.names.map(() => search.mzML)
+  if (search.mzMLs) search.names = search.mzMLs.map((path) => basename(path))
+  const paths = search.names.map((name, index) => {
     const path = join(data, name)
-    symlinkSync(search.mzML, path)
+    symlinkSync(sources[index], path)
     return path
   })
 
@@ -108,10 +111,12 @@ try {
     args.push(`-Search:${name}`, ...(Array.isArray(value) ? value : [String(value)]))
   }
   console.log(['$', prose, ...args].join(' '))
-  const run = spawnSync(prose, args, { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, OPENBLAS_NUM_THREADS: '1' } })
+  // (STREAM=1, branch claude/compare-defaults: ProSE's output to this process' as it comes, no prose.log)
+  const stdio = process.env.STREAM ? ['ignore', 'inherit', 'inherit'] : ['ignore', 'pipe', 'pipe']
+  const run = spawnSync(prose, args, { stdio, env: { ...process.env, OPENBLAS_NUM_THREADS: '1' } })
   writeFileSync(join(dir, 'prose.log'), Buffer.concat([run.stdout ?? Buffer.alloc(0), run.stderr ?? Buffer.alloc(0)]))
   if (run.status !== 0) {
-    console.error(readFileSync(join(dir, 'prose.log'), 'utf8').slice(-4000))
+    if (!process.env.STREAM) console.error(readFileSync(join(dir, 'prose.log'), 'utf8').slice(-4000))
     throw new Error(`ProSE ended with ${run.status ?? run.signal}`)
   }
 

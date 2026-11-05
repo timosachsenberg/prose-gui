@@ -174,6 +174,18 @@ export const CASES = {
 CASES['suitability-defaults'] = { ...CASES.suitability, parameters: { ...ORBITRAP, 'FDR:protein': 0.05 } }
 CASES['example-web'] = { ...CASES.example, parameters: { ...CASES.example.parameters, ...WEB_APP_ALGORITHM } }
 
+// ProteoBench module 2 (archive.openms.de benchmarks/pride-benchmarks/lfq/QExactiveHF/ProteoBench_Module_2: Q Exactive
+// HF, HCD, DDA of a human/yeast/E. coli mix), the runs in PROTEOBENCH_MZML (':'-separated), the FASTA PROTEOBENCH_FASTA
+// (its decoys removed) and, for the entrapment cases, PROTEOBENCH_ENTRAPMENT_FASTA (that FASTA with a foreign proteome
+// whose accessions start with ENTRAP_); the default preset as the app sends it, with the tool's defaults and with the
+// web app's settings
+const PB_MZML = (process.env.PROTEOBENCH_MZML ?? '').split(':').filter(Boolean)
+for (const [suffix, algorithm] of [['defaults', {}], ['web', WEB_APP_ALGORITHM]]) {
+  const base = { mzMLs: PB_MZML, contaminants: false, parameters: { ...ORBITRAP, ...algorithm }, rescore: true, peptdeep: true }
+  CASES[`hye-${suffix}`] = { ...base, fasta: process.env.PROTEOBENCH_FASTA }
+  CASES[`hye-entrapment-${suffix}`] = { ...base, fasta: process.env.PROTEOBENCH_ENTRAPMENT_FASTA }
+}
+
 export function getCase(name) {
   const c = CASES[name]
   if (!c) throw new Error(`no fixture case ${name} (${Object.keys(CASES).join(', ')})`)

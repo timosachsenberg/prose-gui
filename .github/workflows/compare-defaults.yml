@@ -1,5 +1,7 @@
-# TEMPORARY (branch claude/compare-defaults, not for main): what archive.openms.de has (a larger dataset for the
-# comparison of the tool's defaults with the web app's settings).
+# TEMPORARY (branch claude/compare-defaults, not for main): ProteoBench module 2 (archive.openms.de; Q Exactive HF DDA of
+# a human/yeast/E. coli mix, three runs of condition A) searched by the pin's ProSE with the tool's defaults (since OpenMS
+# #10740) and with the web app's settings, on its FASTA and on its FASTA with an entrapment proteome (every second
+# protein of Brassica oleracea, from the archive's Agilent set); the counts as the app reads them in the log.
 name: Compare defaults (temporary)
 
 on:
@@ -8,26 +10,81 @@ on:
 
 permissions:
   contents: read
+  actions: read
+
+env:
+  BUNDLE_RUN: '41899484683'
+  PB: https://archive.openms.de/openms/benchmarks/pride-benchmarks/lfq/QExactiveHF/ProteoBench_Module_2/
+  BRASSICA: https://archive.openms.de/openms/testfiles/20260717-ProteomicsLFQ-Multi-Instrument/PXD069532-Agilent-6550/2026-07-17-decoys-contam-GCF_000695525.1_BOL_protein.fas
+
+defaults:
+  run:
+    shell: bash
 
 jobs:
-  list:
+  compare:
     runs-on: ubuntu-22.04
+    timeout-minutes: 340
+    strategy:
+      fail-fast: false
+      matrix:
+        case: [hye-defaults, hye-web, hye-entrapment-defaults, hye-entrapment-web]
     steps:
-      - name: Deeper listings
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: The bundled ProSE of the pin
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
-          base=https://archive.openms.de/openms/
-          page() { echo "## $1"; curl -sfL --max-time 30 "$base$1" | sed -e 's/<[^>]*>/ /g' | tr -s ' ' | grep -vE '^ *$|Index of|\.\./' | head -60 || true; }
-          hrefs() { curl -sfL --max-time 30 "$base$1" | grep -oE 'href="[^"?#]+"' | cut -d'"' -f2 | grep -vE '^(/|\.\./|https?:|\?)' || true; }
-          walk() { # $1 dir, $2 depth
-            page "$1"
-            [ "$2" -le 0 ] && return
-            for h in $(hrefs "$1" | grep '/$' | head -15); do walk "$1$h" $(($2 - 1)); done
-          }
-          walk benchmarks/pride-benchmarks/lfq/ 3
-          page testfiles/20260717-ProteomicsLFQ-Multi-Instrument/PXD069532-Agilent-6550/
-          page testfiles/20260717-ProteomicsLFQ-Multi-Instrument/PXD060911-SCIEX-TripleTOF-6600/
-          page testfiles/20260717-ProteomicsLFQ-Multi-Instrument/
-          echo "#### Agilent msConvert.bat"; curl -sfL --max-time 30 "${base}testfiles/20260717-ProteomicsLFQ-Multi-Instrument/PXD069532-Agilent-6550/mzMLs-ProteoWizard/msConvert.bat" || true
-          echo "#### Agilent FASTA head"; curl -sfL --max-time 60 "${base}testfiles/20260717-ProteomicsLFQ-Multi-Instrument/PXD069532-Agilent-6550/2026-07-17-decoys-contam-GCF_000695525.1_BOL_protein.fas" -o agilent.fas && { grep -c '^>' agilent.fas; grep '^>' agilent.fas | head -3; grep '^>' agilent.fas | grep -ciE '^>(rev_|decoy|DECOY_)'; grep '^>' agilent.fas | tail -3; }
-          echo "#### Agilent mzML head"; curl -sfL --max-time 60 -r 0-12000 "${base}testfiles/20260717-ProteomicsLFQ-Multi-Instrument/PXD069532-Agilent-6550/mzMLs-ProteoWizard/202505616.mzML" | head -c 12000 | grep -E 'cvParam|spectrumList|software|instrument' | head -60
-          echo "#### SCIEX mzML head"; curl -sfL --max-time 60 -r 0-12000 "${base}testfiles/20260717-ProteomicsLFQ-Multi-Instrument/PXD060911-SCIEX-TripleTOF-6600/mzML-SCIEX-Converter/Hemphi_Ca_C1.mzML" | head -c 12000 | grep -E 'cvParam|spectrumList|software|instrument' | head -60
+          gh run download "$BUNDLE_RUN" --name prose-bundle-linux-x64 --dir "$RUNNER_TEMP/bundle"
+          tar -C src-tauri/resources -xzf "$RUNNER_TEMP/bundle/prose-bundle.tar.gz"
+          src-tauri/resources/prose/bin/ProSE --help 2>&1 | grep -m1 'Version:'
+          nproc; free -g; df -h "$RUNNER_TEMP"
+      - name: ProteoBench module 2 (three runs of condition A) and the FASTAs
+        run: |
+          data="$RUNNER_TEMP/data"; mkdir -p "$data"
+          runs=$(curl -sfL "$PB" | grep -oE 'href="[^"]*Condition_A_Sample_Alpha_0[123][^"]*\.mzML(\.gz)?"' | cut -d'"' -f2 | sort -u)
+          echo "$runs"
+          for f in $runs; do curl -sfL --retry 3 "$PB$f" -o "$data/$f" & done; wait
+          ls -la "$data"
+          curl -sfL --retry 3 "${PB}ProteoBenchFASTA_MixedSpecies_HYE.fasta" -o "$RUNNER_TEMP/hye-raw.fasta"
+          echo "HYE FASTA: $(grep -c '^>' "$RUNNER_TEMP/hye-raw.fasta") entries"; grep '^>' "$RUNNER_TEMP/hye-raw.fasta" | head -3
+          grep '^>' "$RUNNER_TEMP/hye-raw.fasta" | grep -oE '_(HUMAN|YEAST|ECOLI)\b' | sort | uniq -c
+          echo "decoy-like: $(grep -cE '^>(rev_|REV_|DECOY_|decoy_)' "$RUNNER_TEMP/hye-raw.fasta" || true)"
+          awk '/^>/{keep = ($0 !~ /^>(rev_|REV_|DECOY_|decoy_)/)} keep' "$RUNNER_TEMP/hye-raw.fasta" > "$RUNNER_TEMP/hye.fasta"
+          curl -sfL --retry 3 "$BRASSICA" -o "$RUNNER_TEMP/brassica.fasta"
+          awk '/^>/{keep = ($0 !~ /^>(rev_|contam_|REV_|DECOY_|decoy_)/); if (keep) { n++; keep = (n % 2 == 1) }; if (keep) sub(/^>/, ">ENTRAP_")} keep' \
+            "$RUNNER_TEMP/brassica.fasta" > "$RUNNER_TEMP/entrapment-only.fasta"
+          cat "$RUNNER_TEMP/hye.fasta" "$RUNNER_TEMP/entrapment-only.fasta" > "$RUNNER_TEMP/hye-entrapment.fasta"
+          echo "targets $(grep -c '^>' "$RUNNER_TEMP/hye.fasta"), entrapment $(grep -c '^>' "$RUNNER_TEMP/entrapment-only.fasta")"
+          {
+            echo "PROTEOBENCH_MZML=$(ls "$data"/* | paste -sd:)"
+            echo "PROTEOBENCH_FASTA=$RUNNER_TEMP/hye.fasta"
+            echo "PROTEOBENCH_ENTRAPMENT_FASTA=$RUNNER_TEMP/hye-entrapment.fasta"
+          } >> "$GITHUB_ENV"
+      - name: The search (${{ matrix.case }})
+        env:
+          PROSE: ${{ github.workspace }}/src-tauri/resources/prose/bin/ProSE
+          CASE: ${{ matrix.case }}
+        run: |
+          (while sleep 600; do echo "== $(date +%T) memory used $(free -m | awk '/Mem/{print $3}') MB"; done) &
+          trap "kill $! 2>/dev/null || true" EXIT
+          STREAM=1 KEEP=1 OUT="$RUNNER_TEMP/out" node scripts/results-fixture-native.mjs "$CASE" "$PROSE" 2>&1 | tee "$RUNNER_TEMP/search.log"
+      - name: ProSE's report
+        if: always()
+        run: |
+          sed -n '/Search Report/,$p' "$RUNNER_TEMP/search.log" | grep -E '^\[ProSE\]' || true
+          grep -Ei 'warning|sanity|single feature|stratum|switched off|percolator' "$RUNNER_TEMP/search.log" | head -40 || true
+      - name: Counts (the app's reader)
+        env:
+          CASE: ${{ matrix.case }}
+        run: |
+          cp scripts/compare-defaults.test.ts src/zz-compare.test.ts
+          export RESULT_DIR="$RUNNER_TEMP/out" CASE_NAME="$CASE" NODE_OPTIONS=--max-old-space-size=12288
+          case "$CASE" in *entrapment*) export ENTRAPMENT_FASTA="$PROTEOBENCH_ENTRAPMENT_FASTA" ;; esac
+          npx vitest run src/zz-compare.test.ts --silent=false 2>&1 | tail -30
