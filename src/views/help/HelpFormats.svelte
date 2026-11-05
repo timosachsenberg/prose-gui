@@ -72,7 +72,10 @@
   </ul>
 
   <h3 id="formats-results">What a search writes</h3>
-  <p>Each search gets a folder in the app's data folder (History). The files that matter:</p>
+  <p>
+    Each search gets a folder in the searches folder (History): by default in the app's data folder; “Change…” in New
+    search or History chooses another, e.g. on a drive with more room. The files that matter:
+  </p>
   <table class="formats">
     <thead><tr><th>File</th><th>What it holds</th></tr></thead>
     <tbody>
