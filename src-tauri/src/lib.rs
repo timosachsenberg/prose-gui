@@ -10,6 +10,7 @@
 //! - `read_search_file(searchId, name, tail?, offset?, length?)` -> the bytes of a file of the search's folder
 //!   (with `tail`: its last `tail` bytes; with `offset` and `length`: those bytes), or of the database its database.json records (`files`; rejects `{ notFound, message }`)
 //! - `inspect_files(paths)` -> `[{ path, name, size, spectra?, proteins?, residues?, error?, problem?, warnings }]`
+//! - `inspect_spectra(paths)` -> per path the facts of its first MS2 spectra, or null (`spectra`)
 //! - `cpu_count()` -> the cores the search's threads may use
 //! - `example_files()` -> `{ spectra: [path, path], database }`
 //! - `save_text(name, contents)` and `save_search_file(searchId, name, suggested)`: a save dialog of
@@ -38,8 +39,11 @@ pub mod content;
 pub mod decoys;
 pub mod files;
 pub mod history;
+pub mod net;
 pub mod progress;
 pub mod run;
+pub mod spectra;
+pub mod taxonomy;
 pub mod tool;
 #[cfg(unix)]
 pub mod watchdog;
@@ -182,6 +186,35 @@ fn searches_dir(app: &AppHandle) -> Result<PathBuf, String> {
         .join("searches"))
 }
 
+/// UniProt proteomes of the organisms NCBI Taxonomy finds for `name` (`taxonomy`): only on the user's request.
+#[tauri::command]
+async fn find_proteomes(name: String) -> Result<Vec<taxonomy::ProteomeHit>, String> {
+    tauri::async_runtime::spawn_blocking(move || taxonomy::find_proteomes(&name))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// The proteomes downloaded into the app's `databases/` folder: their file names (`UP…[_reviewed].fasta`).
+#[tauri::command]
+fn downloaded_proteomes(app: AppHandle) -> Result<Vec<String>, String> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("databases");
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return Ok(Vec::new());
+    };
+    let mut names: Vec<String> = entries
+        .flatten()
+        .filter(|e| e.file_type().map(|t| t.is_file()).unwrap_or(false))
+        .filter_map(|e| e.file_name().into_string().ok())
+        .filter(|n| n.starts_with("UP") && n.ends_with(".fasta"))
+        .collect();
+    names.sort();
+    Ok(names)
+}
+
 /// Opens `url` (https only: the Help page's links) in the system's browser.
 #[tauri::command]
 fn open_url(url: String) -> Result<(), String> {
@@ -202,6 +235,54 @@ fn open_url(url: String) -> Result<(), String> {
         .spawn()
         .map(|_| ())
         .map_err(|e| format!("The browser cannot be opened ({e})."))
+}
+
+/// The reference proteome `proteome` (a UniProt proteome id, `UP` and nine digits) as a FASTA in the app's
+/// `databases/` folder, downloaded from UniProt's REST API with curl (macOS, Windows 10 and Linux have it) unless it
+/// is there already; `reviewed`: Swiss-Prot entries only. Only on this request of the user (like the PRIDE and OLS
+/// contacts of the SDRF features). -> the FASTA's path.
+#[tauri::command]
+async fn download_proteome(
+    app: AppHandle,
+    proteome: String,
+    reviewed: bool,
+) -> Result<String, String> {
+    if !(proteome.len() == 11
+        && proteome.starts_with("UP")
+        && proteome[2..].bytes().all(|b| b.is_ascii_digit()))
+    {
+        return Err(format!(
+            "{proteome} is not a UniProt proteome id (UP and nine digits, e.g. UP000005640)."
+        ));
+    }
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("databases");
+    tauri::async_runtime::spawn_blocking(move || {
+        std::fs::create_dir_all(&dir).map_err(|e| format!("{} cannot be made ({e}).", dir.display()))?;
+        let path = dir.join(format!("{proteome}{}.fasta", if reviewed { "_reviewed" } else { "" }));
+        if std::fs::metadata(&path).map(|m| m.len() > 0).unwrap_or(false) {
+            return Ok(path.to_string_lossy().into_owned());
+        }
+        let query = format!("%28proteome%3A{proteome}%29{}", if reviewed { "%20AND%20%28reviewed%3Atrue%29" } else { "" });
+        let url = format!("https://rest.uniprot.org/uniprotkb/stream?compressed=false&format=fasta&query={query}");
+        let partial = path.with_extension("fasta.partial");
+        // (a stream of unknown size: `net::fetch` with size 0, HTTPS only)
+        let _ = std::fs::remove_file(&partial);
+        let fetched = net::fetch(&url, &partial, 0, |_| {});
+        if let Err(e) = fetched.and_then(|_| if net::len(&partial) == 0 { Err("no data".to_string()) } else { Ok(()) }) {
+            let _ = std::fs::remove_file(&partial);
+            return Err(format!(
+                "The download from UniProt failed ({e}). Check the internet connection, or download the FASTA from https://www.uniprot.org/proteomes/{proteome}."
+            ));
+        }
+        std::fs::rename(&partial, &path).map_err(|e| e.to_string())?;
+        Ok(path.to_string_lossy().into_owned())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// A file of a search (see `files::read_search_file`), as raw bytes.
@@ -237,6 +318,17 @@ async fn inspect_files(paths: Vec<String>) -> Result<Vec<files::FileFacts>, Stri
     tauri::async_runtime::spawn_blocking(move || files::inspect_all(&paths))
         .await
         .map_err(|e| e.to_string())
+}
+
+/// What the first MS2 spectra of each mzML say (`spectra`, guidance G1), off the add-files path: New search asks
+/// once the rows are there. None for a file that is no mzML (or cannot be read).
+#[tauri::command]
+async fn inspect_spectra(paths: Vec<String>) -> Result<Vec<Option<spectra::SpectraFacts>>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        paths.iter().map(|p| spectra::inspect_cached(p)).collect()
+    })
+    .await
+    .map_err(|e| e.to_string())
 }
 
 /// The cores ProSE's threads may use: the threads' default ("all"). The webview's own count is capped
@@ -627,9 +719,13 @@ pub fn run() {
             cancel_search,
             read_search_file,
             inspect_files,
+            inspect_spectra,
             cpu_count,
             example_files,
             save_text,
+            download_proteome,
+            downloaded_proteomes,
+            find_proteomes,
             open_url,
             save_search_file,
             history_list,

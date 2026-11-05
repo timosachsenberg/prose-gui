@@ -1,7 +1,8 @@
 <script lang="ts">
   // New search (mockup 1): spectra with the experimental design, the protein database, the search
-  // settings and rescoring, with a sticky footer to start the search. mzML and FASTA files can be
-  // dropped anywhere on the window (from the file manager: their paths, desktop.ts).
+  // settings and rescoring (the numbered steps 1 to 4), with a sticky footer to start the search. Spectra and a FASTA
+  // can be dropped anywhere on the window (from the file manager: their paths, desktop.ts).
+  import CheckNotices from '$lib/components/search/CheckNotices.svelte'
   import DatabaseCard from '$lib/components/search/DatabaseCard.svelte'
   import DesignTable from '$lib/components/search/DesignTable.svelte'
   import EmptyState from '$lib/components/search/EmptyState.svelte'
@@ -61,12 +62,13 @@
   {#if form.files.length === 0}
     <EmptyState {dragging} />
   {:else}
-    <div class={dragging ? 'rounded-lg ring-2 ring-foreground/30 ring-offset-2 ring-offset-muted' : ''}>
+    <div class={dragging ? 'rounded-lg ring-2 ring-primary/40 ring-offset-2 ring-offset-background' : ''}>
       <DesignTable />
     </div>
   {/if}
   <DatabaseCard />
   <SettingsCard />
   <RescoringCard />
+  <CheckNotices />
   <SearchFooter />
 </section>

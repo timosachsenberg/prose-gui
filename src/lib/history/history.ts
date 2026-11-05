@@ -29,11 +29,16 @@ import { errorText } from '../format/error'
 import { fileSafe, resultName } from '../results/display'
 import { readRuns, targetPsmsOf } from '../results/summary'
 import type { EndedSearch, OpenResult } from '../search/session.svelte'
+import type { AcceptedCheck } from '../search/checks'
 // (only the version: a named import of a JSON module leaves the rest of package.json out of the bundle)
 import { version } from '../../../package.json'
 
-/** The version of `search.json` and of the results archive. A newer file is refused, not guessed at. */
-export const SCHEMA_VERSION = 1
+/**
+ * The version of `search.json` and of the results archive. A newer file is refused, not guessed at; an older one
+ * (from `OLDEST_SCHEMA` on) is read: version 2 added `accepted`, which version 1 has not.
+ */
+export const SCHEMA_VERSION = 2
+export const OLDEST_SCHEMA = 1
 
 /** The version of this app (package.json), written to the records it saves. */
 export const APP_VERSION: string = version
@@ -43,7 +48,7 @@ export const PROTEINS_FILE = 'proteins.fasta'
 
 /** What `search.json` holds. */
 export type SearchRecord = {
-  schema: typeof SCHEMA_VERSION
+  schema: number
   /** The search's folder in the app's searches. */
   id: string
   name: string
@@ -74,8 +79,16 @@ export type SearchRecord = {
   proteinFdr: number
   /** The time of the search proper, in seconds. */
   seconds: number
+  /** The instrument of each searched mzML, by file name. */
+  instruments?: Record<string, string>
   /** Set (by the Rust side) on a search made of a results archive: it reads only the files of its folder. */
   imported?: boolean
+  /** The spectra of each mzML's header at the start, by file name (schema 2 on); absent: unknown. */
+  spectra?: Record<string, number>
+  /** The red flags of New search the user searched anyway (schema 2 on); absent: none. */
+  accepted?: AcceptedCheck[]
+  /** The advice New search showed before the search (warn and info); absent: none, or an older record. */
+  warned?: AcceptedCheck[]
 }
 
 /**
@@ -198,6 +211,10 @@ export function endedRecordOf(search: EndedSearch, name: string, toolVersion: st
     proteinFdr: search.proteinFdr,
     seconds: search.seconds,
     // (no path of this computer: the record goes into results archives)
+    ...(search.instruments ? { instruments: search.instruments } : {}),
+    ...(search.accepted ? { accepted: search.accepted } : {}),
+    ...(search.warned ? { warned: search.warned } : {}),
+    ...(search.spectra ? { spectra: search.spectra } : {}),
   }
 }
 
@@ -227,7 +244,7 @@ export function parseRecord(text: string, kind: 'results archive' | 'search' = '
   if (!isObject(value)) throw new ArchiveError(`${RECORD_FILE} is not a search record.`)
   if (typeof value.schema !== 'number') throw new ArchiveError(`${RECORD_FILE} has no schema: it is not a ProSE search record.`)
   if (value.schema > SCHEMA_VERSION) throw new ArchiveVersionError(value.schema, kind)
-  if (value.schema !== SCHEMA_VERSION) throw new ArchiveError(`${RECORD_FILE} has the unknown schema ${value.schema}.`)
+  if (!Number.isInteger(value.schema) || value.schema < OLDEST_SCHEMA) throw new ArchiveError(`${RECORD_FILE} has the unknown schema ${value.schema}.`)
   const bad = (what: string) => new ArchiveError(`${RECORD_FILE} is incomplete: ${what}.`)
   const text_ = (k: string) => {
     if (typeof value[k] !== 'string') throw bad(`${k} is missing`)
@@ -244,6 +261,10 @@ export function parseRecord(text: string, kind: 'results archive' | 'search' = '
   }
   const settings = value.settings
   if (!isObject(settings) || !isObject(settings.parameters) || !Array.isArray(settings.fixedMods)) throw bad('settings is missing')
+  const accepted = value.accepted
+  const checkList = (v: unknown) => v === undefined || (Array.isArray(v) && v.every((a) => isObject(a) && typeof a.id === 'string' && Array.isArray(a.files)))
+  if (!checkList(accepted)) throw bad('accepted is broken')
+  if (!checkList(value.warned)) throw bad('warned is broken')
   return value as unknown as SearchRecord
 }
 
@@ -254,6 +275,10 @@ export function resultFromRecord(record: SearchRecord, outcome: OpenResult['outc
     stored: { name: record.name, appVersion: record.appVersion, moduleVersion: record.toolVersion },
     outcome,
     design: record.design,
+    ...(record.instruments ? { instruments: record.instruments } : {}),
+    ...(record.accepted ? { accepted: record.accepted } : {}),
+    ...(record.warned ? { warned: record.warned } : {}),
+    ...(record.spectra ? { spectra: record.spectra } : {}),
     psmFdr: record.psmFdr,
     proteinFdr: record.proteinFdr,
     settings: {

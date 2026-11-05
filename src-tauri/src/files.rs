@@ -275,6 +275,9 @@ pub struct FileFacts {
     pub name: String,
     /// Bytes (0 with an error).
     pub size: u64,
+    /// The last modification, in milliseconds since 1970 (None: not known): with the size, what an accepted red
+    /// flag is kept for, so that a changed file is checked again.
+    pub modified: Option<u64>,
     /// The `count` of an mzML's `<spectrumList>` (all spectra; of a `.mzML.gz` decompressed); None if the
     /// header does not say.
     pub spectra: Option<u64>,
@@ -289,6 +292,10 @@ pub struct FileFacts {
     pub problem: Option<String>,
     /// What ProSE may mishandle (a FASTA's byte-order mark, lowercase residues): shown, not blocking.
     pub warnings: Vec<String>,
+    /// An mzML's instrument model (for an SDRF's comment[instrument]).
+    pub instrument: Option<content::Instrument>,
+    /// A FASTA's summary (organisms, header style, decoys, contaminants, isoforms; guidance G6).
+    pub fasta: Option<content::FastaSummary>,
 }
 
 /// The bytes of the regular files in `dir` and below (links not followed).
@@ -317,12 +324,15 @@ pub fn inspect(path: &str) -> FileFacts {
         path: path.to_string(),
         name: name.clone(),
         size: 0,
+        modified: None,
         spectra: None,
         proteins: None,
         residues: None,
         error: None,
         problem: None,
         warnings: Vec::new(),
+        instrument: None,
+        fasta: None,
     };
     if !Path::new(path).is_absolute() {
         facts.error = Some(format!("{path} is not an absolute path."));
@@ -361,6 +371,11 @@ pub fn inspect(path: &str) -> FileFacts {
     } else {
         meta.len()
     };
+    facts.modified = meta
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_millis() as u64);
     let file = Path::new(path);
     let counted = if is_fasta_file(&name) {
         content::fasta(file, &name).map(|f| {
@@ -368,6 +383,7 @@ pub fn inspect(path: &str) -> FileFacts {
             facts.residues = Some(f.residues);
             facts.problem = (!f.problems.is_empty()).then(|| f.problems.join(" "));
             facts.warnings = f.warnings;
+            facts.fasta = Some(f.summary);
         })
     } else if suffix_start(&name, ".mzml").is_none() && suffix_start(&name, ".mzml.gz").is_none() {
         // ponytail: mzPeak and vendor files are not looked into here; ProSE says what it cannot read
@@ -378,6 +394,7 @@ pub fn inspect(path: &str) -> FileFacts {
         } else {
             content::mzml(file, &name)
         };
+        facts.instrument = content::mzml_instrument(file);
         mzml.map(|m| {
             facts.spectra = m.spectra;
             facts.problem = m.problem;
