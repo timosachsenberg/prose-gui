@@ -1,8 +1,8 @@
 <script lang="ts">
   // The protein's sequence as text: blocks of 10 residues, 40 per row, the residues that peptides with
   // PSMs cover shaded and the modified residues dotted (--mod, with the modification on hover).
-  // Each row is made of a few runs of residues (covered or not, modified), not one node per residue,
-  // and is only laid out when it is near the screen.
+  // Each row is made of a few runs of residues (covered or not, modified), not one node per residue, so
+  // every row is laid out: even a titin-sized sequence (~35,000 residues, ~900 rows) takes a fraction of a second.
   import { formatCount } from '$lib/results/display'
   import { siteTitle, type ProteinDetail } from '$lib/results/protein'
 
@@ -57,9 +57,8 @@
     gap: 8px;
     margin-bottom: 8px;
     line-height: 20px;
-    /* a row far from the screen is not laid out (the sequence can be tens of thousands of residues) */
-    content-visibility: auto;
-    contain-intrinsic-size: auto 28px;
+    /* no content-visibility: auto here: WebKit (Tauri's web view on macOS and Linux) left the rows' letters
+       unpainted until the window was resized */
   }
   .pos {
     width: 34px;
