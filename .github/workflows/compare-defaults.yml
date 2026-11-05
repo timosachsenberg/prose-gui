@@ -47,7 +47,8 @@ jobs:
             KEEP=1 OUT="$RUNNER_TEMP/out/$c" node scripts/results-fixture-native.mjs "$c" "$PROSE" > "$RUNNER_TEMP/$c.txt"
             work=$(grep -o 'kept .*' "$RUNNER_TEMP/$c.txt" | cut -d' ' -f2)
             echo "=== $c: ProSE's report"
-            grep -E '^\[ProSE\]' "$work/search/prose.log" | grep -Ei 'matched|target/decoy|protein|peptide|rescor|percolator|fdr' || true
+            sed -n '/Search Report/,$p' "$work/search/prose.log" | grep -E '^\[ProSE\]' || true
+            grep -Ei 'warning|sanity|single feature|stratum|switched off' "$work/search/prose.log" | head -10 || true
           done
       - name: Counts (the app's reader)
         run: |
@@ -77,4 +78,4 @@ jobs:
             })
           }
           TS
-          OUT_ROOT="$RUNNER_TEMP/out" npx vitest run src/zz-compare.test.ts --silent=false 2>&1 | grep -E '^RESULT|FAIL|Error' || true
+          OUT_ROOT="$RUNNER_TEMP/out" npx vitest run src/zz-compare.test.ts --silent=false 2>&1 | tail -40
