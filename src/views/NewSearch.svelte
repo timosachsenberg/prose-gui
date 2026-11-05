@@ -1,7 +1,9 @@
 <script lang="ts">
   // New search (mockup 1): spectra with the experimental design, the protein database, the search
   // settings and rescoring (the numbered steps 1 to 4), with a sticky footer to start the search. Spectra, a FASTA and an
-  // SDRF or design.tsv can be dropped anywhere on the window (from the file manager: their paths, desktop.ts).
+  // SDRF or design.tsv can be dropped anywhere on the window (from the file manager: their paths, desktop.ts). Under the
+  // title: where the search will be saved, which can be changed (SearchesFolder).
+  import SearchesFolder from '$lib/components/history/SearchesFolder.svelte'
   import CheckNotices from '$lib/components/search/CheckNotices.svelte'
   import DatabaseCard from '$lib/components/search/DatabaseCard.svelte'
   import DesignTable from '$lib/components/search/DesignTable.svelte'
@@ -61,7 +63,7 @@
 
 <section data-testid="view-search" class="flex flex-col gap-4">
   <div class="flex flex-wrap items-start gap-x-4 gap-y-2">
-    <div class="flex-1">
+    <div class="min-w-0 flex-1">
       <div class="mb-1 flex flex-wrap items-center gap-x-2 gap-y-1">
         <h1 class="text-xl font-semibold tracking-tight">New search</h1>
         <!-- the window's project, beside the title (the window's title names it too) -->
@@ -70,6 +72,7 @@
         {/if}
       </div>
       <p class="text-muted-foreground">Spectra and database stay on this computer.</p>
+      <SearchesFolder class="mt-1" />
     </div>
     <!-- a project: the setup of this search and of the views, as a .prose-project.json (src/lib/project) -->
     <div class="flex items-center gap-2">

@@ -5,8 +5,10 @@
 // Commands (src-tauri/src/lib.rs): tool_info, start_search, cancel_search, read_search_file,
 // inspect_files, cpu_count, example_files, save_text, save_search_file, history_list, history_save_record,
 // history_save_proteins, history_rename, history_delete, history_files, history_import, open_archive_file,
-// save_archive_file, save_curation, open_design_file, locate_data_files, answer_close, save_project_setup, open_project_setup, forget_project_setup, menu_state. Events:
-// search://progress, search://done, search://failed, archive://progress, app://close-requested, menu://action. The system's dialogs open one at a time (`oneDialog`). The window's
+// save_archive_file, save_curation, open_design_file, locate_data_files, answer_close, save_project_setup,
+// open_project_setup, forget_project_setup, menu_state, searches_location, choose_searches_folder,
+// use_default_searches_folder. Events: search://progress, search://done, search://failed, archive://progress,
+// app://close-requested, menu://action. The system's dialogs open one at a time (`oneDialog`). The window's
 // theme (`windowTheme`, `onWindowThemeChanged`, `setWindowTheme`).
 
 import { invoke } from '@tauri-apps/api/core'
@@ -15,7 +17,7 @@ import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { open } from '@tauri-apps/plugin-dialog'
 import { oneDialog } from './dialogs'
-import type { HistoryBackend, HistoryEntry } from './history/history'
+import type { HistoryBackend, HistoryEntry, SearchesLocation } from './history/history'
 import type { ByteRange, SearchFiles } from './results/read'
 import { errorText } from './format/error'
 
@@ -409,6 +411,10 @@ export const desktopBackend: HistoryBackend = {
       return bytes.length === 0 ? null : bytes
     }),
   importEntries: (body) => invoke<string>('history_import', body),
+  location: () => invoke<SearchesLocation>('searches_location'),
+  // the dialog and the check are one command: the page never names a path
+  chooseLocation: () => oneDialog(null, () => invoke<SearchesLocation | null>('choose_searches_folder')),
+  defaultLocation: () => invoke<SearchesLocation>('use_default_searches_folder'),
 }
 
 /**

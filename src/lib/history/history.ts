@@ -138,6 +138,12 @@ export class ArchiveVersionError extends ArchiveError {
   }
 }
 
+/**
+ * Where new searches are saved (src-tauri/src/location.rs): the folder, whether it is the app's own (in its data
+ * folder) and the app's own. History lists the searches of every folder the app has kept them in.
+ */
+export type SearchesLocation = { folder: string; isDefault: boolean; defaultFolder: string }
+
 /** The disk (desktop.ts implements it with the Rust commands; the tests with a folder in memory). */
 export interface HistoryBackend {
   list(): Promise<HistoryEntry[]>
@@ -163,6 +169,15 @@ export interface HistoryBackend {
   openArchive(): Promise<Uint8Array | null>
   /** Makes a search folder of the entries (see `frameEntries`): its new id. */
   importEntries(body: Uint8Array): Promise<string>
+  /** Where new searches and opened results archives go (absent: a disk without folders to choose). */
+  location?(): Promise<SearchesLocation>
+  /**
+   * The system's folder dialog, then the folder chosen for new searches (the shim takes an empty folder, or one with
+   * ProSE's searches only; else it rejects with why): the new location, or null if the user cancelled.
+   */
+  chooseLocation?(): Promise<SearchesLocation | null>
+  /** New searches go to the app's own folder again. */
+  defaultLocation?(): Promise<SearchesLocation>
 }
 
 //------------------------------------------------------------------------------------------------
