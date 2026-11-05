@@ -13,22 +13,21 @@ jobs:
   list:
     runs-on: ubuntu-22.04
     steps:
-      - name: Readmes and listings
+      - name: Deeper listings
         run: |
           base=https://archive.openms.de/openms/
-          page() { echo "## $1"; curl -sfL --max-time 30 "$base$1" | sed -e 's/<[^>]*>/ /g' | tr -s ' ' | grep -vE '^ *$|Index of|\.\./' | head -120 || true; }
-          hrefs() { echo "## hrefs $1"; curl -sfL --max-time 30 "$base$1" | grep -oE 'href="[^"?#]+"' | cut -d'"' -f2 | grep -vE '^(/|\.\./|https?:)' || true; }
-          echo "#### proteobench README"; curl -sfL --max-time 30 "${base}testfiles/proteobench-astral-entrapment/README.md" || true
-          echo "#### proteobench MANIFEST"; curl -sfL --max-time 30 "${base}testfiles/proteobench-astral-entrapment/MANIFEST.tsv" | head -40 || true
-          hrefs testfiles/proteobench-astral-entrapment/100K_sampled_fasta/
-          echo "#### lfq README"; curl -sfL --max-time 30 "${base}testfiles/lfq/README.md" || true
-          for d in testfiles/20260717-ProteomicsLFQ-Multi-Instrument/PXD045781-Bruker-timsTOF-Pro/mzML-TIMSCONVERT/ \
-                   testfiles/20260717-ProteomicsLFQ-Multi-Instrument/PXD060911-SCIEX-TripleTOF-6600/mzML-SCIEX-Converter/ \
-                   testfiles/20260717-ProteomicsLFQ-Multi-Instrument/PXD069532-Agilent-6550/mzMLs-ProteoWizard/ \
-                   benchmarks/pride-benchmarks/lfq/QExactiveHF/ benchmarks/pride-benchmarks/lfq/LTQOrbitrapVelos/ \
-                   benchmarks/pride-benchmarks/lfq/OrbitrapFusionLumos/; do
-            page "$d"; hrefs "$d" | head -20
-          done
-          echo "#### Agilent metadata"; curl -sfL --max-time 30 "${base}testfiles/20260717-ProteomicsLFQ-Multi-Instrument/PXD069532-Agilent-6550/20260720-Metadata.txt" || true
-          hrefs testfiles/20260717-ProteomicsLFQ-Multi-Instrument/PXD069532-Agilent-6550/
-          hrefs testfiles/20260717-ProteomicsLFQ-Multi-Instrument/PXD060911-SCIEX-TripleTOF-6600/
+          page() { echo "## $1"; curl -sfL --max-time 30 "$base$1" | sed -e 's/<[^>]*>/ /g' | tr -s ' ' | grep -vE '^ *$|Index of|\.\./' | head -60 || true; }
+          hrefs() { curl -sfL --max-time 30 "$base$1" | grep -oE 'href="[^"?#]+"' | cut -d'"' -f2 | grep -vE '^(/|\.\./|https?:|\?)' || true; }
+          walk() { # $1 dir, $2 depth
+            page "$1"
+            [ "$2" -le 0 ] && return
+            for h in $(hrefs "$1" | grep '/$' | head -15); do walk "$1$h" $(($2 - 1)); done
+          }
+          walk benchmarks/pride-benchmarks/lfq/ 3
+          page testfiles/20260717-ProteomicsLFQ-Multi-Instrument/PXD069532-Agilent-6550/
+          page testfiles/20260717-ProteomicsLFQ-Multi-Instrument/PXD060911-SCIEX-TripleTOF-6600/
+          page testfiles/20260717-ProteomicsLFQ-Multi-Instrument/
+          echo "#### Agilent msConvert.bat"; curl -sfL --max-time 30 "${base}testfiles/20260717-ProteomicsLFQ-Multi-Instrument/PXD069532-Agilent-6550/mzMLs-ProteoWizard/msConvert.bat" || true
+          echo "#### Agilent FASTA head"; curl -sfL --max-time 60 "${base}testfiles/20260717-ProteomicsLFQ-Multi-Instrument/PXD069532-Agilent-6550/2026-07-17-decoys-contam-GCF_000695525.1_BOL_protein.fas" -o agilent.fas && { grep -c '^>' agilent.fas; grep '^>' agilent.fas | head -3; grep '^>' agilent.fas | grep -ciE '^>(rev_|decoy|DECOY_)'; grep '^>' agilent.fas | tail -3; }
+          echo "#### Agilent mzML head"; curl -sfL --max-time 60 -r 0-12000 "${base}testfiles/20260717-ProteomicsLFQ-Multi-Instrument/PXD069532-Agilent-6550/mzMLs-ProteoWizard/202505616.mzML" | head -c 12000 | grep -E 'cvParam|spectrumList|software|instrument' | head -60
+          echo "#### SCIEX mzML head"; curl -sfL --max-time 60 -r 0-12000 "${base}testfiles/20260717-ProteomicsLFQ-Multi-Instrument/PXD060911-SCIEX-TripleTOF-6600/mzML-SCIEX-Converter/Hemphi_Ca_C1.mzML" | head -c 12000 | grep -E 'cvParam|spectrumList|software|instrument' | head -60
