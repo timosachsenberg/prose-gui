@@ -288,7 +288,7 @@ export async function onFileDrop(handlers: { over: (on: boolean) => void; drop: 
 }
 
 /**
- * The page's browser mode (`vite dev` without the shell): a save is the browser's
+ * The page's browser mode (`vite dev` without the shell, the browser UI tests of e2e-web/): a save is the browser's
  * download of `name`, which resolves with the name (there is no path).
  */
 function browserDownload(name: string, blob: Blob): string {
