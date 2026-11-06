@@ -329,6 +329,12 @@ export function downloadProteome(proteome: string, reviewed: boolean): Promise<s
   return invoke<string>('download_proteome', { proteome, reviewed })
 }
 
+/** Binary contents (an .xlsx) written where the user chooses, suggesting `name`; the path, or null if cancelled. */
+export function saveBytes(name: string, contents: Uint8Array): Promise<string | null> {
+  if (!isDesktop()) return Promise.resolve(browserDownload(name, new Blob([contents as Uint8Array<ArrayBuffer>], { type: 'application/octet-stream' })))
+  return oneDialog(null, () => invoke<string | null>('save_bytes', contents, { headers: { 'x-file-name': encodeURIComponent(name) } }))
+}
+
 /**
  * The PSM curation of search `searchId`: its folder's `curation.json` (results/curation.ts), read with
  * read_search_file and written with save_curation. Null outside the desktop app (the marks then last the session).
@@ -351,6 +357,19 @@ export function curationStoreFor(searchId: string): { load(): Promise<string | n
 /** Copies a file of a search (e.g. `merged.idXML`) to where the user chooses, suggesting `suggested`. */
 export function saveSearchFile(searchId: string, name: string, suggested: string): Promise<string | null> {
   return oneDialog(null, () => invoke<string | null>('save_search_file', { searchId, name, suggested }))
+}
+
+/** A QPX results folder the user chose (ProSE run by hand): its runs' stems and its run and provenance views; null if cancelled. */
+export function openQpxFolder(): Promise<{ folder: string; stems: string[]; run: Uint8Array; provenance: Uint8Array } | null> {
+  return oneDialog(null, async () => {
+    const r = await invoke<{ folder: string; stems: string[]; run: number[]; provenance: number[] } | null>('open_qpx_folder')
+    return r && { ...r, run: Uint8Array.from(r.run), provenance: Uint8Array.from(r.provenance) }
+  })
+}
+
+/** The QPX folder as a new search in History, with its record and inputs.json: the new id. */
+export function importQpxFolder(folder: string, record: string, inputs: string): Promise<string> {
+  return invoke<string>('history_import_qpx', { folder, record, inputs })
 }
 
 /**

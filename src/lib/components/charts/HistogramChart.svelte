@@ -30,6 +30,7 @@
     yLabel = 'PSMs',
     zeroLine = false,
     marker = null,
+    ranges = [],
     unit = '',
     height = 230,
   }: {
@@ -44,6 +45,11 @@
     zeroLine?: boolean
     /** A vertical marker with its label, e.g. the median. */
     marker?: { x: number; label: string } | null
+    /**
+     * Windows drawn as brackets over the plot (e.g. the searched and the recommended mass tolerance): `searched`
+     * solid, `recommended` dashed; a side beyond the axis is drawn at its edge with an arrow.
+     */
+    ranges?: { from: number; to: number; label: string; kind: 'searched' | 'recommended' }[]
     /** Appended to the range in the tooltip ("ppm"). */
     unit?: string
     height?: number
@@ -139,15 +145,26 @@
     hover ? [range(hover.bin), ...series.map((s) => `${s.name} · ${formatCount(s.counts[hover!.bin] ?? 0)} PSMs`)] : [],
   )
 
+  // the windows: their sides within the axis (a side beyond it sits at the edge, marked), their labels above
+  const rangeMarks = $derived(
+    ranges.map((r, k) => {
+      const lo = Math.max(r.from, edges[0])
+      const hi = Math.min(r.to, edges[nBins])
+      return { ...r, x1: x(lo), x2: x(hi), clipLo: r.from < edges[0], clipHi: r.to > edges[nBins], y: M.top - 4 + k * 11 }
+    }),
+  )
+
   // The marker's label sits beside the line (to its right, else to its left); a long label that fits on
-  // neither side stands at the top of the plot, within its edges
+  // neither side stands at the top of the plot, within its edges. The windows' labels take the top of the
+  // plot: then the marker's label stands below them, inside the plot (its halo keeps it readable over the bars)
   const markerAt = $derived(marker ? x(marker.x) : 0)
   const markerLabel = $derived.by(() => {
+    const below = ranges.length ? M.top + 9 + ranges.length * 11 + 2 : null
     if (!marker) return { x: 0, anchor: 'start' as const, y: M.top + 1 }
     const w = textWidth(marker.label, 11)
-    if (markerAt + 4 + w <= width - M.right) return { x: markerAt + 4, anchor: 'start' as const, y: M.top + 1 }
-    if (markerAt - 4 - w >= M.left) return { x: markerAt - 4, anchor: 'end' as const, y: M.top + 1 }
-    return { x: Math.min(Math.max(markerAt - w / 2, M.left), Math.max(M.left, width - M.right - w)), anchor: 'start' as const, y: M.top - 8 }
+    if (markerAt + 4 + w <= width - M.right) return { x: markerAt + 4, anchor: 'start' as const, y: below ?? M.top + 1 }
+    if (markerAt - 4 - w >= M.left) return { x: markerAt - 4, anchor: 'end' as const, y: below ?? M.top + 1 }
+    return { x: Math.min(Math.max(markerAt - w / 2, M.left), Math.max(M.left, width - M.right - w)), anchor: 'start' as const, y: below ?? M.top - 8 }
   })
 </script>
 
@@ -182,6 +199,18 @@
     {#if zeroLine && edges[0] < 0 && edges[nBins] > 0}
       <line x1={px(x(0))} x2={px(x(0))} y1={M.top} y2={plotBottom} stroke="var(--plot-zero)" stroke-width="1" data-testid="zero-line" />
     {/if}
+
+    {#each rangeMarks as r (r.kind)}
+      {@const dash = r.kind === 'recommended' ? '4 3' : undefined}
+      {@const color = r.kind === 'recommended' ? 'var(--plot-muted)' : ink}
+      <g data-testid="range-{r.kind}">
+        <line x1={px(r.x1)} x2={px(r.x1)} y1={r.y} y2={plotBottom} stroke={color} stroke-width="1" stroke-dasharray={dash} />
+        <line x1={px(r.x2)} x2={px(r.x2)} y1={r.y} y2={plotBottom} stroke={color} stroke-width="1" stroke-dasharray={dash} />
+        <line x1={px(r.x1)} x2={px(r.x2)} y1={r.y} y2={r.y} stroke={color} stroke-width="1" stroke-dasharray={dash} />
+        <text x={px((r.x1 + r.x2) / 2)} y={r.y - 2} text-anchor="middle" font-size="9.5" fill={color}
+          >{r.clipLo ? '← ' : ''}{r.label}{r.clipHi ? ' →' : ''}</text>
+      </g>
+    {/each}
 
     {#each bars as bar, i (i)}
       <path d={bar.path} fill={bar.series.color} data-testid={bar.series.testid} data-bin={bar.bin} />

@@ -3,10 +3,8 @@
 // red flags it raises (`checks.ts`). By the flags only: "centroid" means "flagged centroid, not verified".
 
 import type { SpectraFacts } from '../desktop'
+import { SPECTRA_SHARE } from '../results/diagnosis'
 import type { Check } from './checks'
-
-/** A share of profile or out-of-range-charge spectra above this is a cause worth naming. */
-const SPECTRA_SHARE = 0.1
 
 /**
  * DIA is suspected when the MS2 spectra read have at most this many distinct isolation centres per spectrum: DDA

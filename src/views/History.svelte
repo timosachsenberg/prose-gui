@@ -1,5 +1,6 @@
 <script lang="ts">
   import FaqLink from '$lib/components/help/FaqLink.svelte'
+  import CommandLine from '$lib/components/results/CommandLine.svelte'
   // History: the searches kept on this computer, each a folder of a searches folder (the tool's outputs and a
   // record of the settings and the design; the mzML files stay where they are). Open, rename and delete;
   // "Import results archive (.prose)…" unpacks a .prose file into History. It stays usable while a search runs, and reads the
@@ -16,7 +17,7 @@
   import * as Table from '$lib/components/ui/table'
   import { formatBytes } from '$lib/format/bytes'
   import { formatCount } from '$lib/results/display'
-  import { history, openFromHistory, openArchiveFile, refreshHistory, removeFromHistory, rename } from '$lib/history/history.svelte'
+  import { history, openFromHistory, openArchiveFile, openQpxFolderFile, refreshHistory, removeFromHistory, rename, reopenInNewSearch } from '$lib/history/history.svelte'
   import type { HistoryEntry } from '$lib/history/history'
   import { distinguishing, entryFacts } from '$lib/history/details'
   import { searchForm } from '$lib/search/form.svelte'
@@ -80,6 +81,31 @@
     }
   }
 
+  /** "Settings" (into New search) and "Re-run" (and start it): the search's files, design, database and settings. */
+  async function reopen(entry: HistoryEntry, start: boolean) {
+    problem = null
+    busy = entry.id
+    try {
+      await reopenInNewSearch(entry.id, start)
+    } catch (e) {
+      problem = { title: 'Could not open', text: `The settings of ${entry.name ?? entry.id} could not be read: ${message(e)}` }
+    } finally {
+      busy = null
+    }
+  }
+
+  async function openQpx() {
+    problem = null
+    busy = 'qpx'
+    try {
+      await openQpxFolderFile()
+    } catch (e) {
+      problem = { title: 'Could not open', text: `The QPX folder could not be opened: ${message(e)}` }
+    } finally {
+      busy = null
+    }
+  }
+
   function startRename(entry: HistoryEntry) {
     renaming = entry.id
     draft = entry.name ?? entry.id
@@ -126,7 +152,16 @@
       </p>
       <SearchesFolder class="mt-1" />
     </div>
-    <div>
+    <div class="flex gap-2">
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={busy !== null}
+        onclick={openQpx}
+        title="Open the QPX output of a ProSE run outside the app (-out_qpx <folder> -qpx_extended -keep_decoys), e.g. from a cluster"
+        data-testid="open-qpx">
+        {busy === 'qpx' ? 'Opening folder…' : 'Open QPX folder…'}
+      </Button>
       <Button variant="outline" size="sm" disabled={busy !== null} onclick={openFile} data-testid="import-archive">
         {busy === 'archive' ? 'Importing…' : 'Import results archive (.prose)…'}
       </Button>
@@ -175,7 +210,7 @@
             <Table.Head scope="col" class="{head} text-left max-lg:hidden">Files</Table.Head>
             <Table.Head scope="col" class="{head} w-[4.5rem] text-right" title="Target PSMs that pass the search's PSM FDR">PSMs</Table.Head>
             <Table.Head scope="col" class="{head} w-[4.5rem] text-right" title="Disk space the search takes on this computer">Size</Table.Head>
-            <Table.Head scope="col" class="{head} w-[13rem] text-right"><span class="sr-only">Actions</span></Table.Head>
+            <Table.Head scope="col" class="{head} w-[28rem] text-right"><span class="sr-only">Actions</span></Table.Head>
           </Table.Row>
         </Table.Header>
         <Table.Body>
@@ -230,6 +265,21 @@
                   <Button size="xs" disabled={busy !== null || entry.error !== null} aria-label="Open {entry.name ?? entry.id}" onclick={() => open(entry)}>
                     {busy === entry.id ? 'Opening…' : 'Open'}
                   </Button>
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    disabled={busy !== null || entry.error !== null}
+                    title="Its files, design, database and settings in New search, to change and start"
+                    aria-label="Open the settings of {entry.name ?? entry.id} in New search"
+                    onclick={() => reopen(entry, false)}>Settings</Button>
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    disabled={busy !== null || entry.error !== null}
+                    title="Search the same files again with the same settings"
+                    aria-label="Re-run {entry.name ?? entry.id}"
+                    onclick={() => reopen(entry, true)}>Re-run</Button>
+                  {#if entry.error === null}<CommandLine id={entry.id} compact />{/if}
                   <!-- (not while it opens) -->
                   <Button variant="ghost" size="xs" disabled={busy === entry.id || entry.error !== null} aria-label="Rename {entry.name ?? entry.id}" onclick={() => startRename(entry)}
                     >Rename</Button>

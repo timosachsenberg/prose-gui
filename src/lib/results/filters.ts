@@ -30,6 +30,50 @@ export type FilterState = {
   peptideFilter?: number
   /** PSMs: by their curation mark (`ResultModel.curation`); peptides: by the marks of their PSMs (curation.ts). */
   curation: CurationFilter
+  /** PSMs: only these precursor charges (empty or absent: all). */
+  charges?: number[]
+  /** PSMs: numeric ranges, each inclusive; a PSM without the value (NaN) fails a range on it. */
+  ranges?: PsmRange[]
+}
+
+/** The PSM values a range filter works on. */
+export const RANGE_KEYS = {
+  precursorErrorPpm: 'Precursor error (ppm)',
+  rt: 'Retention time (s)',
+  mz: 'Precursor m/z',
+  score: 'Score',
+  deltaMass: 'Δ mass (Da)',
+  length: 'Peptide length',
+} as const
+export type RangeKey = keyof typeof RANGE_KEYS
+export type PsmRange = { key: RangeKey; min: number; max: number }
+
+/** The value of `key` of PSM `i`. */
+export function psmValue(m: ResultModel, key: RangeKey, i: number): number {
+  const ps = m.tables.psms
+  return key === 'length' ? m.tables.peptides.sequence[ps.peptide[i]].length : ps[key][i]
+}
+
+/** The charge and range filters of PSM `i` (true: it passes). */
+function passesPsmFilters(m: ResultModel, f: FilterState, i: number): boolean {
+  if (f.charges && f.charges.length > 0 && !f.charges.includes(m.tables.psms.charge[i])) return false
+  for (const r of f.ranges ?? []) {
+    const v = psmValue(m, r.key, i)
+    if (!(v >= r.min && v <= r.max)) return false
+  }
+  return true
+}
+
+/**
+ * The target and decoy PSMs that the PSM filters keep, decoys counted whether or not they are shown: their ratio
+ * estimates the FDR within the filtered subset (survey P0-7). Only passing PSMs are stored, so it is an estimate
+ * within the passing set, not a new FDR.
+ */
+export function targetDecoyOf(m: ResultModel, f: FilterState): { targets: number; decoys: number } {
+  const rows = applyFilters(m, 'psms', { ...f, showDecoys: true })
+  let decoys = 0
+  for (const i of rows) decoys += m.tables.psms.decoy[i]
+  return { targets: rows.length - decoys, decoys }
 }
 
 /**
@@ -188,6 +232,7 @@ export function applyFilters(m: ResultModel, level: Level, f: FilterState): Uint
     const k = ps.peptide[i]
     if (!mask[k] || (!f.showDecoys && ps.decoy[i]) || !passesQ(ps.qValue[i], limit, m.psmFdr)) continue
     if (only !== undefined && k !== only) continue // an index that is no peptide matches nothing
+    if (!passesPsmFilters(m, f, i)) continue
     if (f.curation !== 'any' && !passesCuration(m.curation[i], f.curation)) continue
     out[kept++] = i
   }
@@ -265,4 +310,13 @@ export function sortRows(
   const sorted = new Uint32Array(n)
   for (let i = 0; i < n; i++) sorted[i] = rows[order[i]]
   return sorted
+}
+
+/**
+ * The rows of `level` that the contaminant filter alone hides under filters `f` (0 when it is off): the count the
+ * chip shows ("12 contaminant proteins hidden"), so that hiding them by default does not hide that they are there.
+ */
+export function hiddenContaminants(m: ResultModel, level: Level, f: FilterState): number {
+  if (!f.hideContaminants) return 0
+  return applyFilters(m, level, { ...f, hideContaminants: false }).length - applyFilters(m, level, f).length
 }
