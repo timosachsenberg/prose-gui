@@ -5,7 +5,10 @@
 // results are read. Saving never breaks the results view, it only reports. A search that finished while it
 // was being cancelled has its folder removed at once.
 
-import { desktopBackend, errorText } from '../desktop'
+import { desktopBackend, errorText, importQpxFolder, openQpxFolder } from '../desktop'
+import { resolveDesign } from '../design/model'
+import { baseName } from '../results/model'
+import { parameterNumber, qpxParameters, readMeta, targetPsmsOf } from '../results/summary'
 import { resultName } from '../results/display'
 import { forgetResult, navigate, router } from '../route.svelte'
 import {
@@ -18,16 +21,24 @@ import {
   openFinished,
   openResult,
   openStoredResult,
+  searchRun,
   type EndedSearch,
   type OpenResult,
 } from '../search/session.svelte'
+import { searchForm } from '../search/form.svelte'
+import { canSearchAgain, parametersToSearchAgain, searchAgain, searchPlan, startSearch } from '../search/plan.svelte'
+import { acceptedKeys } from '../search/checks'
 import { toolState } from '../search/tool.svelte'
 import {
+  APP_VERSION,
+  SCHEMA_VERSION,
   endedRecordOf,
   exportArchive,
   importArchive,
   openSearch,
+  parseRecord,
   ArchiveError,
+  RECORD_FILE,
   proteinsFasta,
   psmsOfSearch,
   recordOf,
@@ -351,6 +362,140 @@ export async function openArchiveFile(): Promise<boolean> {
 }
 
 /**
+ * The search `id` of History in New search: its files (by their paths in inputs.json), their design, the database
+ * (its path in database.json, else none: it was copied with the contaminants) and the settings; then, with `start`,
+ * the search starts once the form can (Re-run). Resolves with whether it started.
+ */
+export async function reopenInNewSearch(id: string, start: boolean, changes: Record<string, unknown> = {}): Promise<boolean> {
+  const record = parseRecord(new TextDecoder().decode(await backend.read(id, RECORD_FILE)))
+  const inputs = JSON.parse(new TextDecoder().decode(await backend.read(id, 'inputs.json'))) as { path: string; name: string; index: number }[]
+  // the user's FASTA: database.json (searched as it is), database-source.json (searched with contaminants)
+  let database: string | null = null
+  for (const name of ['database.json', 'database-source.json']) {
+    try {
+      database = (JSON.parse(new TextDecoder().decode(await backend.read(id, name))) as { path?: string }).path ?? null
+      if (database) break
+    } catch {
+      // (not there: an older search, or one from an archive)
+    }
+  }
+  // the design rows are in input order (two files of one name in different folders stay apart)
+  const ordered = [...inputs].sort((a, b) => a.index - b.index)
+  navigate({ view: 'search' })
+  // what New search held is replaced: kept for Undo (`undoReplace`)
+  const held = searchForm.files.length > 0 || searchForm.database !== null
+  searchForm.replaced = held ? { by: record.name, form: searchForm.snapshot() } : null
+  const complete = await searchForm.restoreSearch({
+    name: record.name,
+    inputs: ordered.map((i, k) => {
+      const r = record.design.rows[k]?.fileName === i.name ? record.design.rows[k] : record.design.rows.find((x) => x.fileName === i.name)
+      return { path: i.path, fields: r ? { condition: r.condition ?? undefined, replicate: r.replicate, fraction: r.fraction, techReplicate: r.techReplicate } : {} }
+    }),
+    database,
+    databaseName: record.database,
+    settings: { ...record.settings, parameters: { ...parametersToSearchAgain(record.settings.parameters, record.psmFdr), ...changes } },
+  })
+  // the red flags searched anyway then are not asked again (they are recorded per file: `checks.ts`)
+  if (record.accepted) searchPlan.accepted = new Set([...searchPlan.accepted, ...acceptedKeys(record.accepted)])
+  if (!start) return false
+  // Re-run starts only the same search: every file and the database found
+  if (!complete) {
+    searchForm.notices.push('Re-run did not start: check the files and the database above, then start the search.')
+    return false
+  }
+  // (the proteins of the database are counted and the spectra checked in the background: start once the form allows
+  // it, and only the search restored: an edit meanwhile, or a search started by hand, ends the wait)
+  const restored = () => JSON.stringify([searchForm.files.map((r) => r.file.path), searchForm.database?.file.path, searchForm.values])
+  const asRestored = restored()
+  for (let tries = 0; tries < 600 && !searchPlan.canStart; tries++) {
+    await new Promise((r) => setTimeout(r, 100))
+    if (searchRun.status === 'running' || restored() !== asRestored) return false
+  }
+  if (!searchPlan.canStart) {
+    searchForm.notices.push('Re-run did not start: the form is not ready; see above.')
+    return false
+  }
+  await startSearch()
+  return true
+}
+
+/** Undo of `searchForm.replaced`: the files, database and settings New search held before a search was opened. */
+export function undoReplace(): void {
+  const r = searchForm.replaced
+  if (!r) return
+  searchForm.replaced = null
+  searchForm.restoreSnapshot(r.form)
+}
+
+/**
+ * A guidance re-run (tolerance feedback, the diagnosis card): New search with the inputs and settings of `result`,
+ * changed by `changes`, the changed values marked there (`SearchForm.guided`). The inputs stay if New search still
+ * holds them; else the search is opened there from History. The user starts it.
+ */
+export async function rerunWith(result: OpenResult, changes: Record<string, unknown>): Promise<void> {
+  try {
+    if (canSearchAgain(result)) searchAgain(result, changes)
+    else await reopenInNewSearch(result.id, false, changes)
+  } catch (e) {
+    // (the search's record cannot be read: say so in New search rather than doing nothing)
+    navigate({ view: 'search' })
+    searchForm.notices.push(`“${nameOf(result)}” could not be opened in New search (${errorText(e)}). Add its files again to re-run it.`)
+    return
+  }
+  searchForm.markGuided(nameOf(result), result.settings.parameters, changes)
+}
+
+/**
+ * "Open QPX folder…": the QPX output of a ProSE run outside the app (`-out_qpx <dir> -qpx_extended -keep_decoys`,
+ * e.g. on a cluster) as a search in History, then opened in Results (survey F36). The record is made from the
+ * run and provenance views: the inputs by their stems, the cutoffs and database as ProSE recorded them.
+ * Resolves with false if the user cancelled.
+ */
+export async function openQpxFolderFile(): Promise<boolean> {
+  let id: string
+  try {
+    const chosen = await openQpxFolder()
+    if (chosen === null) return false
+    const meta = await readMeta(chosen.run, chosen.provenance)
+    // the inputs in ProSE's order (its run view), which the merged PSMs follow; the file names only where it has none
+    const runOrder = meta.runs.map((r) => r.run_accession)
+    const stems = runOrder.every((s) => chosen.stems.includes(s)) && runOrder.length === chosen.stems.length ? runOrder : chosen.stems
+    const names = stems.map((s) => `${s.replace(/^\d+__/, '')}`)
+    const inputs = stems.map((stem, index) => ({ id: `f${index + 1}`, index, link: stem, stem, name: names[index], path: names[index] }))
+    const database = baseName(meta.search.get('database_file') ?? 'database')
+    const record = {
+      schema: SCHEMA_VERSION,
+      id: 'qpx',
+      name: baseName(chosen.folder),
+      createdAt: new Date().toISOString(),
+      appVersion: APP_VERSION,
+      toolVersion: '',
+      files: names,
+      database,
+      design: resolveDesign(names.map((fileName, k) => ({ id: `f${k + 1}`, fileName, fileSize: 0 }))),
+      settings: {
+        parameters: qpxParameters(meta.search),
+        fixedMods: (meta.search.get('fixed_modifications') ?? '').split(/[,;]\s*/).filter(Boolean),
+        rescore: meta.runs.some((r) => r.rescoring_applied === true),
+        peptdeep: meta.runs.some((r) => r.prediction_nce !== null),
+        contaminants: false,
+      },
+      psms: targetPsmsOf(meta.runs),
+      psmFdr: parameterNumber(meta.fdr, 'psm_fdr'),
+      proteinFdr: parameterNumber(meta.fdr, 'protein_fdr'),
+      seconds: parameterNumber(meta.search, 'seconds_total'),
+    }
+    id = await importQpxFolder(chosen.folder, JSON.stringify(record), JSON.stringify(inputs))
+  } catch (e) {
+    if (e instanceof ArchiveError) throw e
+    throw new ArchiveError(errorText(e))
+  }
+  await refreshHistory()
+  await show(id)
+  return true
+}
+
+/**
  * Saves `result` as a results archive where the user chooses (the save dialog), `onProgress` told how far the
  * writing is (0–1). A search that is not in History yet (its save failed) is saved first. Resolves with the
  * path, or null if the user cancelled.
@@ -389,3 +534,34 @@ export function dismissSaveStatus(): void {
   status = null
 }
 
+/**
+ * The ProSE command line of search `id` (its `command.txt`, written by the shim; guidance G8), the parameters in
+ * its `prose.ini`. The paths are placeholders (`<input 1>`, `<database>`, `<search folder>`); `withPaths` puts in
+ * the inputs' paths (inputs.json: names only for an archive) and the user's database when ProSE searched it as it is
+ * (database.json). With contaminants it searched the folder's copy with cRAP appended, which is not kept: `<database>`
+ * stays, as the user's FASTA alone would be another search. Null for a search made before the app wrote it.
+ */
+export async function commandLineOf(id: string, withPaths: boolean): Promise<string | null> {
+  const text = async (name: string) => new TextDecoder().decode(await backend.read(id, name))
+  let line: string
+  try {
+    line = (await text('command.txt')).trim()
+  } catch {
+    return null
+  }
+  if (!withPaths) return line
+  const quote = (p: string) => (/\s/.test(p) ? `"${p}"` : p)
+  try {
+    const inputs = JSON.parse(await text('inputs.json')) as { path: string; index: number }[]
+    for (const i of inputs) line = line.replaceAll(`<input ${i.index + 1}>`, quote(i.path))
+  } catch {
+    // (no inputs.json: the placeholders stay)
+  }
+  try {
+    const path = (JSON.parse(await text('database.json')) as { path?: string }).path
+    if (path) line = line.replaceAll('<database>', quote(path))
+  } catch {
+    // (not there: a search with contaminants, whose database was the folder's copy with cRAP, or an archive's)
+  }
+  return line
+}

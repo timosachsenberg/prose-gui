@@ -24,7 +24,15 @@
     onOpen,
     compact = false,
     follow = false,
-  }: { view: ResultsView; level: LevelState; onOpen: (psm: number) => void; compact?: boolean; follow?: boolean } = $props()
+    onOpenProtein,
+  }: {
+    view: ResultsView
+    level: LevelState
+    onOpen: (psm: number) => void
+    compact?: boolean
+    follow?: boolean
+    onOpenProtein?: (protein: number) => void
+  } = $props()
 
   const m = $derived(view.model)
   const ps = $derived(m.tables.psms)
@@ -142,7 +150,7 @@
 {/snippet}
 
 {#snippet proteinsCell(i: number)}
-  <ProteinRefs model={m} peptide={ps.peptide[i]} />
+  <ProteinRefs model={m} peptide={ps.peptide[i]} onOpen={onOpenProtein} />
 {/snippet}
 
 <DataTable
