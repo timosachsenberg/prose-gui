@@ -4,10 +4,10 @@
 //
 // Commands (src-tauri/src/lib.rs): tool_info, start_search, cancel_search, read_search_file,
 // inspect_files, cpu_count, example_files, save_text, save_search_file, history_list, history_save_record,
-// history_save_proteins, history_rename, history_delete, history_files, history_import, open_project_file,
-// save_project_file, save_curation, answer_close, searches_location, choose_searches_folder,
+// history_save_proteins, history_rename, history_delete, history_files, history_import, open_archive_file,
+// save_archive_file, save_curation, answer_close, searches_location, choose_searches_folder,
 // use_default_searches_folder. Events: search://progress, search://done, search://failed,
-// project://progress, app://close-requested. The system's dialogs open one at a time (`oneDialog`). The window's
+// archive://progress, app://close-requested. The system's dialogs open one at a time (`oneDialog`). The window's
 // theme (`windowTheme`, `onWindowThemeChanged`, `setWindowTheme`).
 
 import { invoke } from '@tauri-apps/api/core'
@@ -176,6 +176,12 @@ export function searchFiles(searchId: string): SearchFiles {
 
 /** Sizes and counts of files given by path (the open dialog, drag and drop, the example). */
 export function inspectFiles(paths: string[]): Promise<FileFacts[]> {
+  // the page's browser mode reads no file: each is missing (Re-run of a result then names them, as for moved files)
+  if (!isDesktop()) {
+    return Promise.resolve(
+      paths.map((path) => ({ path, name: path.split(/[\\/]/).pop() ?? path, size: 0, spectra: null, proteins: null, residues: null, error: 'not readable in the browser', problem: null, warnings: [] })),
+    )
+  }
   return invoke<FileFacts[]>('inspect_files', { paths })
 }
 
@@ -220,10 +226,27 @@ export async function onFileDrop(handlers: { over: (on: boolean) => void; drop: 
 }
 
 /**
+ * The page's browser mode (`vite dev` without the shell): a save is the browser's
+ * download of `name`, which resolves with the name (there is no path).
+ */
+function browserDownload(name: string, blob: Blob): string {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = name
+  document.body.append(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+  return name
+}
+
+/**
  * Saves text (CSV, design.tsv, SVG) where the user chooses in the system's save dialog, suggesting
  * `name`. Resolves with the path, or null if the user cancelled.
  */
 export function saveText(name: string, contents: string): Promise<string | null> {
+  if (!isDesktop()) return Promise.resolve(browserDownload(name, new Blob([contents], { type: 'text/plain;charset=utf-8' })))
   return oneDialog(null, () => invoke<string | null>('save_text', { name, contents }))
 }
 
@@ -252,8 +275,8 @@ export function saveSearchFile(searchId: string, name: string, suggested: string
 }
 
 /**
- * History's disk: the Rust commands (src-tauri/src/history.rs). A project file is written by the Rust side
- * (src-tauri/src/project.rs); an opened one and the entries of an import go as raw bodies, not as JSON numbers.
+ * History's disk: the Rust commands (src-tauri/src/history.rs). A results archive is written by the Rust side
+ * (src-tauri/src/archive.rs); an opened one and the entries of an import go as raw bodies, not as JSON numbers.
  */
 export const desktopBackend: HistoryBackend = {
   list: () => invoke<HistoryEntry[]>('history_list'),
@@ -263,24 +286,24 @@ export const desktopBackend: HistoryBackend = {
   rename: (searchId, name) => invoke('history_rename', { searchId, name }),
   delete: (searchId) => invoke('history_delete', { searchId }),
   files: (searchId) => invoke('history_files', { searchId }),
-  // the dialog and the writing are one command: the zip goes to disk entry by entry, `project://progress` says how far
-  saveProject: (searchId, name, onProgress) =>
+  // the dialog and the writing are one command: the zip goes to disk entry by entry, `archive://progress` says how far
+  saveArchive: (searchId, name, onProgress) =>
     oneDialog(null, async () => {
       const unlisten = onProgress
-        ? await listen<{ searchId: string; written: number; total: number }>('project://progress', (e) => {
+        ? await listen<{ searchId: string; written: number; total: number }>('archive://progress', (e) => {
             if (e.payload.searchId === searchId) onProgress(e.payload.total > 0 ? e.payload.written / e.payload.total : 1)
           })
         : null
       try {
-        return await invoke<string | null>('save_project_file', { searchId, name })
+        return await invoke<string | null>('save_archive_file', { searchId, name })
       } finally {
         unlisten?.()
       }
     }),
   // the dialog and the read are one command: the page never names a path (cancelled: an empty body)
-  openProject: () =>
+  openArchive: () =>
     oneDialog(null, async () => {
-      const bytes = new Uint8Array(await invoke<ArrayBuffer>('open_project_file'))
+      const bytes = new Uint8Array(await invoke<ArrayBuffer>('open_archive_file'))
       return bytes.length === 0 ? null : bytes
     }),
   importEntries: (body) => invoke<string>('history_import', body),
@@ -335,3 +358,5 @@ export function answerClose(close: boolean): Promise<void> {
 
 /** The text of a rejection of a command (a string, or an object with a message). */
 export { errorText }
+
+

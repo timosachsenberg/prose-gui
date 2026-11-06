@@ -1,6 +1,6 @@
-// History and project files, without Tauri or Svelte: the record of a search (`search.json`), what is
+// History and results archives, without Tauri or Svelte: the record of a search (`search.json`), what is
 // written to the search's folder when the search is saved, how a folder is opened again, and the
-// project file (`.prose`: the folder's regular files as a zip, made and read here with fflate).
+// results archive (`.prose`: the folder's regular files as a zip, made and read here with fflate).
 //
 // The folder is the shim's (docs/parity.md for the tool's outputs); History adds
 //
@@ -12,8 +12,8 @@
 //                   opens when the FASTA it was searched with has moved, or on another computer; the
 //                   folder's database.fasta (the FASTA with the contaminants) goes then
 //
-// A project file holds the same files (the links to the inputs are not files and stay out). It is written
-// by the Rust side, entry by entry from the folder's files to the file the user chose (src-tauri/src/project.rs;
+// A results archive holds the same files (the links to the inputs are not files and stay out). It is written
+// by the Rust side, entry by entry from the folder's files to the file the user chose (src-tauri/src/archive.rs;
 // what it would hold is checked here first). Opening one writes its files to a fresh folder of the app, as a
 // new search of History.
 //
@@ -32,7 +32,7 @@ import type { EndedSearch, OpenResult } from '../search/session.svelte'
 // (only the version: a named import of a JSON module leaves the rest of package.json out of the bundle)
 import { version } from '../../../package.json'
 
-/** The version of `search.json` and of the project file. A newer file is refused, not guessed at. */
+/** The version of `search.json` and of the results archive. A newer file is refused, not guessed at. */
 export const SCHEMA_VERSION = 1
 
 /** The version of this app (package.json), written to the records it saves. */
@@ -74,7 +74,7 @@ export type SearchRecord = {
   proteinFdr: number
   /** The time of the search proper, in seconds. */
   seconds: number
-  /** Set (by the Rust side) on a search made of a project file: it reads only the files of its folder. */
+  /** Set (by the Rust side) on a search made of a results archive: it reads only the files of its folder. */
   imported?: boolean
 }
 
@@ -101,23 +101,23 @@ export type HistoryEntry = {
   error: string | null
 }
 
-/** A project file or a stored search that cannot be read. The message says what is wrong with it. */
-export class ProjectError extends Error {
+/** A results archive or a stored search that cannot be read. The message says what is wrong with it. */
+export class ArchiveError extends Error {
   constructor(message: string) {
     super(message)
-    this.name = 'ProjectError'
+    this.name = 'ArchiveError'
   }
 }
 
-/** The project (or stored search) was saved by a newer version of ProSE than this one. */
-export class ProjectVersionError extends ProjectError {
+/** The archive (or stored search) was saved by a newer version of ProSE than this one. */
+export class ArchiveVersionError extends ArchiveError {
   readonly schema: number
-  constructor(schema: number, kind: 'project' | 'search' = 'project') {
+  constructor(schema: number, kind: 'results archive' | 'search' = 'results archive') {
     super(
       `This ${kind} was saved by a newer version of ProSE (schema ${schema}) and cannot be opened by this one ` +
         `(it reads schema ${SCHEMA_VERSION}). Open it with the latest version of ProSE.`,
     )
-    this.name = 'ProjectVersionError'
+    this.name = 'ArchiveVersionError'
     this.schema = schema
   }
 }
@@ -142,18 +142,18 @@ export interface HistoryBackend {
   /** The regular files of the folder (no links to the inputs). */
   files(id: string): Promise<{ name: string; size: number }[]>
   /**
-   * The project file of search `id` (see `exportProject`): the save dialog, suggesting `name`, then the zip
+   * The results archive of search `id` (see `exportArchive`): the save dialog, suggesting `name`, then the zip
    * written there, `onProgress` told how far (0–1) as it goes. The path, or null if the user cancelled.
    */
-  saveProject(id: string, name: string, onProgress?: (fraction: number) => void): Promise<string | null>
+  saveArchive(id: string, name: string, onProgress?: (fraction: number) => void): Promise<string | null>
   /**
    * The open dialog for a `.prose` file and the bytes of the file chosen, or null if the user cancelled.
    * (The dialog and the read are one step in Rust: the page never names a path to read.)
    */
-  openProject(): Promise<Uint8Array | null>
+  openArchive(): Promise<Uint8Array | null>
   /** Makes a search folder of the entries (see `frameEntries`): its new id. */
   importEntries(body: Uint8Array): Promise<string>
-  /** Where new searches and opened projects go (absent: a disk without folders to choose). */
+  /** Where new searches and opened results archives go (absent: a disk without folders to choose). */
   location?(): Promise<SearchesLocation>
   /**
    * The system's folder dialog, then the folder chosen for new searches (the shim takes an empty folder, or one with
@@ -212,6 +212,7 @@ export function endedRecordOf(search: EndedSearch, name: string, toolVersion: st
     psmFdr: search.psmFdr,
     proteinFdr: search.proteinFdr,
     seconds: search.seconds,
+    // (no path of this computer: the record goes into results archives)
   }
 }
 
@@ -230,19 +231,19 @@ export async function psmsOfSearch(backend: HistoryBackend, id: string): Promise
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v)
 
-/** The record in `text`. Throws a ProjectVersionError for a newer schema, a ProjectError for the rest. */
-export function parseRecord(text: string, kind: 'project' | 'search' = 'search'): SearchRecord {
+/** The record in `text`. Throws an ArchiveVersionError for a newer schema, an ArchiveError for the rest. */
+export function parseRecord(text: string, kind: 'results archive' | 'search' = 'search'): SearchRecord {
   let value: unknown
   try {
     value = JSON.parse(text)
   } catch {
-    throw new ProjectError(`${RECORD_FILE} is not valid JSON.`)
+    throw new ArchiveError(`${RECORD_FILE} is not valid JSON.`)
   }
-  if (!isObject(value)) throw new ProjectError(`${RECORD_FILE} is not a search record.`)
-  if (typeof value.schema !== 'number') throw new ProjectError(`${RECORD_FILE} has no schema: it is not a ProSE search record.`)
-  if (value.schema > SCHEMA_VERSION) throw new ProjectVersionError(value.schema, kind)
-  if (value.schema !== SCHEMA_VERSION) throw new ProjectError(`${RECORD_FILE} has the unknown schema ${value.schema}.`)
-  const bad = (what: string) => new ProjectError(`${RECORD_FILE} is incomplete: ${what}.`)
+  if (!isObject(value)) throw new ArchiveError(`${RECORD_FILE} is not a search record.`)
+  if (typeof value.schema !== 'number') throw new ArchiveError(`${RECORD_FILE} has no schema: it is not a ProSE search record.`)
+  if (value.schema > SCHEMA_VERSION) throw new ArchiveVersionError(value.schema, kind)
+  if (value.schema !== SCHEMA_VERSION) throw new ArchiveError(`${RECORD_FILE} has the unknown schema ${value.schema}.`)
+  const bad = (what: string) => new ArchiveError(`${RECORD_FILE} is incomplete: ${what}.`)
   const text_ = (k: string) => {
     if (typeof value[k] !== 'string') throw bad(`${k} is missing`)
   }
@@ -312,8 +313,8 @@ export function folderFiles(backend: HistoryBackend, id: string): SearchFiles {
 }
 
 /**
- * Reads a saved search from its folder: the record and the tables. Throws a ProjectError (a
- * ProjectVersionError for a newer record) that says what is wrong.
+ * Reads a saved search from its folder: the record and the tables. Throws an ArchiveError (a
+ * ArchiveVersionError for a newer record) that says what is wrong.
  */
 export async function openSearch(
   backend: HistoryBackend,
@@ -323,7 +324,7 @@ export async function openSearch(
   try {
     text = new TextDecoder('utf-8', { fatal: true }).decode(await backend.read(id, RECORD_FILE))
   } catch (e) {
-    throw new ProjectError(`${RECORD_FILE} cannot be read (${(e as Error)?.message ?? e}).`)
+    throw new ArchiveError(`${RECORD_FILE} cannot be read (${(e as Error)?.message ?? e}).`)
   }
   const record = parseRecord(text)
   const read = await readSearch(folderFiles(backend, id))
@@ -339,32 +340,32 @@ export async function openSearch(
 }
 
 //------------------------------------------------------------------------------------------------
-// Project files
+// Results archives
 
 /** `<name>.prose`, the name reduced to letters (of any script), digits, `-`, `_` and `.` (`fileSafe`). */
-export function projectFileName(name: string): string {
+export function archiveFileName(name: string): string {
   const safe = fileSafe(name)
   return `${safe.length >= 1 ? safe : 'prose-results'}.prose`
 }
 
-/** The name a result has in project files and exports when History has none for it. */
+/** The name a result has in results archives and exports when History has none for it. */
 export function defaultName(result: OpenResult): string {
   return resultName(result.design.rows.map((r) => r.fileName))
 }
 
-/** Files that deflate does not shrink (Parquet is compressed already): stored as they are (`project.rs` `stored`). */
+/** Files that deflate does not shrink (Parquet is compressed already): stored as they are (`archive.rs` `stored`). */
 export const STORE = /\.(parquet|gz|zst)$/i
 /** The deflate level of the other files: the quickest (they are small). */
 export const LEVEL = 1
 
 /**
- * Files of the folder that a project leaves out: the database copy (`proteins.fasta` has the sequences)
- * and the tool's log (its first line is the full command line, with paths of this computer). As `project.rs` `LEFT_OUT`.
+ * Files of the folder that an archive leaves out: the database copy (`proteins.fasta` has the sequences)
+ * and the tool's log (its first line is the full command line, with paths of this computer). As `archive.rs` `LEFT_OUT`.
  */
-export const LEFT_OUT: ReadonlySet<string> = new Set(['database.fasta', 'database.json', 'prose.log'])
+export const LEFT_OUT: ReadonlySet<string> = new Set(['database.fasta', 'database.json', 'database-source.json', 'prose.log'])
 
 /**
- * `inputs.json` as a project holds it: the files by name only, not the paths of this computer.
+ * `inputs.json` as an archive holds it: the files by name only, not the paths of this computer.
  * (The reader takes the names of the searched files from it.)
  */
 export function withoutPaths(inputs: Uint8Array): Uint8Array {
@@ -372,11 +373,11 @@ export function withoutPaths(inputs: Uint8Array): Uint8Array {
   try {
     records = JSON.parse(new TextDecoder().decode(inputs))
   } catch {
-    throw new ProjectError('inputs.json cannot be read, so the project cannot be made.')
+    throw new ArchiveError('inputs.json cannot be read, so the archive cannot be made.')
   }
-  if (!Array.isArray(records)) throw new ProjectError('inputs.json is not a list of the searched files, so the project cannot be made.')
+  if (!Array.isArray(records)) throw new ArchiveError('inputs.json is not a list of the searched files, so the archive cannot be made.')
   const reduced = records.map((r) => {
-    if (!isObject(r)) throw new ProjectError('inputs.json is not a list of the searched files, so the project cannot be made.')
+    if (!isObject(r)) throw new ArchiveError('inputs.json is not a list of the searched files, so the archive cannot be made.')
     const name = typeof r.name === 'string' ? r.name : String(r.path ?? '').split(/[\\/]/).pop()
     return { ...r, path: name }
   })
@@ -384,13 +385,13 @@ export function withoutPaths(inputs: Uint8Array): Uint8Array {
 }
 
 /**
- * Makes a project file of the search folder `id`: its regular files as a zip, `search.json` first,
+ * Makes a results archive of the search folder `id`: its regular files as a zip, `search.json` first,
  * without the database copy and with the searched files by name only (what is shared is the results,
  * not where the files were on this computer). What it would hold is checked first, before the save dialog;
  * the backend then asks where and writes it there (the Rust side, entry by entry), `onProgress` told how far
  * (0–1). Resolves with the path where the user saved it, or null if the user cancelled.
  */
-export async function exportProject(
+export async function exportArchive(
   backend: HistoryBackend,
   id: string,
   name: string,
@@ -398,33 +399,33 @@ export async function exportProject(
 ): Promise<string | null> {
   const listed = await backend.files(id)
   if (!listed.some((f) => f.name === RECORD_FILE)) {
-    throw new ProjectError(`The search is not saved to History (it has no ${RECORD_FILE}), so there is no project to make.`)
+    throw new ArchiveError(`The search is not saved to History (it has no ${RECORD_FILE}), so there is no archive to make.`)
   }
   const kept = listed.filter((f) => !LEFT_OUT.has(f.name))
-  // what the project would hold, before anything is read: within what a project opens with (MAX_UNPACKED)
+  // what the archive would hold, before anything is read: within what an archive opens with (MAX_UNPACKED)
   // and what a zip without zip64 can hold (MAX_ZIP; the app writes no zip64)
   const total = kept.reduce((n, f) => n + f.size, 0)
-  if (total > MAX_UNPACKED || kept.length > MAX_ZIP_ENTRIES) throw tooLargeForAProject(total, kept.length)
+  if (total > MAX_UNPACKED || kept.length > MAX_ZIP_ENTRIES) throw tooLargeForAnArchive(total, kept.length)
   // inputs.json (small) is checked too: it cannot fail once the user has chosen where
   if (kept.some((f) => f.name === 'inputs.json')) withoutPaths(await backend.read(id, 'inputs.json'))
-  return backend.saveProject(id, projectFileName(name), onProgress)
+  return backend.saveArchive(id, archiveFileName(name), onProgress)
 }
 
 /** The most a zip without zip64 holds: 4 GiB less a byte, and 65,535 entries. */
 export const MAX_ZIP = 2 ** 32 - 1
 export const MAX_ZIP_ENTRIES = 0xffff
 
-/** Why a search makes no project file: it is too large for one. */
-function tooLargeForAProject(bytes: number, files: number): ProjectError {
+/** Why a search makes no results archive: it is too large for one. */
+function tooLargeForAnArchive(bytes: number, files: number): ArchiveError {
   const what = files > MAX_ZIP_ENTRIES ? `${files} files` : formatBytes(bytes)
-  return new ProjectError(
-    `This search is too large for a project file: its results take ${what}, and a project file holds at most ` +
+  return new ArchiveError(
+    `This search is too large for a results archive: its results take ${what}, and a results archive holds at most ` +
       `${formatBytes(MAX_UNPACKED)}. That is the most ProSE can open. A larger zip, over 4 GB or 65,535 files, needs ` +
       'the zip64 format, which ProSE does not write. The search stays in History on this computer.',
   )
 }
 
-/** The most a project may unpack to (the zip is read into memory). */
+/** The most an archive may unpack to (the zip is read into memory). */
 export const MAX_UNPACKED = 3 * 1024 ** 3
 
 /**
@@ -452,7 +453,7 @@ function entryName(bytes: Uint8Array, utf8: boolean): string {
 
 /**
  * The entries of the zip's central directory (name, size, whether it is a symbolic link: what fflate does
- * not tell). Throws a ProjectError if the directory cannot be read, or if the file has a zip64 locator
+ * not tell). Throws an ArchiveError if the directory cannot be read, or if the file has a zip64 locator
  * (such files are not supported: fflate and this reader could then take different directories).
  */
 function centralDirectory(bytes: Uint8Array): CentralEntry[] {
@@ -464,8 +465,8 @@ function centralDirectory(bytes: Uint8Array): CentralEntry[] {
       break
     }
   }
-  const broken = () => new ProjectError('This file is not a project file: its zip directory cannot be read.')
-  const zip64 = () => new ProjectError('This project file uses the zip64 format, which is not supported.')
+  const broken = () => new ArchiveError('This file is not a results archive: its zip directory cannot be read.')
+  const zip64 = () => new ArchiveError('This results archive uses the zip64 format, which is not supported.')
   if (eocd < 0) throw broken()
   if (eocd >= 20 && view.getUint32(eocd - 20, true) === 0x07064b50) throw zip64()
   const count = view.getUint16(eocd + 10, true)
@@ -497,24 +498,24 @@ function centralDirectory(bytes: Uint8Array): CentralEntry[] {
 }
 
 /**
- * The files of a project file, checked before anything is written: a zip with `.prose`'s plain names
+ * The files of a results archive, checked before anything is written: a zip with `.prose`'s plain names
  * (no `..`, no absolute path, no link, no name twice, no file that is also a folder), within the size
  * limit (`maxUnpacked`, the sum of the sizes the zip declares, checked again as fflate unpacks it), and a
  * `search.json` of this schema. The zip's directory is read here and by fflate, and the two must agree
- * (names and sizes), so that what is checked is what is unpacked. Throws a ProjectError (a
- * ProjectVersionError for a newer schema).
+ * (names and sizes), so that what is checked is what is unpacked. Throws an ArchiveError (a
+ * ArchiveVersionError for a newer schema).
  */
-export function unpackProject(bytes: Uint8Array, maxUnpacked = MAX_UNPACKED): { name: string; data: Uint8Array }[] {
+export function unpackArchive(bytes: Uint8Array, maxUnpacked = MAX_UNPACKED): { name: string; data: Uint8Array }[] {
   if (bytes.length < 22 || bytes[0] !== 0x50 || bytes[1] !== 0x4b) {
-    throw new ProjectError('This file is not a project file: it is not a zip file.')
+    throw new ArchiveError('This file is not a results archive: it is not a zip file.')
   }
   const directory = centralDirectory(bytes)
-  if (directory.some((e) => e.link)) throw new ProjectError('This project file contains a link, which a project never has. It is not opened.')
-  if (directory.some((e) => e.encrypted)) throw new ProjectError('This project file is encrypted.')
-  const tooLarge = () => new ProjectError(`This project file unpacks to more than ${formatBytes(maxUnpacked)}, which is too much to open.`)
+  if (directory.some((e) => e.link)) throw new ArchiveError('This results archive contains a link, which an archive never has. It is not opened.')
+  if (directory.some((e) => e.encrypted)) throw new ArchiveError('This results archive is encrypted.')
+  const tooLarge = () => new ArchiveError(`This results archive unpacks to more than ${formatBytes(maxUnpacked)}, which is too much to open.`)
   const declared = new Map<string, number>()
   for (const e of directory) {
-    if (declared.has(e.name)) throw new ProjectError(`The project file has the name ${JSON.stringify(e.name)} twice. It is not opened.`)
+    if (declared.has(e.name)) throw new ArchiveError(`The results archive has the name ${JSON.stringify(e.name)} twice. It is not opened.`)
     declared.set(e.name, e.size)
   }
   if (directory.reduce((n, e) => n + e.size, 0) > maxUnpacked) throw tooLarge()
@@ -525,7 +526,7 @@ export function unpackProject(bytes: Uint8Array, maxUnpacked = MAX_UNPACKED): { 
   try {
     files = unzipSync(bytes, {
       filter: (f) => {
-        if (seen.has(f.name)) throw new ProjectError(`The project file has the name ${JSON.stringify(f.name)} twice. It is not opened.`)
+        if (seen.has(f.name)) throw new ArchiveError(`The results archive has the name ${JSON.stringify(f.name)} twice. It is not opened.`)
         seen.set(f.name, f.originalSize)
         total += f.originalSize
         if (total > maxUnpacked) throw tooLarge()
@@ -533,16 +534,16 @@ export function unpackProject(bytes: Uint8Array, maxUnpacked = MAX_UNPACKED): { 
       },
     })
   } catch (e) {
-    if (e instanceof ProjectError) throw e
-    throw new ProjectError(`This file is not a project file: it cannot be unzipped (${(e as Error)?.message ?? e}).`)
+    if (e instanceof ArchiveError) throw e
+    throw new ArchiveError(`This file is not a results archive: it cannot be unzipped (${(e as Error)?.message ?? e}).`)
   }
   if (seen.size !== declared.size || [...seen].some(([name, size]) => declared.get(name) !== size)) {
-    throw new ProjectError('This project file is damaged: its zip directory is not consistent. It is not opened.')
+    throw new ArchiveError('This results archive is damaged: its zip directory is not consistent. It is not opened.')
   }
   const entries: { name: string; data: Uint8Array }[] = []
   let actual = 0
   for (const [name, data] of Object.entries(files)) {
-    if (!isPlainName(name)) throw new ProjectError(`The project file has a file name that is not a plain name inside the folder (${JSON.stringify(name)}). It is not opened.`)
+    if (!isPlainName(name)) throw new ArchiveError(`The results archive has a file name that is not a plain name inside the folder (${JSON.stringify(name)}). It is not opened.`)
     actual += data.length
     if (actual > maxUnpacked) throw tooLarge()
     entries.push({ name, data })
@@ -551,12 +552,12 @@ export function unpackProject(bytes: Uint8Array, maxUnpacked = MAX_UNPACKED): { 
   for (const { name } of entries) {
     const parts = name.split('/')
     for (let i = 1; i < parts.length; i++) {
-      if (names.has(parts.slice(0, i).join('/'))) throw new ProjectError(`The project file has ${parts.slice(0, i).join('/')} as a file and as a folder.`)
+      if (names.has(parts.slice(0, i).join('/'))) throw new ArchiveError(`The results archive has ${parts.slice(0, i).join('/')} as a file and as a folder.`)
     }
   }
   const record = entries.find((e) => e.name === RECORD_FILE)
-  if (!record) throw new ProjectError(`This file is not a ProSE project: it has no ${RECORD_FILE}.`)
-  parseRecord(new TextDecoder().decode(record.data), 'project')
+  if (!record) throw new ArchiveError(`This file is not a ProSE results archive: it has no ${RECORD_FILE}.`)
+  parseRecord(new TextDecoder().decode(record.data), 'results archive')
   return entries
 }
 
@@ -584,14 +585,14 @@ export function frameEntries(entries: { name: string; data: Uint8Array }[]): Uin
 
 /**
  * Opens the dialog for a `.prose` file (in Rust, which reads the file) and makes a search of it in History. Resolves with the new
- * search's id, or null if the user cancelled. Throws a ProjectError that says what is wrong.
+ * search's id, or null if the user cancelled. Throws an ArchiveError that says what is wrong.
  */
-export async function importProject(backend: HistoryBackend): Promise<string | null> {
-  const bytes = await backend.openProject()
-  return bytes === null ? null : importProjectBytes(backend, bytes)
+export async function importArchive(backend: HistoryBackend): Promise<string | null> {
+  const bytes = await backend.openArchive()
+  return bytes === null ? null : importArchiveBytes(backend, bytes)
 }
 
-/** As `importProject`, for the bytes of a project file. */
-export async function importProjectBytes(backend: HistoryBackend, bytes: Uint8Array): Promise<string> {
-  return backend.importEntries(frameEntries(unpackProject(bytes)))
+/** As `importArchive`, for the bytes of a results archive. */
+export async function importArchiveBytes(backend: HistoryBackend, bytes: Uint8Array): Promise<string> {
+  return backend.importEntries(frameEntries(unpackArchive(bytes)))
 }

@@ -3,10 +3,10 @@
 //! The choice is kept in `<app data>/searches-folder.json` ([`SETTINGS_FILE`]):
 //! `{ "folder": "<path>", "previous": ["<path>", ...] }`.
 //!
-//! New searches and opened projects go to the current folder. History lists the searches of every folder the app has
-//! kept them in ([`Locations::roots`]): the current one, the app's own, and the folders chosen before that still held
-//! searches when another was chosen (`previous`); so a search stays in History wherever it is, and is found by its id
-//! in these folders, in that order ([`Locations::root_of`]). A search moved by hand (the app closed) from one of
+//! New searches and opened results archives go to the current folder. History lists the searches of every folder the
+//! app has kept them in ([`Locations::roots`]): the current one, the app's own, and the folders chosen before that
+//! still held searches when another was chosen (`previous`); so a search stays in History wherever it is, and is found
+//! by its id in these folders, in that order ([`Locations::root_of`]). A search moved by hand (the app closed) from one of
 //! them to another is found there.
 //!
 //! A folder of the user's is taken only when it is empty or holds searches of the app only ([`check_folder`]), and
@@ -45,7 +45,7 @@ struct Stored {
 pub struct Locations {
     /// The app's own searches folder (`<app data>/searches`).
     pub default: PathBuf,
-    /// Where new searches and opened projects go.
+    /// Where new searches and opened results archives go.
     pub current: PathBuf,
     /// The folders chosen before that held searches when another was chosen, the latest first.
     pub previous: Vec<PathBuf>,

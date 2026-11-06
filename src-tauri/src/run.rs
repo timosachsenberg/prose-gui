@@ -31,9 +31,10 @@
 //!   handler), at the end of its current step; a later start of the app sweeps the folder.
 
 use crate::args::{
-    build_args_with, humanize, input_placements, input_records_with, reserved_stem,
-    with_contaminants, InputLinks, InputRecord, Placement, SearchRequest, DATABASE_FILE,
-    DATABASE_RECORD,
+    build_args_with, command_line, humanize, ini_of, input_placements, input_records_with,
+    reserved_stem, split_search_args, with_contaminants, with_idxml_option, InputLinks,
+    InputRecord, Placement, SearchRequest, COMMAND_FILE, DATABASE_FILE, DATABASE_RECORD,
+    DATABASE_SOURCE, INI_FILE,
 };
 use crate::decoys::DecoyRules;
 use crate::history::{finish_partial, lock_partial, remove_partial, with_backoff};
@@ -1076,7 +1077,11 @@ impl Searches {
         let partial = searches_dir.join(format!("{id}.partial"));
         let done_dir = searches_dir.join(&id);
         // everything that can be wrong with the request is found before a folder exists
-        let args = build_args_with(&request, &partial, self.links)?;
+        // (a one-input search's idXML: the option the tool lists, `-out` or, before OpenMS 3.7, `-out_idxml`)
+        let args = with_idxml_option(
+            build_args_with(&request, &partial, self.links)?,
+            tool::idxml_option_of(tool_path),
+        );
 
         fs::create_dir(&partial).map_err(|e| {
             format!(
@@ -1097,6 +1102,15 @@ impl Searches {
             discard_partial(Some(lock), &partial, None);
             return Err(e);
         }
+        // ProSE's parameters go in through an INI in the folder, which stays as the record of them (guidance G8),
+        // with the command line, its paths as placeholders
+        let args = match write_ini_and_command(&partial, args) {
+            Ok(args) => args,
+            Err(e) => {
+                discard_partial(Some(lock), &partial, None);
+                return Err(e);
+            }
+        };
 
         let handle = Arc::new(Handle {
             group: Mutex::new(None),
@@ -1216,6 +1230,23 @@ fn prepare_folder(
                     file.path
                 )
             })?,
+            // (Windows) a hard link is of a file only: a Bruker .d folder that needs another name in the search
+            // folder cannot get one there (the reasons as below; nothing is ever copied)
+            Placement::HardLink if original.is_dir() => {
+                let why = if reserved_stem(&record.name) {
+                    "ProSE's own result files are called quantms"
+                } else if !record.link.ends_with(&record.name) {
+                    "its name is too long for ProSE's result files in the search folder"
+                } else {
+                    "another input has the same name, and ProSE names its results after the inputs"
+                };
+                return Err(format!(
+                    "ProSE needs the Bruker folder {} under another name in the search folder, because {why}. On \
+                     Windows the app can give a file another name there (a hard link), but not a folder. Rename \
+                     the folder and start the search again.",
+                    file.path
+                ));
+            }
             // (Windows) a hard link works on the folder's own volume only; nothing is ever copied
             Placement::HardLink => fs::hard_link(&original, &link).map_err(|e| {
                 // (a name too long for ProSE's outputs in the search folder: its link's name is shortened)
@@ -1272,6 +1303,10 @@ fn prepare_folder(
             std::io::ErrorKind::InvalidData => e.to_string(),
             _ => format!("The database with contaminants cannot be written ({e})."),
         })?;
+        // where the user's FASTA was, for History's Re-run only (never read as a database, and not in projects)
+        let source = serde_json::json!({ "path": request.database }).to_string();
+        fs::write(dir.join(DATABASE_SOURCE), source)
+            .map_err(|e| format!("{DATABASE_SOURCE} cannot be written ({e})."))?;
     } else {
         // the one file outside the folder that the results reader may read (files::resolve_search_file)
         let record = serde_json::json!({ "path": request.database }).to_string();
@@ -1279,6 +1314,37 @@ fn prepare_folder(
             .map_err(|e| format!("{DATABASE_RECORD} cannot be written ({e})."))?;
     }
     Ok(())
+}
+
+/// Writes the folder's [`INI_FILE`] of the `-Search:` arguments of `args` and its [`COMMAND_FILE`]; the arguments
+/// for the tool: the others, and `-ini` with the file.
+fn write_ini_and_command(
+    folder: &Path,
+    args: Vec<std::ffi::OsString>,
+) -> Result<Vec<std::ffi::OsString>, String> {
+    let (mut tool_args, search) = split_search_args(&args);
+    let ini = folder.join(INI_FILE);
+    fs::write(&ini, ini_of(&search)?)
+        .map_err(|e| format!("{INI_FILE} cannot be written ({e})."))?;
+    tool_args.push("-ini".into());
+    tool_args.push(ini.into_os_string());
+    let after = |flag: &str| -> Vec<std::ffi::OsString> {
+        let at = tool_args
+            .iter()
+            .position(|a| a == flag)
+            .map_or(tool_args.len(), |k| k + 1);
+        tool_args[at..]
+            .iter()
+            .take_while(|a| !a.to_string_lossy().starts_with('-'))
+            .cloned()
+            .collect()
+    };
+    let inputs = after("-in");
+    let database = after("-database").into_iter().next().unwrap_or_default();
+    let line = command_line("ProSE", &tool_args, &inputs, &database, folder);
+    fs::write(folder.join(COMMAND_FILE), format!("{line}\n"))
+        .map_err(|e| format!("{COMMAND_FILE} cannot be written ({e})."))?;
+    Ok(tool_args)
 }
 
 /// Runs the tool, passes on its progress, and settles the folder. Runs on the thread that started the

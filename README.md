@@ -50,22 +50,24 @@ libglvnd-gles` (Fedora).
 ## Where the data is
 
 - The searches (History): a folder per search, `<id>/`: ProSE's outputs, the record `search.json`, `proteins.fasta`
-  (the proteins of the result, so that the search opens without its database) and links to the inputs. They are in
-  the searches folder, which New search and History show under their title: by default `searches/` in the app's
-  data folder, which is
+  (the proteins of the result, so that the search opens without its database), `prose.ini` (the parameters ProSE was
+  given; ProSE's defaults of the recorded version for the rest), `command.txt` (its command line, the paths as
+  placeholders) and links to the inputs. They are in the searches folder, which New search and History show under
+  their title: by default `searches/` in the app's data folder, which is
   - Linux: `~/.local/share/org.openms.prose.desktop/` (`$XDG_DATA_HOME`)
   - macOS: `~/Library/Application Support/org.openms.prose.desktop/`
   - Windows: `%APPDATA%\org.openms.prose.desktop\` (on the system drive, C:)
 - **Another searches folder** (e.g. on a drive with more room, before searching many files): "Change…" beside the
   folder, in New search or History, and choose an empty folder (the dialog can make a new one) or one that holds
-  ProSE's searches only. The searches to come, and projects opened, go there; "Use the default folder" goes back.
-  The searches saved so far stay where they are, and History keeps listing them (with their size, and Delete to
+  ProSE's searches only. The searches to come, and results archives opened, go there; "Use the default folder" goes
+  back. The searches saved so far stay where they are, and History keeps listing them (with their size, and Delete to
   free the space). To move them as well, close ProSE and move their folders into the new folder: History finds them
   there. ProSE keeps nothing but its searches in that folder, and never lists, deletes or cleans up anything else in
   it (`src-tauri/src/location.rs`; the choice is kept in the app's data folder, `searches-folder.json`).
 - The log of the last search that failed: `logs/last-failure.log` there (the error names it).
 - Presets: the app's webview keeps them, on this computer.
-- The mzML and FASTA files are read where they are: never copied, and nothing is written beside them. Deleting a
+- The spectrum files (mzML, mzPeak, Thermo .raw, Bruker .d) and the FASTA are read where they are: never copied, and
+  nothing is written beside them. Deleting a
   search in History removes its folder; uninstalling leaves the data folder, which can be deleted by hand.
 
 ## Curating PSMs
@@ -81,18 +83,20 @@ accepted PSM, ...).
 Export › TSV (current view) saves the table as shown (Export › CSV for spreadsheets), and Export › Curated PSMs (TSV)
 every marked or noted PSM, whatever the filters, with its mark and note. The marks and notes are saved in the
 search's folder as `curation.json` (`src/lib/results/curation.ts`: each PSM by its file, native ID, peptide and
-charge), so they stay with the search in History and go with its project file.
+charge), so they stay with the search in History and go with its results archive.
 
-## Project files
+## Results archives (`.prose`)
 
-Export › Project (`.prose`) writes a search as one zip, which Open project (History) opens on another computer.
+Export › Results archive (`.prose`) writes a search as one zip, which History › Import results archive opens on
+another computer (`src/lib/history/history.ts`, `src-tauri/src/archive.rs`).
 It holds the search's folder as the app keeps it: ProSE's outputs (the QPX Parquet files, the idXML, the
-open-search tables), `search.json`, `proteins.fasta`, `curation.json` (if PSMs were curated), and `inputs.json` with the files' names only. Left out are
-ProSE's log, the database copy with the contaminants and `database.json` (the path of a database searched without
-them). **ProSE's outputs name folders of the computer that searched** (e.g. the database's path and all of ProSE's
-parameters in the QPX provenance view, the input and database paths in the idXML), and the project carries them as they are: share it
+open-search tables), `search.json`, `proteins.fasta`, `curation.json` (if PSMs were curated), and `inputs.json` with the
+files' names only. Left out are ProSE's log, the database copy with the contaminants, `database.json` (the path of a
+database searched without them) and `database-source.json` (the path of one searched with them, for Re-run). **ProSE's
+outputs name folders of the computer that searched** (e.g. the database's path and all of ProSE's
+parameters in the QPX provenance view, the input and database paths in the idXML), and the archive carries them as they are: share it
 where that is fine. A search saved by an earlier version of the app (with `summary.yaml` and OpenMS' own Parquet
-files, or without the QPX run and provenance views) does not open in this one: History and Open project say so. A project file holds at
+files, or without the QPX run and provenance views) does not open in this one: History and Import results archive say so. A results archive holds at
 most 3 GB (larger searches are refused with a message; they stay in History).
 
 ## Known limitations
@@ -121,9 +125,9 @@ most 3 GB (larger searches are refused with a message; they stay in History).
   2.8 MB (not read at open).
   On Windows the webview (WebView2) runs Chromium's JavaScript engine, whose arrays are smaller (an earlier
   measurement in Node.js, the same engine, read 4 million synthetic PSMs but not 8 million), so there the limit may
-  be lower; macOS' webview is WebKit, as on Linux. Project files are written to disk entry by entry (after the save
+  be lower; macOS' webview is WebKit, as on Linux. Results archives are written to disk entry by entry (after the save
   dialog), but read in memory when opened, and hold at most 3 GB (no zip64 is written or read; a larger search is
-  refused with a message). Later, not now: reading the project zip entry by entry (with zip64).
+  refused with a message). Later, not now: reading the archive's zip entry by entry (with zip64).
 - macOS: Apple silicon only; not signed with a Developer ID (see Install).
 - Windows: two inputs of one name are searched together only when they are on the drive of the app's data.
 
@@ -159,6 +163,11 @@ native/scripts/in-env.sh npm run check                  # svelte-check and tsc
 native/scripts/in-env.sh e2e/run.sh [e2e/smoke.spec.ts] # WebdriverIO via tauri-driver + WebKitWebDriver, under xvfb-run
 native/scripts/in-env.sh e2e/run.sh e2e/screens.shot.ts # screenshots into docs/screens
 ```
+
+The OpenMS the app's ProSE is built from is pinned in `native/OPENMS_COMMIT` (a full commit hash) and
+`native/OPENMS_REPO` (its repository, `owner/name`): `develop` of OpenMS/OpenMS. To move the pin, build and test the
+new commit and make the parameter table and the fixtures again (`native/README.md`, "Moving the pin to another
+repository or commit").
 
 Packages and their smoke test (needs the OpenMS build of `native/scripts/build-openms.sh`):
 

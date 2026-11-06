@@ -1,11 +1,11 @@
-//! Project files (`.prose`): a search folder as one zip, written entry by entry from the folder's files
-//! straight to the file the user chose (`save_project_file`), so that nothing of it is held in memory and
-//! the save dialog comes first. What a project holds is what `src/lib/history/history.ts` describes: the
+//! Results archives (`.prose`): a search folder as one zip, written entry by entry from the folder's files
+//! straight to the file the user chose (`save_archive_file`), so that nothing of it is held in memory and
+//! the save dialog comes first. What an archive holds is what `src/lib/history/history.ts` describes: the
 //! folder's regular files ([`history::folder_files`]) but [`LEFT_OUT`], `search.json` first, and
 //! `inputs.json` with the searched files by name only ([`without_paths`]).
 //!
-//! The zip is the one the front end reads (fflate, `unpackProject`): no zip64 (so at most 4 GiB and 65,535
-//! entries; a project holds at most [`MAX_UNPACKED`] anyway), names in UTF-8 (flag bit 11), each entry
+//! The zip is the one the front end reads (fflate, `unpackArchive`): no zip64 (so at most 4 GiB and 65,535
+//! entries; an archive holds at most [`MAX_UNPACKED`] anyway), names in UTF-8 (flag bit 11), each entry
 //! stored (Parquet, gzip and zstd files are compressed already) or deflated at the quickest level, its
 //! sizes and CRC in the local header (written after the data: the file is seekable), no data descriptors,
 //! no extra fields.
@@ -19,24 +19,29 @@ use std::io::{self, BufWriter, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// The record, the first entry of a project.
+/// The record, the first entry of an archive.
 pub const RECORD: &str = "search.json";
-/// The searched files, by name only in a project.
+/// The searched files, by name only in an archive.
 pub const INPUTS: &str = "inputs.json";
-/// Files of the folder that a project leaves out: the database copy (`proteins.fasta` has the sequences),
+/// Files of the folder that an archive leaves out: the database copy (`proteins.fasta` has the sequences),
 /// the path of a database searched without contaminants, and the tool's log (its first line is the full
 /// command line, with paths of this computer).
-pub const LEFT_OUT: [&str; 3] = ["database.fasta", "database.json", "prose.log"];
-/// The most a project may unpack to (the front end reads it into memory).
+pub const LEFT_OUT: [&str; 4] = [
+    "database.fasta",
+    "database.json",
+    "database-source.json",
+    "prose.log",
+];
+/// The most an archive may unpack to (the front end reads it into memory).
 pub const MAX_UNPACKED: u64 = 3 * 1024 * 1024 * 1024;
 /// The most entries of a zip without zip64.
 pub const MAX_ENTRIES: usize = 0xffff;
 /// The largest offset or size of a zip without zip64.
 const MAX_ZIP: u64 = u32::MAX as u64;
 
-/// Why a search makes no project (the front end says it first, with the sizes: `exportProject`).
+/// Why a search makes no archive (the front end says it first, with the sizes: `exportArchive`).
 pub const TOO_LARGE: &str =
-    "This search is too large for a project file: a project file holds at most 3 GB \
+    "This search is too large for a results archive: a results archive holds at most 3 GB \
      and 65,535 files. The search stays in History on this computer.";
 
 /// Whether a file is stored as it is: compressed already.
@@ -47,13 +52,13 @@ fn stored(name: &str) -> bool {
         .any(|ext| lower.ends_with(ext))
 }
 
-/// The files of search `id` that its project holds, in the order of the zip: `search.json` first, the
+/// The files of search `id` that its archive holds, in the order of the zip: `search.json` first, the
 /// others by name. Refused (with the front end's messages) if the search has no record or is too large.
-pub fn project_files(dir: &Path, id: &str) -> Result<Vec<FolderFile>, String> {
+pub fn archive_files(dir: &Path, id: &str) -> Result<Vec<FolderFile>, String> {
     let listed = folder_files(dir, id)?;
     if !listed.iter().any(|f| f.name == RECORD) {
         return Err(format!(
-            "The search is not saved to History (it has no {RECORD}), so there is no project to make."
+            "The search is not saved to History (it has no {RECORD}), so there is no archive to make."
         ));
     }
     let mut kept: Vec<FolderFile> = listed
@@ -68,13 +73,13 @@ pub fn project_files(dir: &Path, id: &str) -> Result<Vec<FolderFile>, String> {
     Ok(kept)
 }
 
-/// `inputs.json` as a project holds it: each searched file's `path` replaced by its name (its `name`, else
+/// `inputs.json` as an archive holds it: each searched file's `path` replaced by its name (its `name`, else
 /// the last part of its path), not where it was on this computer.
 pub fn without_paths(inputs: &[u8]) -> Result<Vec<u8>, String> {
     let not_a_list =
-        || format!("{INPUTS} is not a list of the searched files, so the project cannot be made.");
+        || format!("{INPUTS} is not a list of the searched files, so the archive cannot be made.");
     let value: serde_json::Value = serde_json::from_slice(inputs)
-        .map_err(|_| format!("{INPUTS} cannot be read, so the project cannot be made."))?;
+        .map_err(|_| format!("{INPUTS} cannot be read, so the archive cannot be made."))?;
     let serde_json::Value::Array(records) = value else {
         return Err(not_a_list());
     };
@@ -306,25 +311,25 @@ impl<W: Write + Seek> ZipWriter<W> {
     }
 }
 
-/// `<target>.part`: where the project is written before it takes the name the user chose.
+/// `<target>.part`: where the archive is written before it takes the name the user chose.
 fn part_of(target: &Path) -> PathBuf {
     let mut part = target.as_os_str().to_owned();
     part.push(".part");
     PathBuf::from(part)
 }
 
-/// Writes the project of search `id` to `target` (the path the user chose), entry by entry, the entries'
+/// Writes the archive of search `id` to `target` (the path the user chose), entry by entry, the entries'
 /// time `time`; `progress` is told the bytes of the folder's files read so far, and their total. The zip is
 /// written as `<target>.part` and renamed when complete, so that a failure leaves nothing (and an existing
 /// file at `target` as it was).
-pub fn write_project(
+pub fn write_archive(
     dir: &Path,
     id: &str,
     target: &Path,
     time: SystemTime,
     progress: &mut dyn FnMut(u64, u64),
 ) -> Result<(), String> {
-    let files = project_files(dir, id)?;
+    let files = archive_files(dir, id)?;
     let total: u64 = files.iter().map(|f| f.size).sum();
     let part = part_of(target);
     let shown = target.display();
@@ -339,7 +344,7 @@ pub fn write_project(
                 if e.to_string() == TOO_LARGE {
                     TOO_LARGE.to_string()
                 } else {
-                    format!("{} cannot be added to the project ({e}).", f.name)
+                    format!("{} cannot be added to the archive ({e}).", f.name)
                 }
             };
             let mut read = |n: u64| progress(done + n, total);

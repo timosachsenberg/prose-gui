@@ -1,9 +1,11 @@
 //! Finding the ProSE tool, asking it for its version, and building the command that runs it.
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::{Mutex, OnceLock};
 
 /// What the front end learns of the tool (`tool_info`).
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -100,14 +102,27 @@ pub const LOADER_VARIABLES: &[&str] = &[
 /// covers a tool from `PROSE_BIN` or the PATH. Any value but `OFF` turns the check off.
 pub const NO_UPDATE_CHECK: (&str, &str) = ("OPENMS_DISABLE_UPDATE_CHECK", "ON");
 
+/// The .NET runtime bundled beside the tool (`<tool>/../../dotnet`, `native/scripts/bundle-prose.sh`), if it is
+/// there: a folder with `host/fxr` (where the Thermo bridge of OpenMS looks for hostfxr under `DOTNET_ROOT`).
+/// ProSE's Thermo .raw reader runs its managed half (`bin/managed`) on it.
+pub fn bundled_dotnet(tool: &Path) -> Option<PathBuf> {
+    let root = tool.parent()?.parent()?.join("dotnet");
+    root.join("host").join("fxr").is_dir().then_some(root)
+}
+
 /// The command that runs the tool: `OPENBLAS_NUM_THREADS=1` unless the user has set it (Percolator's
 /// linear algebra would otherwise start a thread per core inside ProSE's own threads), as the
 /// FASTag shim does. `openblas` is the variable's current value. Always with [`NO_UPDATE_CHECK`] (a
-/// user's `OFF` included: the app makes no network contact). On macOS without the
-/// [`LOADER_VARIABLES`]; on Windows without a console window (the app has none to share).
+/// user's `OFF` included: the app makes no network contact). `DOTNET_ROOT` is the [`bundled_dotnet`]
+/// when the tool has one (it wins over a user's `DOTNET_ROOT`); without one the environment is left as it
+/// is, and the Thermo bridge looks for a .NET 8+ of the system (`DOTNET_ROOT`, then the standard places).
+/// On macOS without the [`LOADER_VARIABLES`]; on Windows without a console window (the app has none to share).
 pub fn command_with(path: &Path, openblas: Option<OsString>) -> Command {
     let mut command = Command::new(path);
     command.env(NO_UPDATE_CHECK.0, NO_UPDATE_CHECK.1);
+    if let Some(dotnet) = bundled_dotnet(path) {
+        command.env("DOTNET_ROOT", dotnet);
+    }
     if openblas.is_none() {
         command.env("OPENBLAS_NUM_THREADS", "1");
     }
@@ -175,6 +190,45 @@ pub fn has_onnx(path: &Path) -> bool {
             .models
             .iter()
             .all(|m| inside(m) && root.join(m).is_file())
+}
+
+/// The option of a one-input search's idXML: `-out` (OpenMS 3.7 and later), or `-out_idxml` for a tool whose help
+/// lists that and no `-out` (an older ProSE, given by PROSE_BIN or found on the PATH).
+pub fn idxml_option(help: &str) -> &'static str {
+    let lists = |option: &str| {
+        help.lines()
+            .any(|l| l.trim_start().starts_with(&format!("{option} ")))
+    };
+    if !lists("-out") && lists("-out_idxml") {
+        "-out_idxml"
+    } else {
+        "-out"
+    }
+}
+
+/// [`idxml_option`] of the tool at `path`, from its `--help`: asked once per path while the app runs; `-out` if
+/// the tool does not answer.
+pub fn idxml_option_of(path: &Path) -> &'static str {
+    static SEEN: OnceLock<Mutex<HashMap<PathBuf, &'static str>>> = OnceLock::new();
+    let seen = SEEN.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Some(option) = seen.lock().unwrap().get(path) {
+        return option;
+    }
+    let option = command(path)
+        .arg("--help")
+        .stdin(Stdio::null())
+        .output()
+        .map(|o| {
+            // (OpenMS tools print their help to stderr)
+            idxml_option(&format!(
+                "{}\n{}",
+                String::from_utf8_lossy(&o.stdout),
+                String::from_utf8_lossy(&o.stderr)
+            ))
+        })
+        .unwrap_or("-out");
+    seen.lock().unwrap().insert(path.to_path_buf(), option);
+    option
 }
 
 /// Runs `path --help` and reads the version; fails if the tool does not run or does not say.

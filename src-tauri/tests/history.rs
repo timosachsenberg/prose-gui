@@ -1,11 +1,11 @@
 //! History: the search folders of the app's data folder, listed, renamed, deleted, imported from a
-//! project file's entries, and the sweep of what an interrupted search left.
+//! results archive's entries, and the sweep of what an interrupted search left.
 
 mod common;
 
 use common::{set_folder_modified, TempDir};
 use prose_desktop_lib::history::{
-    delete, finish_partial, folder_files, frame, import, list, lock_partial, read_chosen_project,
+    delete, finish_partial, folder_files, frame, import, list, lock_partial, read_chosen_archive,
     remove_partial, rename, save_curation, save_proteins, save_record, sweep, with_backoff,
     BACKOFF_TRIES, LOCK_FILE, NOT_A_SEARCH, NO_RECORD, SWEEP_GRACE,
 };
@@ -117,7 +117,7 @@ fn history_lists_an_incomplete_folder_with_its_message() {
     fs::create_dir_all(dir.join("4-0")).unwrap();
     fs::write(
         dir.join("4-0/search.json"),
-        r#"{"schema":2,"id":"4-0","name":"future"}"#,
+        r#"{"schema":3,"id":"4-0","name":"future"}"#,
     )
     .unwrap();
     fs::create_dir_all(dir.join("5-0")).unwrap();
@@ -156,7 +156,7 @@ fn history_lists_an_incomplete_folder_with_its_message() {
     assert!(get("2-0").error.as_ref().unwrap().contains("search.json"));
     let newer = get("4-0").error.as_ref().unwrap();
     assert!(
-        newer.contains("newer version of ProSE") && newer.contains("schema 2"),
+        newer.contains("newer version of ProSE") && newer.contains("schema 3"),
         "{newer}"
     );
     // the good one first, the broken ones after
@@ -266,7 +266,7 @@ fn save_refuses_what_is_not_a_record() {
     let (_tmp, dir) = searches();
     fs::create_dir_all(dir.join("1-0")).unwrap();
     assert!(save_record(&dir, "1-0", "not json").is_err());
-    assert!(save_record(&dir, "1-0", r#"{"schema":2,"id":"1-0"}"#).is_err());
+    assert!(save_record(&dir, "1-0", r#"{"schema":3,"id":"1-0"}"#).is_err());
     assert!(
         save_record(&dir, "1-0", &record("other", "x")).is_err(),
         "the id is the folder's"
@@ -372,8 +372,8 @@ fn folder_files_lists_regular_files_only() {
     assert!(folder_files(&dir, "..").is_err());
 }
 
-/// A project's entries as the app sends them.
-fn project(id: &str, extra: &[(&str, &[u8])]) -> Vec<u8> {
+/// An archive's entries as the app sends them.
+fn archive(id: &str, extra: &[(&str, &[u8])]) -> Vec<u8> {
     let rec = record(id, "imported");
     let mut entries: Vec<(&str, &[u8])> = vec![("search.json", rec.as_bytes())];
     entries.extend_from_slice(extra);
@@ -383,7 +383,7 @@ fn project(id: &str, extra: &[(&str, &[u8])]) -> Vec<u8> {
 #[test]
 fn import_writes_a_fresh_folder() {
     let (_tmp, dir) = searches();
-    let body = project(
+    let body = archive(
         "old-id",
         &[
             ("qpx/1__a.psm.parquet", b"PAR1"),
@@ -429,14 +429,14 @@ fn import_rechecks_every_path() {
         "with\nnewline",
     ];
     for name in bad {
-        let body = project("x", &[(name, b"x")]);
+        let body = archive("x", &[(name, b"x")]);
         let err = import(&dir, &body).unwrap_err();
         assert!(err.contains("not a plain"), "{name:?}: {err}");
     }
     // a name used twice, a file that is also a folder
-    assert!(import(&dir, &project("x", &[("a", b"1"), ("a", b"2")])).is_err());
-    assert!(import(&dir, &project("x", &[("a", b"1"), ("a/b", b"2")])).is_err());
-    assert!(import(&dir, &project("x", &[("a/b", b"1"), ("a", b"2")])).is_err());
+    assert!(import(&dir, &archive("x", &[("a", b"1"), ("a", b"2")])).is_err());
+    assert!(import(&dir, &archive("x", &[("a", b"1"), ("a/b", b"2")])).is_err());
+    assert!(import(&dir, &archive("x", &[("a/b", b"1"), ("a", b"2")])).is_err());
     // nothing was written, in or beside the searches folder
     assert_eq!(fs::read_dir(&dir).unwrap().count(), 0);
     assert!(!dir.parent().unwrap().join("escape.txt").exists());
@@ -453,11 +453,15 @@ fn import_needs_a_record_of_this_schema() {
     assert!(import(&dir, &frame(&[("search.json", b"{")])).is_err());
     assert!(import(&dir, &frame(&[("search.json", b"{}")])).is_err());
     // a newer schema: refused, with a message
-    let err = import(&dir, &frame(&[("search.json", br#"{"schema":2}"#)])).unwrap_err();
+    let err = import(&dir, &frame(&[("search.json", br#"{"schema":3}"#)])).unwrap_err();
     assert!(
-        err.contains("newer version of ProSE") && err.contains("schema 2"),
+        err.contains("newer version of ProSE") && err.contains("schema 3"),
         "{err}"
     );
+    // schema 0 is no schema of the app's
+    assert!(import(&dir, &frame(&[("search.json", br#"{"schema":0}"#)]))
+        .unwrap_err()
+        .contains("unknown schema 0"));
     // nothing is empty
     assert!(import(&dir, &[]).is_err());
     assert_eq!(fs::read_dir(&dir).unwrap().count(), 0);
@@ -466,7 +470,7 @@ fn import_needs_a_record_of_this_schema() {
 #[test]
 fn import_refuses_a_damaged_body() {
     let (_tmp, dir) = searches();
-    let good = project("x", &[("a", b"hello")]);
+    let good = archive("x", &[("a", b"hello")]);
     for cut in [1, 5, good.len() - 1] {
         assert!(import(&dir, &good[..cut]).is_err(), "cut at {cut}");
     }
@@ -489,39 +493,39 @@ fn frames_have_a_fixed_layout() {
 }
 
 #[test]
-fn read_chosen_project_serves_any_regular_file() {
-    let tmp = TempDir::new("project");
+fn read_chosen_archive_serves_any_regular_file() {
+    let tmp = TempDir::new("archive");
     let good = tmp.write("a.prose", "zip");
-    assert_eq!(read_chosen_project(&good).unwrap(), b"zip");
+    assert_eq!(read_chosen_archive(&good).unwrap(), b"zip");
     let upper = tmp.write("B.PROSE", "zip");
-    assert!(read_chosen_project(&upper).is_ok());
+    assert!(read_chosen_archive(&upper).is_ok());
     // any name: the front end checks what the file holds
-    for name in ["a.zip", "project", "a.prose.zip", "Ergebnis ü.txt"] {
+    for name in ["a.zip", "archive", "a.prose.zip", "Ergebnis ü.txt"] {
         assert_eq!(
-            read_chosen_project(&tmp.write(name, "zip")).unwrap(),
+            read_chosen_archive(&tmp.write(name, "zip")).unwrap(),
             b"zip"
         );
     }
     assert!(
-        read_chosen_project(Path::new("a.prose")).is_err(),
+        read_chosen_archive(Path::new("a.prose")).is_err(),
         "absolute paths only"
     );
-    assert!(read_chosen_project(&tmp.path().join("absent.prose")).is_err());
+    assert!(read_chosen_archive(&tmp.path().join("absent.prose")).is_err());
     fs::create_dir_all(tmp.path().join("dir.prose")).unwrap();
-    assert!(read_chosen_project(&tmp.path().join("dir.prose")).is_err());
-    assert!(read_chosen_project(&tmp.write("empty.prose", ""))
+    assert!(read_chosen_archive(&tmp.path().join("dir.prose")).is_err());
+    assert!(read_chosen_archive(&tmp.write("empty.prose", ""))
         .unwrap_err()
         .contains("empty"));
 }
 
 #[cfg(unix)]
 #[test]
-fn read_chosen_project_does_not_follow_a_link() {
-    let tmp = TempDir::new("project-link");
-    let secret = tmp.write("secret.txt", "not a project");
+fn read_chosen_archive_does_not_follow_a_link() {
+    let tmp = TempDir::new("archive-link");
+    let secret = tmp.write("secret.txt", "not an archive");
     let link = tmp.path().join("x.prose");
     std::os::unix::fs::symlink(&secret, &link).unwrap();
-    let err = read_chosen_project(&link).unwrap_err();
+    let err = read_chosen_archive(&link).unwrap_err();
     assert!(err.contains("not a regular file"), "{err}");
 }
 
@@ -592,7 +596,7 @@ fn a_partial_folder_whose_owner_is_gone_is_removed() {
 }
 
 #[test]
-fn the_lock_file_never_belongs_to_a_search_or_a_project() {
+fn the_lock_file_never_belongs_to_a_search_or_an_archive() {
     let (_tmp, dir) = searches();
     // finishing a partial folder removes the lock file, then renames
     let partial = dir.join("8-0.partial");
@@ -603,7 +607,7 @@ fn the_lock_file_never_belongs_to_a_search_or_a_project() {
     finish_partial(Some(lock), &partial, &dir.join("8-0")).unwrap();
     assert!(!dir.join("8-0").join(LOCK_FILE).exists());
     assert!(dir.join("8-0/a.txt").exists());
-    // a lock file in a folder is not one of its project's files
+    // a lock file in a folder is not one of its archive's files
     fs::write(dir.join("8-0").join(LOCK_FILE), "").unwrap();
     let names: Vec<String> = folder_files(&dir, "8-0")
         .unwrap()
@@ -611,10 +615,10 @@ fn the_lock_file_never_belongs_to_a_search_or_a_project() {
         .map(|f| f.name)
         .collect();
     assert_eq!(names, ["a.txt"]);
-    // an import leaves none, and a project that names one is refused
-    let id = import(&dir, &project("x", &[("a.txt", b"x")])).unwrap();
+    // an import leaves none, and an archive that names one is refused
+    let id = import(&dir, &archive("x", &[("a.txt", b"x")])).unwrap();
     assert!(!dir.join(&id).join(LOCK_FILE).exists());
-    assert!(import(&dir, &project("x", &[(".lock", b"")]))
+    assert!(import(&dir, &archive("x", &[(".lock", b"")]))
         .unwrap_err()
         .contains("not a plain"));
 }
@@ -644,7 +648,7 @@ fn an_import_in_progress_holds_its_lock() {
     // (the import's partial folder is locked from its creation to its rename: see import's code; here
     // the outcome: nothing of a finished import is locked or left)
     let (_tmp, dir) = searches();
-    let id = import(&dir, &project("x", &[("a.txt", b"x")])).unwrap();
+    let id = import(&dir, &archive("x", &[("a.txt", b"x")])).unwrap();
     assert!(sweep(&dir, SystemTime::now() + SWEEP_GRACE * 10, SWEEP_GRACE).is_empty());
     assert!(dir.join(&id).join("search.json").exists());
 }
@@ -680,7 +684,7 @@ fn names_are_checked_on_save_and_import() {
     save_record(&dir, "1-0", &record("1-0", "  padded  ")).unwrap();
     assert_eq!(json(&dir.join("1-0/search.json"))["name"], "padded");
 
-    // a project's record with such a name is refused, nothing written
+    // an archive's record with such a name is refused, nothing written
     let json_with = |name: &str| {
         format!(
             r#"{{"schema":1,"id":"x","name":{}}}"#,
@@ -704,7 +708,7 @@ fn names_are_checked_on_save_and_import() {
 #[test]
 fn an_imported_search_is_marked() {
     let (_tmp, dir) = searches();
-    // whatever the project says
+    // whatever the archive says
     let body = frame(&[(
         "search.json",
         br#"{"schema":1,"id":"x","name":"n","imported":false}"#,
@@ -842,7 +846,7 @@ fn curation_is_saved_whole_to_a_saved_search() {
     // no search of that id, or none at all
     assert!(save_curation(&dir, "2-0", curation).is_err());
     assert!(save_curation(&dir, "../x", curation).is_err());
-    // no leftovers of the atomic write; a project carries it
+    // no leftovers of the atomic write; an archive carries it
     assert!(!dir.join("1-0/curation.json.tmp").exists());
     assert!(folder_files(&dir, "1-0")
         .unwrap()

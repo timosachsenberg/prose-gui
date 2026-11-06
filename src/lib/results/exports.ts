@@ -2,8 +2,7 @@
 // search's idXML; each saved where the user chooses (the system's save dialog).
 
 import { writeDesignTsv } from '../design/design-tsv'
-import { saveSearchFile } from '../desktop'
-import { download } from '../download'
+import { saveSearchFile, saveText } from '../desktop'
 import type { OpenResult } from '../search/session.svelte'
 import { toTsv } from './csv'
 import { resultName } from './display'
@@ -28,8 +27,7 @@ export async function exportCsv(view: ResultsView, format: 'csv' | 'tsv' = 'csv'
   view.exporting = true
   try {
     await painted()
-    const [text, type] = format === 'csv' ? [level.csv(), 'text/csv;charset=utf-8'] : [level.tsv(), 'text/tab-separated-values']
-    await download(`${exportName(view.result)}-${level.level}.${format}`, text, type)
+    await saveText(`${exportName(view.result)}-${level.level}.${format}`, format === 'csv' ? level.csv() : level.tsv())
     return true
   } finally {
     view.exporting = false
@@ -51,7 +49,7 @@ export async function exportCurated(view: ResultsView): Promise<boolean> {
     const columns = csvColumns(view.psms.visible)
     for (const id of ['curation', 'curationNote']) if (!columns.includes(id)) columns.push(id)
     const text = toTsv(view.model, 'psms', rows, columns, view.psms.filters)
-    await download(`${exportName(view.result)}-curated-psms.tsv`, text, 'text/tab-separated-values')
+    await saveText(`${exportName(view.result)}-curated-psms.tsv`, text)
     return true
   } finally {
     view.exporting = false
@@ -60,12 +58,12 @@ export async function exportCurated(view: ResultsView): Promise<boolean> {
 
 /** The design of the searched files as `<name>_design.tsv` (OpenMS' one-table format). */
 export async function exportDesign(result: OpenResult): Promise<void> {
-  await download(`${exportName(result)}_design.tsv`, writeDesignTsv(result.design), 'text/tab-separated-values')
+  await saveText(`${exportName(result)}_design.tsv`, writeDesignTsv(result.design))
 }
 
 /**
  * The idXML of a search in its folder (src-tauri/src/args.rs): the merged one of several files
- * (`-out_merged`), the file's own of one (`-out_idxml`; a search of one file saved by an earlier build has
+ * (`-out_merged`), the file's own of one (`-out`; a search of one file saved by an earlier build has
  * none, and the export says so).
  */
 export function idXMLFile(result: OpenResult): { name: string; label: string } {

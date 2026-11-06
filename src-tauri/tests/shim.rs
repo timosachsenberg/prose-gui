@@ -6,8 +6,8 @@ mod common;
 use common::*;
 use prose_desktop_lib::args::{
     build_args, build_args_with, humanize, input_placements, input_records_with, input_stem,
-    is_input_link, link_name, max_stem, with_contaminants, InputLinks, Placement, SearchRequest,
-    MAX_STEM,
+    is_input_link, link_name, max_stem, with_contaminants, with_idxml_option, InputLinks,
+    Placement, SearchRequest, MAX_STEM,
 };
 use prose_desktop_lib::decoys::DecoyRules;
 use prose_desktop_lib::progress::ProgressTracker;
@@ -137,7 +137,7 @@ fn the_app_outputs_are_always_requested() {
     assert!(!has(&args, "-Search:peptdeep:enable"));
     // one input: its own idXML (the Export menu's), no pooled output; a closed search: no modification analysis
     assert_eq!(
-        values_of(&args, "-out_idxml"),
+        values_of(&args, "-out"),
         vec![out.join("search.idXML").into_os_string()]
     );
     assert!(!has(&args, "-out_merged"));
@@ -158,7 +158,7 @@ fn several_inputs_ask_for_the_merged_output_and_open_search_for_the_modification
         values_of(&args, "-out_merged"),
         vec![out.join("merged.idXML").into_os_string()]
     );
-    assert!(!has(&args, "-out_idxml"));
+    assert!(!has(&args, "-out"));
     assert_eq!(
         values_of(&args, "-out_mod_analysis_dir"),
         vec![out.join("mods").into_os_string()]
@@ -507,7 +507,7 @@ fn input_paths_are_validated() {
     let out = i.dir.path().join("o");
     let missing = i.dir.path().join("data/missing.mzML");
     let folder = i.dir.path().join("data");
-    let raw = i.dir.write("data/a.raw", "x");
+    let raw = i.dir.write("data/a.wiff", "x");
     let text = i.dir.write("data/db.txt", ">a\nMK\n");
     assert!(
         build_args(&request(&[&missing], &i.fasta, false, json!({})), &out)
@@ -521,7 +521,20 @@ fn input_paths_are_validated() {
     assert!(
         build_args(&request(&[&raw], &i.fasta, false, json!({})), &out)
             .unwrap_err()
-            .contains("a.raw")
+            .contains("a.wiff")
+    );
+    // Thermo .raw and mzPeak files and Bruker .d folders are inputs ProSE reads
+    let thermo = i.dir.write("data/b.raw", "x");
+    assert!(build_args(&request(&[&thermo], &i.fasta, false, json!({})), &out).is_ok());
+    let bruker = i.dir.path().join("data/c.d");
+    std::fs::create_dir_all(&bruker).unwrap();
+    assert!(build_args(&request(&[&bruker], &i.fasta, false, json!({})), &out).is_ok());
+    // a regular file named .d is no Bruker folder
+    let fake = i.dir.write("data/fake.d", "x");
+    assert!(
+        build_args(&request(&[&fake], &i.fasta, false, json!({})), &out)
+            .unwrap_err()
+            .contains("Bruker .d folder")
     );
     assert!(
         build_args(&request(&[&i.mzml], &text, false, json!({})), &out)
@@ -1460,6 +1473,30 @@ fn the_tools_version_is_read_from_its_help() {
     assert_eq!(tool::parse_version("nothing"), None);
 }
 
+/// A one-input search's idXML goes by the option the tool lists: `-out`, or `-out_idxml` for a ProSE older than
+/// OpenMS 3.7 (whose help lists that and no `-out`); the command line then has that option in place of `-out`.
+#[test]
+fn a_one_input_searchs_idxml_takes_the_option_the_tool_lists() {
+    let new = "Options (mandatory options marked with '*'):\n  -in <files>*        Input files\n  -out <file>         Output idXML\n  -out_qpx <dir>      QPX\n";
+    let old = "Options (mandatory options marked with '*'):\n  -in <files>*        Input files\n  -out_idxml <file>   Output idXML\n  -out_qpx <dir>      QPX\n";
+    assert_eq!(tool::idxml_option(new), "-out");
+    assert_eq!(tool::idxml_option(old), "-out_idxml");
+    assert_eq!(tool::idxml_option("Version: 9.9.9"), "-out");
+    let i = inputs();
+    let out = i.dir.path().join("o");
+    let args = with_idxml_option(
+        args_of(&request(&[&i.mzml], &i.fasta, false, json!({})), &out),
+        "-out_idxml",
+    );
+    assert_eq!(
+        values_of(&args, "-out_idxml"),
+        vec![out.join("search.idXML").into_os_string()]
+    );
+    assert!(!has(&args, "-out"));
+    // the fake tool lists neither: `-out`
+    assert_eq!(tool::idxml_option_of(&fake_prose()), "-out");
+}
+
 /// `tool::probe` of a script this test process has just written. Another test's child, forked while the script was
 /// open for writing, holds that descriptor until its own exec; meanwhile exec of the script fails with ETXTBSY ("Text
 /// file busy", os error 26). A test-only race (the app never runs a file it wrote): retried for up to 2 s.
@@ -1480,7 +1517,7 @@ fn probe_written_script(script: &Path) -> Result<tool::ToolInfo, String> {
 #[test]
 fn probing_a_tool_reports_its_version_path_and_onnx_support() {
     let dir = TempDir::new("probe");
-    // a script on Unix; on Windows the fake tool, which answers --help the same way
+    // a script on Unix; on Windows the fake tool, which answers --helphelp (what probe asks) the same way
     #[cfg(unix)]
     let script = executable(&dir, "ProSE");
     #[cfg(unix)]
@@ -1555,6 +1592,30 @@ fn the_tool_runs_with_one_blas_thread_unless_set() {
         let removed = cmd.get_envs().any(|(k, v)| k == *name && v.is_none());
         assert_eq!(removed, cfg!(target_os = "macos"), "{name}");
     }
+}
+
+#[test]
+fn the_tool_runs_on_its_bundled_dotnet_if_it_has_one() {
+    let dir = TempDir::new("dotnet");
+    let tool_path = dir.write("prose/bin/ProSE", "");
+    let dotnet_root = |cmd: &std::process::Command| {
+        cmd.get_envs()
+            .find(|(k, _)| *k == "DOTNET_ROOT")
+            .map(|(_, v)| v.map(PathBuf::from))
+    };
+    // no bundled runtime: DOTNET_ROOT is left as it is (a system .NET is found by the Thermo bridge)
+    assert_eq!(tool::bundled_dotnet(&tool_path), None);
+    assert_eq!(dotnet_root(&tool::command_with(&tool_path, None)), None);
+    // a folder without host/fxr is no runtime
+    fs::create_dir_all(dir.path().join("prose/dotnet/shared")).unwrap();
+    assert_eq!(tool::bundled_dotnet(&tool_path), None);
+    fs::create_dir_all(dir.path().join("prose/dotnet/host/fxr/10.0.14")).unwrap();
+    let root = dir.path().join("prose/dotnet");
+    assert_eq!(tool::bundled_dotnet(&tool_path), Some(root.clone()));
+    assert_eq!(
+        dotnet_root(&tool::command_with(&tool_path, None)),
+        Some(Some(root))
+    );
 }
 
 #[test]
@@ -1982,6 +2043,27 @@ fn inputs_of_different_names_go_to_the_tool_by_their_own_paths() {
             .iter()
             .any(|n| n.ends_with(".mzML") || n.ends_with(".gz")),
         "{names:?}"
+    );
+}
+
+/// Windows' way, run on every platform: two Bruker folders of one name would need links in the search folder,
+/// which Windows makes of files only; the search is refused before anything runs, and says to rename one.
+#[test]
+fn bruker_folders_of_one_name_are_refused_with_windows_links() {
+    let run = Run::with_links(InputLinks::PathsOrHardLinks);
+    let i = inputs();
+    let first = i.dir.path().join("run1/sample.d");
+    let second = i.dir.path().join("run2/sample.d");
+    fs::create_dir_all(&first).unwrap();
+    fs::create_dir_all(&second).unwrap();
+    let (id, _rx) = run.start(
+        request(&[&first, &second], &i.fasta, false, json!({})),
+        None,
+    );
+    let e = id.unwrap_err();
+    assert!(
+        e.contains("Bruker folder") && e.contains("same name") && e.contains("Rename the folder"),
+        "{e}"
     );
 }
 

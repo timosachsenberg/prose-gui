@@ -14,7 +14,9 @@
 //!   the disk is asked.
 //! - [`example_files`]: the bundled example, as the two named runs the web app searches.
 
-use crate::args::{is_fasta_file, is_input_link, is_spectrum_file, suffix_start, DATABASE_RECORD};
+use crate::args::{
+    is_bruker_d, is_fasta_file, is_input_link, is_spectrum_file, suffix_start, DATABASE_RECORD,
+};
 use crate::content;
 use serde::Serialize;
 use std::fs;
@@ -106,7 +108,7 @@ fn search_folder(searches_dir: &Path, search_id: &str) -> Result<PathBuf, ReadEr
     Ok(canonical)
 }
 
-/// Whether the search counts as imported from a project file: its `search.json` says so, or is there
+/// Whether the search counts as imported from a results archive: its `search.json` says so, or is there
 /// and cannot be read as a record (then it is not trusted). A folder without a `search.json` (one just
 /// finished, not saved yet) is not imported.
 fn is_imported(folder: &Path) -> bool {
@@ -137,7 +139,7 @@ pub fn resolve_search_file(
 ) -> Result<PathBuf, ReadError> {
     let folder = search_folder(searches_dir, search_id)?;
     if Path::new(name).is_absolute() {
-        // an imported search (a project from elsewhere) never reads outside its folder: a path it records
+        // an imported search (an archive from elsewhere) never reads outside its folder: a path it records
         // is that of another computer, or an attempt to name one of this
         if is_imported(&folder) {
             return Err(ReadError::refused(format!(
@@ -289,6 +291,22 @@ pub struct FileFacts {
     pub warnings: Vec<String>,
 }
 
+/// The bytes of the regular files in `dir` and below (links not followed).
+fn folder_bytes(dir: &Path) -> u64 {
+    fs::read_dir(dir)
+        .map(|entries| {
+            entries
+                .flatten()
+                .map(|e| match e.file_type() {
+                    Ok(t) if t.is_dir() => folder_bytes(&e.path()),
+                    Ok(t) if t.is_file() => e.metadata().map(|m| m.len()).unwrap_or(0),
+                    _ => 0,
+                })
+                .sum()
+        })
+        .unwrap_or(0)
+}
+
 /// The facts of the file at `path` (an absolute path). Never fails: what goes wrong is in `error`.
 pub fn inspect(path: &str) -> FileFacts {
     let name = Path::new(path)
@@ -314,14 +332,22 @@ pub fn inspect(path: &str) -> FileFacts {
     // are not even looked up, so the page learns nothing of them
     if !is_spectrum_file(&name) && !is_fasta_file(&name) {
         facts.error = Some(format!(
-            "{path} is not an mzML file (.mzML, .mzML.gz) or a FASTA file (.fasta, .fa, .faa)."
+            "{path} is not a spectrum file (.mzML, .mzML.gz, .mzpeak, .raw, a Bruker .d folder) or a FASTA file (.fasta, .fa, .faa)."
         ));
         return facts;
     }
     let meta = match fs::metadata(path) {
-        Ok(meta) if meta.is_file() => meta,
+        Ok(meta)
+            if (meta.is_file() && !is_bruker_d(&name)) || (meta.is_dir() && is_bruker_d(&name)) =>
+        {
+            meta
+        }
         Ok(_) => {
-            facts.error = Some(format!("{path} is not a file."));
+            facts.error = Some(if is_bruker_d(&name) {
+                format!("{path} is not a Bruker .d folder.")
+            } else {
+                format!("{path} is not a file.")
+            });
             return facts;
         }
         Err(e) => {
@@ -329,7 +355,12 @@ pub fn inspect(path: &str) -> FileFacts {
             return facts;
         }
     };
-    facts.size = meta.len();
+    // (a .d folder: the sum of its files, not the folder's own entry)
+    facts.size = if meta.is_dir() {
+        folder_bytes(Path::new(path))
+    } else {
+        meta.len()
+    };
     let file = Path::new(path);
     let counted = if is_fasta_file(&name) {
         content::fasta(file, &name).map(|f| {
@@ -338,6 +369,9 @@ pub fn inspect(path: &str) -> FileFacts {
             facts.problem = (!f.problems.is_empty()).then(|| f.problems.join(" "));
             facts.warnings = f.warnings;
         })
+    } else if suffix_start(&name, ".mzml").is_none() && suffix_start(&name, ".mzml.gz").is_none() {
+        // ponytail: mzPeak and vendor files are not looked into here; ProSE says what it cannot read
+        Ok(())
     } else {
         let mzml = if suffix_start(&name, ".gz").is_some() {
             content::mzml_gz(file, &name)

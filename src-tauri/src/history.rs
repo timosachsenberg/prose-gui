@@ -1,11 +1,11 @@
 //! History: the searches of a searches folder (`<searches>/<id>/`: the app's own, `<app data>/searches`, or one the
-//! user chose for them: `location`), and the project files.
+//! user chose for them: `location`), and the results archives.
 //!
 //! A search is in History when its folder has `search.json` (the record: see `src/lib/history/history.ts`
 //! for its schema, version 1). The app writes the record right after `search://done`, before it reads the
 //! results ([`save_record`]), and `proteins.fasta` once it has read them ([`save_proteins`], which also
 //! drops the folder's `database.fasta`); from then on Rust owns the folder: [`list`], [`rename`],
-//! [`delete`], and [`import`], which makes a folder of a project file's entries. A finished folder
+//! [`delete`], and [`import`], which makes a folder of a results archive's entries. A finished folder
 //! without a record (the app ended, or the record could not be written, as the search finished) is
 //! listed with an `error`, so that it can be deleted, as is a folder with an unreadable or unknown record;
 //! none fails the list. [`sweep`] (at startup) removes only the partial folders of interrupted searches:
@@ -16,8 +16,8 @@
 //! when it can take that lock itself (an owner that died has released it), so no app instance sweeps a
 //! live folder of another.
 //!
-//! A project file (`.prose`) is a zip of the search folder's regular files. Zip is handled by the
-//! front end; Rust reads the chosen file (`open_project_file`, with [`read_chosen_project`]) and writes the entries the front end
+//! A results archive (`.prose`) is a zip of the search folder's regular files. Zip is handled by the
+//! front end; Rust reads the chosen file (`open_archive_file`, with [`read_chosen_archive`]) and writes the entries the front end
 //! sends ([`import`], in the framing of [`frame`]), after checking every path again.
 
 use crate::args::is_input_link;
@@ -45,7 +45,7 @@ pub const NOT_A_SEARCH: &str =
 const MAX_RECORD: u64 = 64 << 20;
 /// The longest name of a search.
 const MAX_NAME: usize = 200;
-/// The most entries and the longest name in a project's body.
+/// The most entries and the longest name in an archive's body.
 const MAX_ENTRIES: usize = 100_000;
 const MAX_ENTRY_NAME: usize = 1024;
 /// How deep a search folder's files are looked for.
@@ -221,7 +221,7 @@ fn stray_name(name: &str) -> bool {
 pub fn is_search_folder(folder: &Path) -> bool {
     let has = |name: &str| fs::symlink_metadata(folder.join(name)).is_ok();
     fs::symlink_metadata(folder).is_ok_and(|m| m.is_dir())
-        && (has(RECORD) || has(crate::project::INPUTS))
+        && (has(RECORD) || has(crate::archive::INPUTS))
 }
 
 /// The searches of History in the app's own searches folder, the newest first (those with an `error` last). Never
@@ -483,7 +483,7 @@ fn collect_files(root: &Path, dir: &Path, depth: usize, out: &mut Vec<FolderFile
     }
 }
 
-/// The regular files of a search folder (a project file's content), without the links to the inputs
+/// The regular files of a search folder (a results archive's content), without the links to the inputs
 /// (symbolic links, and on Windows hard links named like them: [`is_input_link`]).
 pub fn folder_files(dir: &Path, id: &str) -> Result<Vec<FolderFile>, String> {
     let folder = existing_folder(dir, id)?;
@@ -493,11 +493,11 @@ pub fn folder_files(dir: &Path, id: &str) -> Result<Vec<FolderFile>, String> {
     Ok(files)
 }
 
-/// The bytes of the project file that the user chose in the open dialog (`open_project_file`; the page
-/// never names a path). Any name will do (a project renamed, or sent without its `.prose`): the front end
+/// The bytes of the results archive that the user chose in the open dialog (`open_archive_file`; the page
+/// never names a path). Any name will do (an archive renamed, or sent without its `.prose`): the front end
 /// checks the content. Refused unless it is an absolute path that is a regular file itself: a link is not
 /// followed.
-pub fn read_chosen_project(path: &Path) -> Result<Vec<u8>, String> {
+pub fn read_chosen_archive(path: &Path) -> Result<Vec<u8>, String> {
     let shown = path.display();
     if !path.is_absolute() {
         return Err(format!("{shown} is not an absolute path."));
@@ -526,7 +526,7 @@ pub fn lock_partial(folder: &Path) -> io::Result<fs::File> {
 }
 
 /// Makes the finished folder of a partial one: the lock file is removed (it never belongs to a search
-/// or a project), the lock released, and the folder renamed to `target`. (Windows cannot rename a folder
+/// or an archive), the lock released, and the folder renamed to `target`. (Windows cannot rename a folder
 /// that has an open file, even a deleted one, in it.) Between the release and the rename the folder has
 /// no lock file and has just been written to, which the sweep spares (`claim_partial`).
 ///
@@ -580,7 +580,7 @@ pub fn with_backoff<T>(mut op: impl FnMut() -> io::Result<T>) -> io::Result<T> {
 //------------------------------------------------------------------------------------------------
 // Import
 
-/// The body of `history_import`: the entries of a project, each `[u32 BE name length][name]
+/// The body of `history_import`: the entries of an archive, each `[u32 BE name length][name]
 /// [u64 BE data length][data]`, one after the other.
 pub fn frame(entries: &[(&str, &[u8])]) -> Vec<u8> {
     let mut out = Vec::new();
@@ -597,7 +597,7 @@ fn take<'a>(body: &'a [u8], at: &mut usize, n: usize) -> Result<&'a [u8], String
     let end = at
         .checked_add(n)
         .filter(|end| *end <= body.len())
-        .ok_or("The project's entries are cut short.")?;
+        .ok_or("The archive's entries are cut short.")?;
     let slice = &body[*at..end];
     *at = end;
     Ok(slice)
@@ -609,15 +609,15 @@ fn parse_frames(body: &[u8]) -> Result<Vec<(String, &[u8])>, String> {
     while at < body.len() {
         let name_len = u32::from_be_bytes(take(body, &mut at, 4)?.try_into().unwrap()) as usize;
         if name_len > MAX_ENTRY_NAME {
-            return Err("A name in the project is too long.".to_string());
+            return Err("A name in the archive is too long.".to_string());
         }
         let name = String::from_utf8(take(body, &mut at, name_len)?.to_vec())
-            .map_err(|_| "A name in the project is not text.".to_string())?;
+            .map_err(|_| "A name in the archive is not text.".to_string())?;
         let data_len = u64::from_be_bytes(take(body, &mut at, 8)?.try_into().unwrap());
         let data_len = usize::try_from(data_len).map_err(|_| "An entry is too large.")?;
         entries.push((name, take(body, &mut at, data_len)?));
         if entries.len() > MAX_ENTRIES {
-            return Err("The project has too many files.".to_string());
+            return Err("The archive has too many files.".to_string());
         }
     }
     Ok(entries)
@@ -662,25 +662,51 @@ fn reserve_import(dir: &Path) -> Result<(String, PathBuf, fs::File), String> {
     Err("No free id for the imported search.".to_string())
 }
 
-/// Makes a search of a project's entries (see [`frame`]) in a fresh folder, and returns its id. Every
+/// Makes a search of an archive's entries (see [`frame`]) in a fresh folder, and returns its id. Every
 /// name is checked here again (plain, relative, unique, no file that is also a folder), the record has
 /// to be of this schema (a newer one is refused with a message), and the record's `id` becomes the
 /// folder's. The folder is made as `<id>.partial` and renamed when complete.
 pub fn import(dir: &Path, body: &[u8]) -> Result<String, String> {
-    let entries = parse_frames(body)?;
+    import_entries(
+        dir,
+        parse_frames(body)?
+            .into_iter()
+            .map(|(n, d)| (n, Entry::Bytes(d)))
+            .collect(),
+    )
+}
+
+/// An entry of [`import_entries`]: bytes (an archive's, the record), or a file copied as it is (streamed rather
+/// than read into memory).
+pub enum Entry<'a> {
+    Bytes(&'a [u8]),
+    File(PathBuf),
+}
+
+impl Entry<'_> {
+    /// The bytes of a small entry (the record); a file is read.
+    fn bytes(&self) -> Result<Vec<u8>, String> {
+        match self {
+            Entry::Bytes(b) => Ok(b.to_vec()),
+            Entry::File(p) => fs::read(p).map_err(|e| e.to_string()),
+        }
+    }
+}
+
+fn import_entries(dir: &Path, entries: Vec<(String, Entry<'_>)>) -> Result<String, String> {
     if entries.is_empty() {
-        return Err("The project is empty.".to_string());
+        return Err("The archive is empty.".to_string());
     }
     let mut names = HashSet::new();
     let mut folders = HashSet::new();
     for (name, _) in &entries {
         if !plain_name(name) || name == LOCK_FILE {
             return Err(format!(
-                "{name:?} in the project is not a plain file name inside the folder."
+                "{name:?} in the archive is not a plain file name inside the folder."
             ));
         }
         if !names.insert(name.as_str()) {
-            return Err(format!("{name} is in the project twice."));
+            return Err(format!("{name} is in the archive twice."));
         }
         let mut prefix = String::new();
         let parts: Vec<&str> = name.split('/').collect();
@@ -691,17 +717,18 @@ pub fn import(dir: &Path, body: &[u8]) -> Result<String, String> {
         }
     }
     if let Some(clash) = names.iter().find(|n| folders.contains(**n)) {
-        return Err(format!("{clash} is a file and a folder in the project."));
+        return Err(format!("{clash} is a file and a folder in the archive."));
     }
     let Some((_, record)) = entries.iter().find(|(name, _)| name == RECORD) else {
         return Err(format!(
-            "The project has no {RECORD}: it is not a ProSE project."
+            "The archive has no {RECORD}: it is not a ProSE results archive."
         ));
     };
-    let text = std::str::from_utf8(record).map_err(|_| format!("{RECORD} is not text."))?;
+    let record = record.bytes()?;
+    let text = std::str::from_utf8(&record).map_err(|_| format!("{RECORD} is not text."))?;
     let mut map = parse_record(text)?;
     // the name is a name (as `rename` and `save` have it); the search is marked as imported, whatever
-    // the project says: the database path of its database.json is not served (`files::resolve_search_file`)
+    // the archive says: the database path of its database.json is not served (`files::resolve_search_file`)
     if let Some(name) = map.get("name").and_then(|n| n.as_str()) {
         let cleaned = clean_name(name)?;
         map.insert("name".to_string(), serde_json::Value::String(cleaned));
@@ -735,8 +762,12 @@ pub fn import(dir: &Path, body: &[u8]) -> Result<String, String> {
                 .create_new(true)
                 .open(&path)
                 .map_err(|e| format!("{name} cannot be written ({e})."))?;
-            file.write_all(data)
-                .map_err(|e| format!("{name} cannot be written ({e})."))?;
+            match data {
+                Entry::Bytes(b) => file.write_all(b),
+                Entry::File(source) => fs::File::open(source)
+                    .and_then(|mut f| std::io::copy(&mut f, &mut file).map(|_| ())),
+            }
+            .map_err(|e| format!("{name} cannot be written ({e})."))?;
         }
         map.insert("id".to_string(), serde_json::Value::String(id.clone()));
         let text = serde_json::to_vec_pretty(&map).map_err(|e| e.to_string())?;
