@@ -60,11 +60,15 @@ export const setupFile = $state<{
 })
 
 /** The setup as it was when its file was opened or saved last (its search and views aside); null: no setup file. */
-let savedFingerprint: string | null = null
+// ($state: closing the window asks while the setup has unsaved changes, CloseGuard.svelte, which follows it)
+let savedFingerprint = $state<string | null>(null)
 
-/** What of a setup counts as a change to its file: everything but when it was saved, its name, search and views. */
+/**
+ * What of a setup counts as a change to its file: everything but when it was saved, its name, search and views, and
+ * the app's and ProSE's versions (no change of the user's; ProSE's is known only once the tool is loaded).
+ */
 function fingerprint(): string {
-  const { savedAt: _t, name: _n, search: _s, ui: _u, ...rest } = captureSetup('')
+  const { savedAt: _t, name: _n, search: _s, ui: _u, appVersion: _a, proseVersion: _p, ...rest } = captureSetup('')
   return JSON.stringify(rest)
 }
 
@@ -199,8 +203,19 @@ export async function openSetup(recent?: number, confirmed = false): Promise<boo
   const chosen = await openSetupFile(recent)
   if (!chosen) return false
   const setup = parseSetup(chosen.text)
+  try {
+    await restoreSetup(setup, setupName(chosen.path))
+  } catch (e) {
+    // brought back only in part: no file is the window's setup (the next Save asks where), so that the old one
+    // is not written with what New search holds now
+    setupFile.name = null
+    setupFile.searchId = null
+    savedFingerprint = null
+    void forgetSetupFile()
+    throw e
+  }
+  // (only now, with the setup brought back, is the file the one Save writes to)
   await useOpenedSetupFile()
-  await restoreSetup(setup, setupName(chosen.path))
   return true
 }
 

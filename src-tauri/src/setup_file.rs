@@ -119,6 +119,27 @@ pub fn remember(dir: &Path, path: &Path) -> Vec<PathBuf> {
     list
 }
 
+/// Takes `path` off the recent setups of `dir` (a file that cannot be opened any more); -> the list.
+pub fn forget(dir: &Path, path: &Path) -> Vec<PathBuf> {
+    let mut list = recent(dir);
+    list.retain(|p| p != path);
+    save_recent(dir, &list);
+    list
+}
+
+/// The setup's name in a file name: `exp.prose-setup.json` (in any case) -> `exp`; another name as it is.
+pub fn setup_stem(file_name: &str) -> &str {
+    file_name
+        .len()
+        .checked_sub(SETUP_EXTENSION.len())
+        .and_then(|cut| {
+            let ext = file_name.get(cut..)?;
+            ext.eq_ignore_ascii_case(SETUP_EXTENSION)
+                .then(|| &file_name[..cut])
+        })
+        .unwrap_or(file_name)
+}
+
 /// Empties the recent setups of `dir`.
 pub fn forget_all(dir: &Path) {
     save_recent(dir, &[]);
@@ -235,6 +256,24 @@ mod tests {
         assert!(recent(&dir).is_empty());
         forget_all(&dir);
         assert!(recent(&dir).is_empty());
+        // one entry taken off (its file is gone), the others kept in their order
+        let c = dir.join("c.prose-setup.json");
+        remember(&dir, &a);
+        remember(&dir, &b);
+        remember(&dir, &c);
+        assert_eq!(forget(&dir, &b), vec![c.clone(), a.clone()]);
+        assert_eq!(recent(&dir), vec![c, a]);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_setups_name_is_its_file_name_without_the_extension_in_any_case() {
+        assert_eq!(setup_stem("exp.prose-setup.json"), "exp");
+        assert_eq!(setup_stem("Exp.PROSE-SETUP.JSON"), "Exp");
+        assert_eq!(setup_stem("Ölmühle.prose-setup.json"), "Ölmühle");
+        assert_eq!(setup_stem("exp.json"), "exp.json");
+        assert_eq!(setup_stem("json"), "json");
+        // (a multi-byte character where the extension would start: no panic)
+        assert_eq!(setup_stem("ééééééééé"), "ééééééééé");
     }
 }
