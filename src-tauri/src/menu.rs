@@ -1,9 +1,11 @@
 //! The application menus: on macOS the menu bar with the app menu (About, Hide, Quit), on Windows and Linux the
 //! same menus as the window's menu bar (About under Help, Exit under File). Most items are the page's: a click
 //! emits `menu://action` with the item's id (below), which the page handles as its own buttons (`src/lib/menu.ts`);
-//! the page tells which items apply (`menu_state`: Save only with a setup, Export only with an open result, the
-//! theme's check marks). Edit's items are the system's own (predefined), so that the text fields have Undo, Cut,
-//! Copy and Paste with the usual keys. Close window and Exit close the window as its close button does (a running
+//! the page tells which items apply (`menu_state`: Export only with an open result, CSV and Excel only on a table,
+//! the theme's check marks). Edit's items are the system's own (predefined), so that the text fields have Undo, Cut,
+//! Copy and Paste with the usual keys; Linux's menus (GTK 3) have no predefined Undo, Redo, Minimize and Maximize:
+//! there Edit has no Undo and Redo (Ctrl+Z and Ctrl+Shift+Z still work in the text fields), and Window's two items
+//! are the app's own (`minimize`, `maximize`). Close window and Exit close the window as its close button does (a running
 //! search asks first: `close_requested`); full screen is the system's (macOS) or the window's (F11).
 //!
 //! The page's ids: `new-search`, `open-setup`, `save-setup`, `save-setup-as`, `open-qpx`, `import-results`,
@@ -26,6 +28,8 @@ pub const RECENT_PREFIX: &str = "recent:";
 const CLEAR_RECENT: &str = "recent-clear";
 const CLOSE_WINDOW: &str = "close-window";
 const FULLSCREEN: &str = "fullscreen";
+const MINIMIZE: &str = "minimize";
+const MAXIMIZE: &str = "maximize";
 
 /// What the page says applies (`menu_state`).
 #[derive(Debug, Default, Clone, serde::Deserialize)]
@@ -135,16 +139,15 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<(Menu<R>, MenuHand
     }
     let file = file.build()?;
 
-    // Edit: the system's own items
-    let edit = SubmenuBuilder::new(app, "Edit")
-        .undo()
-        .redo()
-        .separator()
-        .cut()
-        .copy()
-        .paste()
-        .select_all()
-        .build()?;
+    // Edit: the system's own items (Linux has no predefined Undo and Redo)
+    let linux = cfg!(target_os = "linux");
+    let edit = SubmenuBuilder::new(app, "Edit");
+    let edit = if linux {
+        edit
+    } else {
+        edit.undo().redo().separator()
+    };
+    let edit = edit.cut().copy().paste().select_all().build()?;
 
     // View
     let themes: Vec<(String, CheckMenuItem<R>)> =
@@ -197,7 +200,14 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<(Menu<R>, MenuHand
     let view = view.build()?;
 
     // Window
-    let window = SubmenuBuilder::new(app, "Window").minimize().maximize();
+    let window = SubmenuBuilder::new(app, "Window");
+    let window = if linux {
+        window
+            .item(&item(app, MINIMIZE, "Minimize", None)?)
+            .item(&item(app, MAXIMIZE, "Maximize", None)?)
+    } else {
+        window.minimize().maximize()
+    };
     let window = if mac {
         window.separator().bring_all_to_front()
     } else {
@@ -318,6 +328,20 @@ pub fn on_event<R: Runtime>(app: &AppHandle<R>, event: MenuEvent, data_dir: Opti
         CLOSE_WINDOW | "exit" => {
             if let Some(w) = window {
                 let _ = w.close();
+            }
+        }
+        MINIMIZE => {
+            if let Some(w) = window {
+                let _ = w.minimize();
+            }
+        }
+        MAXIMIZE => {
+            if let Some(w) = window {
+                let _ = if w.is_maximized().unwrap_or(false) {
+                    w.unmaximize()
+                } else {
+                    w.maximize()
+                };
             }
         }
         FULLSCREEN => {

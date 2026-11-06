@@ -259,5 +259,27 @@ describe('setups in New search', () => {
     await expect(openSetup(undefined, true)).rejects.toThrow()
     expect(desktop.useOpenedSetupFile).not.toHaveBeenCalled()
     expect(setupFile.name).toBe('exp')
+
+    // a setup that reads, but cannot be brought back (the files cannot be inspected): no file is the window's
+    // setup any more, and the shim is told so, not to use the new one
+    vi.mocked(desktop.forgetSetupFile).mockClear()
+    vi.mocked(desktop.inspectFiles).mockRejectedValueOnce(new Error('the shim is gone'))
+    toOpen = good
+    await expect(openSetup(undefined, true)).rejects.toThrow('the shim is gone')
+    expect(desktop.useOpenedSetupFile).not.toHaveBeenCalled()
+    expect(desktop.forgetSetupFile).toHaveBeenCalledTimes(1)
+    expect(setupFile).toMatchObject({ name: null, searchId: null })
+    expect(hasUnsavedChanges()).toBe(false)
+  })
+
+  test('the versions of the app and of ProSE are no unsaved changes', async () => {
+    Object.assign(toolState, { status: 'loading', info: null })
+    await saveSetup(false)
+    expect(hasUnsavedChanges()).toBe(false)
+    // the tool is loaded after the save (or another ProSE is used): nothing for the user to save
+    Object.assign(toolState, { status: 'ready', info: { version: '3.8.0', path: '/x/ProSE', onnx: true } })
+    expect(hasUnsavedChanges()).toBe(false)
+    form.setParam('precursor:mass_tolerance', 15)
+    expect(hasUnsavedChanges()).toBe(true)
   })
 })

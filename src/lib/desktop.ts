@@ -6,7 +6,7 @@
 // inspect_files, cpu_count, example_files, save_text, save_search_file, history_list, history_save_record,
 // history_save_proteins, history_rename, history_delete, history_files, history_import, open_archive_file,
 // save_archive_file, save_curation, answer_close, save_setup_file, open_setup_file, use_opened_setup_file,
-// forget_setup_file, menu_state, searches_location, choose_searches_folder, use_default_searches_folder.
+// forget_setup_file, set_setup_unsaved, menu_state, searches_location, choose_searches_folder, use_default_searches_folder.
 // Events: search://progress, search://done, search://failed, archive://progress, app://close-requested,
 // menu://action. The system's dialogs open one at a time (`oneDialog`). The window's
 // theme (`windowTheme`, `onWindowThemeChanged`, `setWindowTheme`).
@@ -453,6 +453,12 @@ export async function setWindowTheme(theme: 'light' | 'dark' | null): Promise<vo
 /** The answer to a close request: close (the running search ends), or keep the window. */
 export function answerClose(close: boolean): Promise<void> {
   return invoke('answer_close', { close })
+}
+
+/** Tells the app whether the setup has changes not saved to its file: closing the window then asks first. */
+export function setSetupUnsaved(unsaved: boolean): Promise<void> {
+  if (!isDesktop()) return Promise.resolve()
+  return invoke<void>('set_setup_unsaved', { unsaved }).catch(() => undefined)
 }
 
 /** The text of a rejection of a command (a string, or an object with a message). */

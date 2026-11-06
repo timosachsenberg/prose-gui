@@ -40,7 +40,8 @@
 //!   and more than 4 MB, and put the file first in the recent setups; Save asks before it replaces a file whose
 //!   name it gave the setup's extension; `forget_setup_file()` detaches the current one (New Search). `menu_state({ result, table, theme })`: which menu items apply (`menu`); a click on one
 //!   of the page's items is the event `menu://action` with its id.
-//! - closing the window while a search runs: the window stays and `app://close-requested` asks the page,
+//! - closing the window while a search runs, or while the setup has changes not saved to its file (the page
+//!   says so with `set_setup_unsaved(unsaved)`): the window stays and `app://close-requested` asks the page,
 //!   which answers with `answer_close(close)` ([`close_requested`])
 //!
 //! `--smoke-test` on the command line is the packaged app's start test ([`SMOKE_TEST`]); `--watch-search`
@@ -83,6 +84,8 @@ struct AppState {
     /// The setup file Open Setup read last, until the page has taken it (`use_opened_setup_file`): a file the
     /// page refuses never becomes the one Save writes to.
     opened_setup: std::sync::Mutex<Option<PathBuf>>,
+    /// The page's setup has changes not saved to its file (`set_setup_unsaved`): closing the window asks first.
+    setup_unsaved: std::sync::atomic::AtomicBool,
 }
 
 impl Default for AppState {
@@ -100,6 +103,7 @@ impl Default for AppState {
             closing: Default::default(),
             setup_path: Default::default(),
             opened_setup: Default::default(),
+            setup_unsaved: Default::default(),
         }
     }
 }
@@ -869,12 +873,8 @@ fn use_setup_path(app: &AppHandle, state: &AppState, path: &Path) {
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
         .unwrap_or_default();
-    let name = name
-        .strip_suffix(setup_file::SETUP_EXTENSION)
-        .unwrap_or(&name)
-        .to_string();
     if let Some(window) = app.get_webview_window("main") {
-        let _ = window.set_title(&format!("{name} — ProSE"));
+        let _ = window.set_title(&format!("{} — ProSE", setup_file::setup_stem(&name)));
     }
 }
 
@@ -959,7 +959,8 @@ async fn save_setup_file(
 }
 
 /// Opens a setup file: the open dialog, or with `recent` the `recent`-th entry of File › Open Recent (the page
-/// never names a path). -> `{ path, text }`, or null if cancelled.
+/// never names a path). -> `{ path, text }`, or null if cancelled. A recent entry that cannot be read (moved,
+/// deleted) is taken off Open Recent, and the error says so.
 #[tauri::command]
 async fn open_setup_file(
     app: AppHandle,
@@ -975,6 +976,7 @@ async fn open_setup_file(
             Some(listed.ok_or("That recent setup is no longer listed.")?)
         }
     };
+    let recent_path = from_recent.clone();
     let handle = app.clone();
     let read = tauri::async_runtime::spawn_blocking(move || {
         let chosen = match from_recent.or_else(test_dialog_path) {
@@ -995,7 +997,20 @@ async fn open_setup_file(
         Ok::<_, String>(Some((path, text)))
     })
     .await
-    .map_err(|e| e.to_string())??;
+    .map_err(|e| e.to_string())?;
+    let read = match (read, recent_path) {
+        (Ok(read), _) => read,
+        (Err(e), None) => return Err(e),
+        (Err(e), Some(gone)) => {
+            if let Some(dir) = recent_dir(&app) {
+                let list = setup_file::forget(&dir, &gone);
+                if let Some(handles) = app.try_state::<menu::MenuHandles<tauri::Wry>>() {
+                    let _ = handles.set_recent(&app, list);
+                }
+            }
+            return Err(format!("{e} It is no longer listed under Open Recent."));
+        }
+    };
     let Some((path, text)) = read else {
         return Ok(None);
     };
@@ -1021,6 +1036,15 @@ fn forget_setup_file(app: AppHandle, state: State<'_, AppState>) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.set_title("ProSE");
     }
+}
+
+/// The page's setup has changes not saved to its file (`unsaved`), or none: closing the window asks first while it
+/// has ([`close_requested`]).
+#[tauri::command]
+fn set_setup_unsaved(state: State<'_, AppState>, unsaved: bool) {
+    state
+        .setup_unsaved
+        .store(unsaved, std::sync::atomic::Ordering::SeqCst);
 }
 
 /// Which menu items apply (`menu`): Export with an open result, its CSV and Excel with a table, the theme's mark.
@@ -1103,12 +1127,16 @@ pub fn run() {
             Ok(bar)
         })
         .on_menu_event(|handle, event| menu::on_event(handle, event, recent_dir(handle)))
-        // closing the window during a search: the page asks first (CloseGuard.svelte, `answer_close`)
+        // closing the window during a search, or with unsaved changes to the setup: the page asks first
+        // (CloseGuard.svelte, `answer_close`)
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let state = window.state::<AppState>();
-                let running = state.searches.any_running();
-                let close = close_requested(&mut state.closing.lock().unwrap(), running);
+                let ask = state.searches.any_running()
+                    || state
+                        .setup_unsaved
+                        .load(std::sync::atomic::Ordering::SeqCst);
+                let close = close_requested(&mut state.closing.lock().unwrap(), ask);
                 if !close {
                     api.prevent_close();
                     let _ = window.emit("app://close-requested", ());
@@ -1187,6 +1215,7 @@ pub fn run() {
             open_setup_file,
             use_opened_setup_file,
             forget_setup_file,
+            set_setup_unsaved,
             menu_state,
             answer_close,
             searches_location,
