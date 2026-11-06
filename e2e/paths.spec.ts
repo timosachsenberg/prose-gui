@@ -18,6 +18,7 @@ import {
   exampleSettings,
   goTo,
   searchFolders,
+  startReady,
   textOf,
   waitForResults,
 } from './lib.ts'
@@ -59,6 +60,7 @@ describe('inputs by path', () => {
       timeoutMsg: `${fileName} is not in the table`,
     })
     await expect($('[data-testid="fasta-proteins"]')).toHaveText('4,136 proteins')
+    await startReady()
     await $('button*=Start search').click()
     await waitForResults()
     const count = $('[data-testid="psm-count"]')
@@ -127,6 +129,7 @@ describe('inputs by path', () => {
     ).join(' ')
     expect(folders).toContain('erste Ablage')
     expect(folders).toContain('zweite Ablage')
+    await startReady()
     await $('button*=Start search').click()
     await waitForResults()
     const count = $('[data-testid="psm-count"]')

@@ -352,7 +352,7 @@
 
 <style>
   .row {
-    cursor: default;
+    cursor: pointer;
   }
   .row:hover {
     background: color-mix(in oklab, var(--color-muted) 50%, transparent);

@@ -1,7 +1,7 @@
 <script lang="ts">
-  // The QC tab: three charts of the search's quality, each for the PSMs the search kept (its PSM FDR):
-  // how well targets and decoys score, how far the precursor masses are off, and how many PSMs each
-  // file gave. Targets are blue and decoys orange (a validated pair); every chart says in its subtitle
+  // The QC tab: four charts of the search's quality, each for the PSMs the search kept (its PSM FDR):
+  // how well targets and decoys score, how far the precursor masses are off, how many PSMs and peptides
+  // each q-value cutoff keeps, and how many PSMs each file gave. Targets are blue and decoys orange (a validated pair); every chart says in its subtitle
   // which PSMs it shows and has a table of its numbers.
   import ChartCard from '$lib/components/charts/ChartCard.svelte'
   import FileBars from '$lib/components/charts/FileBars.svelte'
@@ -12,7 +12,11 @@
   import { signedNumber } from '$lib/format/number'
   import { COLORS } from '$lib/psm/psm'
   import { formatCount } from '$lib/results/display'
-  import { precursorErrors, psmsPerFile, scoreDistribution } from '$lib/results/qc'
+  import { openHelp } from '$lib/help-link.svelte'
+  import { idsByQ, precursorErrors, psmsPerFile, scoreDistribution } from '$lib/results/qc'
+  import QCurve from '$lib/components/charts/QCurve.svelte'
+  import GuidanceNotices from './GuidanceNotices.svelte'
+  import { precursorRanges, precursorSample, searchedWindows, toleranceFindings } from '$lib/results/tolerance'
   import type { ResultsView } from '$lib/results/view.svelte'
 
   let { view }: { view: ResultsView } = $props()
@@ -26,8 +30,18 @@
   const decoyColor = COLORS.y
 
   const score = $derived(scoreDistribution(m))
-  const errors = $derived(precursorErrors(m, openSearch))
+  // the searched and recommended precursor windows over the errors, and what they say (guidance G3)
+  const ranges = $derived(precursorRanges(view.result.outcome.summary, view.result.settings.parameters))
+  const errors = $derived(precursorErrors(m, openSearch, Math.max(0, ...ranges.flatMap((r) => [-r.from, r.to]))))
+  const findings = $derived(
+    toleranceFindings(
+      view.result.outcome.summary,
+      view.result.settings.parameters,
+      precursorSample(m, searchedWindows(view.result.settings.parameters).precursor, openSearch),
+    ).filter((f) => f.target === 'precursor'),
+  )
   const files = $derived(psmsPerFile(m))
+  const curve = $derived(idsByQ(m))
 
   const range = (edges: number[], b: number) => `${tickLabel(edges[b])} to ${tickLabel(edges[b + 1])}`
   const peak = (counts: number[]) => counts.indexOf(Math.max(...counts))
@@ -50,12 +64,15 @@
 <div class="grid grid-cols-1 items-start gap-4 pb-6 xl:grid-cols-2" data-testid="qc-content">
   <!-- the cards are h3: the tab's own heading comes first, for the outline of the page -->
   <h2 class="sr-only">Quality control</h2>
+  <p class="text-xs text-muted-foreground xl:col-span-2">
+    How targets, decoys and the FDR relate: <button type="button" class="underline underline-offset-2" onclick={() => openHelp('fdr')}>Help › Decoys and the FDR</button>
+  </p>
   <!-- targets against decoys -->
   {#if score}
     <ChartCard
       testid="qc-score"
-      title="Score distribution"
-      subtitle="PSMs at the search FDR ({fdr}) · decoys included"
+      title="Score of the PSMs that passed the PSM FDR"
+      subtitle="Passing PSMs only ({fdr}) · the decoys shown are only those that passed, so this is not a target/decoy separation plot"
       notes={score.unscored > 0 ? [`${formatCount(score.unscored)} PSMs have no score because Percolator could not rescore them. They are left out.`] : []}
       legend={[
         { label: 'Targets', color: targetColor, value: formatCount(score.nTargets) },
@@ -87,6 +104,9 @@
   {/if}
 
   <!-- precursor error -->
+  {#if findings.length > 0}
+    <div class="xl:col-span-2"><GuidanceNotices result={view.result} items={findings} testid="tolerance-findings" /></div>
+  {/if}
   {#if errors}
     <ChartCard
       testid="qc-precursor"
@@ -111,6 +131,7 @@
         unit="ppm"
         zeroLine
         marker={{ x: errors.median, label: `median precursor error (unmodified) ${signedNumber(errors.median, 1)} ppm` }}
+        {ranges}
         series={[{ name: 'Target PSMs', color: targetColor, counts: errors.counts, testid: 'error-bar' }]} />
     </ChartCard>
   {:else}
@@ -118,6 +139,38 @@
       <p class="py-8 text-center text-xs text-muted-foreground">
         {openSearch ? 'No unmodified PSM with a precursor error passes the search FDR.' : 'No PSM with a precursor error passes the search FDR.'}
       </p>
+    </ChartCard>
+  {/if}
+
+  <!-- identifications against the cutoff -->
+  {#if curve}
+    <ChartCard
+      testid="qc-qcurve"
+      title="Identifications by q-value cutoff"
+      subtitle="Target PSMs and peptides up to the search FDR ({fdr}) · peptides by their best PSM's q, not a peptide-level FDR"
+      notes={['A looser cutoff than the search FDR needs a new search: only PSMs that passed are stored.']}
+      legend={[
+        { label: 'PSMs', color: targetColor, value: formatCount(curve.psms.at(-1) ?? 0) },
+        { label: 'Peptides', color: decoyColor, value: formatCount(curve.peptides.at(-1) ?? 0) },
+      ]}
+      table={{
+        name: 'Identifications by q-value cutoff',
+        columns: [
+          { id: 'q', header: 'q ≤', align: 'left' },
+          { id: 'psms', header: 'PSMs' },
+          { id: 'peptides', header: 'Peptides' },
+        ],
+        rows: curve.q.filter((_, i) => i % 5 === 0).map((q, j) => [formatQ(q), formatCount(curve.psms[j * 5]), formatCount(curve.peptides[j * 5])]),
+      }}>
+      <QCurve
+        q={curve.q}
+        cutoff={m.psmFdr}
+        title="Target PSMs and peptides by q-value cutoff"
+        description={`At the search FDR, ${formatCount(curve.psms.at(-1) ?? 0)} target PSMs and ${formatCount(curve.peptides.at(-1) ?? 0)} peptides; at half of it, ${formatCount(curve.psms[Math.floor(curve.q.length / 2)])} PSMs.`}
+        series={[
+          { name: 'PSMs', color: targetColor, counts: curve.psms },
+          { name: 'Peptides', color: decoyColor, counts: curve.peptides, dashed: true },
+        ]} />
     </ChartCard>
   {/if}
 

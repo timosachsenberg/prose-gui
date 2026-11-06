@@ -10,6 +10,7 @@
 //! - `read_search_file(searchId, name, tail?, offset?, length?)` -> the bytes of a file of the search's folder
 //!   (with `tail`: its last `tail` bytes; with `offset` and `length`: those bytes), or of the database its database.json records (`files`; rejects `{ notFound, message }`)
 //! - `inspect_files(paths)` -> `[{ path, name, size, spectra?, proteins?, residues?, error?, problem?, warnings }]`
+//! - `inspect_spectra(paths)` -> per path the facts of its first MS2 spectra, or null (`spectra`)
 //! - `cpu_count()` -> the cores the search's threads may use
 //! - `example_files()` -> `{ spectra: [path, path], database }`
 //! - `save_text(name, contents)` and `save_search_file(searchId, name, suggested)`: a save dialog of
@@ -44,8 +45,11 @@ pub mod decoys;
 pub mod files;
 pub mod history;
 pub mod location;
+pub mod net;
 pub mod progress;
 pub mod run;
+pub mod spectra;
+pub mod taxonomy;
 pub mod tool;
 #[cfg(unix)]
 pub mod watchdog;
@@ -191,6 +195,105 @@ fn searches_dir(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(Locations::load(&data_dir(app)?).current)
 }
 
+/// UniProt proteomes of the organisms NCBI Taxonomy finds for `name` (`taxonomy`): only on the user's request.
+#[tauri::command]
+async fn find_proteomes(name: String) -> Result<Vec<taxonomy::ProteomeHit>, String> {
+    tauri::async_runtime::spawn_blocking(move || taxonomy::find_proteomes(&name))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// The proteomes downloaded into the app's `databases/` folder: their file names (`UP…[_reviewed].fasta`).
+#[tauri::command]
+fn downloaded_proteomes(app: AppHandle) -> Result<Vec<String>, String> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("databases");
+    let Ok(entries) = std::fs::read_dir(&dir) else {
+        return Ok(Vec::new());
+    };
+    let mut names: Vec<String> = entries
+        .flatten()
+        .filter(|e| e.file_type().map(|t| t.is_file()).unwrap_or(false))
+        .filter_map(|e| e.file_name().into_string().ok())
+        .filter(|n| n.starts_with("UP") && n.ends_with(".fasta"))
+        .collect();
+    names.sort();
+    Ok(names)
+}
+
+/// Opens `url` (https only: the Help page's links) in the system's browser.
+#[tauri::command]
+fn open_url(url: String) -> Result<(), String> {
+    if !url.starts_with("https://") || url.chars().any(|c| c.is_whitespace() || c == '"') {
+        return Err(format!("{url} is not an https link."));
+    }
+    #[cfg(target_os = "macos")]
+    let mut cmd = std::process::Command::new("open");
+    #[cfg(target_os = "linux")]
+    let mut cmd = std::process::Command::new("xdg-open");
+    #[cfg(target_os = "windows")]
+    let mut cmd = {
+        let mut c = std::process::Command::new("rundll32");
+        c.arg("url.dll,FileProtocolHandler");
+        c
+    };
+    cmd.arg(&url)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("The browser cannot be opened ({e})."))
+}
+
+/// The reference proteome `proteome` (a UniProt proteome id, `UP` and nine digits) as a FASTA in the app's
+/// `databases/` folder, downloaded from UniProt's REST API with curl (macOS, Windows 10 and Linux have it) unless it
+/// is there already; `reviewed`: Swiss-Prot entries only. Only on this request of the user (like the PRIDE and OLS
+/// contacts of the SDRF features). -> the FASTA's path.
+#[tauri::command]
+async fn download_proteome(
+    app: AppHandle,
+    proteome: String,
+    reviewed: bool,
+) -> Result<String, String> {
+    if !(proteome.len() == 11
+        && proteome.starts_with("UP")
+        && proteome[2..].bytes().all(|b| b.is_ascii_digit()))
+    {
+        return Err(format!(
+            "{proteome} is not a UniProt proteome id (UP and nine digits, e.g. UP000005640)."
+        ));
+    }
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| e.to_string())?
+        .join("databases");
+    tauri::async_runtime::spawn_blocking(move || {
+        std::fs::create_dir_all(&dir).map_err(|e| format!("{} cannot be made ({e}).", dir.display()))?;
+        let path = dir.join(format!("{proteome}{}.fasta", if reviewed { "_reviewed" } else { "" }));
+        if std::fs::metadata(&path).map(|m| m.len() > 0).unwrap_or(false) {
+            return Ok(path.to_string_lossy().into_owned());
+        }
+        let query = format!("%28proteome%3A{proteome}%29{}", if reviewed { "%20AND%20%28reviewed%3Atrue%29" } else { "" });
+        let url = format!("https://rest.uniprot.org/uniprotkb/stream?compressed=false&format=fasta&query={query}");
+        let partial = path.with_extension("fasta.partial");
+        // (a stream of unknown size: `net::fetch` with size 0, HTTPS only)
+        let _ = std::fs::remove_file(&partial);
+        let fetched = net::fetch(&url, &partial, 0, |_| {});
+        if let Err(e) = fetched.and_then(|_| if net::len(&partial) == 0 { Err("no data".to_string()) } else { Ok(()) }) {
+            let _ = std::fs::remove_file(&partial);
+            return Err(format!(
+                "The download from UniProt failed ({e}). Check the internet connection, or download the FASTA from https://www.uniprot.org/proteomes/{proteome}."
+            ));
+        }
+        std::fs::rename(&partial, &path).map_err(|e| e.to_string())?;
+        Ok(path.to_string_lossy().into_owned())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 /// A file of a search (see `files::read_search_file`), as raw bytes.
 #[tauri::command]
 async fn read_search_file(
@@ -225,6 +328,17 @@ async fn inspect_files(paths: Vec<String>) -> Result<Vec<files::FileFacts>, Stri
     tauri::async_runtime::spawn_blocking(move || files::inspect_all(&paths))
         .await
         .map_err(|e| e.to_string())
+}
+
+/// What the first MS2 spectra of each mzML say (`spectra`, guidance G1), off the add-files path: New search asks
+/// once the rows are there. None for a file that is no mzML (or cannot be read).
+#[tauri::command]
+async fn inspect_spectra(paths: Vec<String>) -> Result<Vec<Option<spectra::SpectraFacts>>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        paths.iter().map(|p| spectra::inspect_cached(p)).collect()
+    })
+    .await
+    .map_err(|e| e.to_string())
 }
 
 /// The cores ProSE's threads may use: the threads' default ("all"). The webview's own count is capped
@@ -321,6 +435,54 @@ async fn save_text(
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+/// A binary export (.xlsx): the raw body of the call, the suggested name in the `x-file-name` header
+/// (URI-encoded); the user chooses where, in the system's dialog.
+#[tauri::command]
+async fn save_bytes(
+    app: AppHandle,
+    request: tauri::ipc::Request<'_>,
+) -> Result<Option<String>, String> {
+    let tauri::ipc::InvokeBody::Raw(body) = request.body() else {
+        return Err("The file's contents are missing.".to_string());
+    };
+    let body = body.clone();
+    let name = request
+        .headers()
+        .get("x-file-name")
+        .and_then(|v| v.to_str().ok())
+        .map(percent_decode)
+        .unwrap_or_else(|| "export.xlsx".to_string());
+    tauri::async_runtime::spawn_blocking(move || {
+        let Some(path) = ask_save_path(&app, &name)? else {
+            return Ok(None);
+        };
+        std::fs::write(&path, body)
+            .map_err(|e| format!("{} cannot be written ({e}).", path.display()))?;
+        Ok(Some(path.to_string_lossy().into_owned()))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// `%XX` escapes of a URI component decoded (the file name of `save_bytes`).
+fn percent_decode(s: &str) -> String {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let Ok(b) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
+                out.push(b);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 /// A file of a search (e.g. the merged idXML) copied to where the user chooses.
@@ -556,6 +718,56 @@ async fn use_default_searches_folder(app: AppHandle) -> Result<location::Locatio
     .map_err(|e| e.to_string())?
 }
 
+/// A QPX results folder (ProSE run by hand or on a cluster): the folder dialog, then its runs' stems
+/// (`history::qpx_stems`) -> `{ folder, stems }`, or null if cancelled.
+#[tauri::command]
+async fn open_qpx_folder(app: AppHandle) -> Result<Option<serde_json::Value>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let chosen = match test_dialog_path() {
+            Some(path) => Some(path),
+            None => match app
+                .dialog()
+                .file()
+                .set_title("Open a QPX results folder")
+                .blocking_pick_folder()
+            {
+                None => None,
+                Some(p) => Some(p.into_path().map_err(|e| e.to_string())?),
+            },
+        };
+        let Some(folder) = chosen else {
+            return Ok(None);
+        };
+        let stems = history::qpx_stems(&folder)?;
+        // (the run and provenance views, small, for the record: PSMs, cutoffs, database)
+        let qpx = history::qpx_dir(&folder).ok_or("The folder has no QPX results.")?;
+        let read = |name: &str| std::fs::read(qpx.join(name)).map_err(|e| format!("{name}: {e}"));
+        Ok(Some(serde_json::json!({
+            "folder": folder,
+            "stems": stems,
+            "run": read("quantms.run.parquet")?,
+            "provenance": read("quantms.provenance.parquet")?,
+        })))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// The QPX folder `folder` (from `open_qpx_folder`) as a new search, with the page's `record` and `inputs`
+/// (search.json and inputs.json) -> the new id.
+#[tauri::command]
+async fn history_import_qpx(
+    app: AppHandle,
+    folder: String,
+    record: String,
+    inputs: String,
+) -> Result<String, String> {
+    on_searches(&app, move |dir| {
+        history::import_qpx(&dir, Path::new(&folder), &record, &inputs)
+    })
+    .await
+}
+
 /// The title of the save dialog of a results archive: what it holds, beyond the results.
 pub const ARCHIVE_DIALOG_TITLE: &str =
     "Save the results archive: the search's results, including folder paths of this computer";
@@ -739,9 +951,15 @@ pub fn run() {
             cancel_search,
             read_search_file,
             inspect_files,
+            inspect_spectra,
             cpu_count,
             example_files,
             save_text,
+            download_proteome,
+            downloaded_proteomes,
+            find_proteomes,
+            open_url,
+            save_bytes,
             save_search_file,
             history_list,
             history_save_record,
@@ -752,6 +970,8 @@ pub fn run() {
             history_import,
             save_curation,
             open_archive_file,
+            open_qpx_folder,
+            history_import_qpx,
             save_archive_file,
             answer_close,
             searches_location,

@@ -2,11 +2,15 @@ import { describe, expect, it } from 'vitest'
 import { formatHash, parseHash, type Route } from './route'
 
 describe('parseHash', () => {
-  it('reads the three views', () => {
+  it('reads the views', () => {
     expect(parseHash('#/search')).toEqual({ view: 'search' })
     expect(parseHash('#/results')).toEqual({ view: 'results', id: null })
     expect(parseHash('#/results/abc123')).toEqual({ view: 'results', id: 'abc123' })
     expect(parseHash('#/history')).toEqual({ view: 'history' })
+    expect(parseHash('#/help')).toEqual({ view: 'help' })
+    expect(parseHash('#/help/troubleshooting')).toEqual({ view: 'help', page: 'troubleshooting' })
+    expect(parseHash('#/help/nonsense')).toEqual({ view: 'help' })
+    expect(formatHash({ view: 'help', page: 'fdr' })).toBe('#/help/fdr')
   })
 
   it('falls back to the search view for an empty, unknown or malformed hash', () => {

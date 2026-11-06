@@ -3,7 +3,7 @@
   import { buttonVariants } from '$lib/components/ui/button'
   import * as DropdownMenu from '$lib/components/ui/dropdown-menu'
   import { saveArchiveFile } from '$lib/history/history.svelte'
-  import { exportCsv, exportCurated, exportDesign, exportIdXML, idXMLFile } from '$lib/results/exports'
+  import { exportCsv, exportCurated, exportDesign, exportIdXML, exportMethods, exportXlsx, idXMLFile } from '$lib/results/exports'
   import type { ResultsView } from '$lib/results/view.svelte'
   import { cn } from '$lib/utils'
   import ChevronDown from '@lucide/svelte/icons/chevron-down'
@@ -83,6 +83,8 @@
   <DropdownMenu.Content class="w-auto min-w-52" align="end">
     <DropdownMenu.Item disabled={view.level === null || view.exporting} onSelect={() => guard(() => exportCsv(view))}
       >CSV (current view)</DropdownMenu.Item>
+    <DropdownMenu.Item disabled={view.level === null || view.exporting} onSelect={() => guard(() => exportXlsx(view))}
+      >Excel .xlsx (current view)</DropdownMenu.Item>
     <DropdownMenu.Item disabled={view.level === null || view.exporting} onSelect={() => guard(() => exportCsv(view, 'tsv'))}
       >TSV (current view)</DropdownMenu.Item>
     <DropdownMenu.Item
@@ -91,6 +93,7 @@
       class={explained}
       onSelect={() => guard(() => exportCurated(view))}>Curated PSMs (TSV){#if curated > 0}<span class="ml-auto pl-3 text-muted-foreground tabular-nums">{curated}</span>{/if}</DropdownMenu.Item>
     <DropdownMenu.Item onSelect={() => guard(() => exportDesign(view.result))}>Design (design.tsv)</DropdownMenu.Item>
+    <DropdownMenu.Item onSelect={() => guard(() => exportMethods(view.result))}>Methods section (.txt)</DropdownMenu.Item>
     <DropdownMenu.Item
       disabled={!canSpectrum}
       title={canSpectrum ? undefined : 'Open a PSM with a stored spectrum first'}

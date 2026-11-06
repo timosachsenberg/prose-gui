@@ -33,7 +33,7 @@
 
 <SearchError />
 
-<div class="fixed inset-x-0 bottom-0 z-40 h-[60px] border-t bg-background/95 backdrop-blur-sm">
+<div class="fixed inset-x-0 bottom-0 z-40 h-[52px] border-t bg-background/95 backdrop-blur-sm">
   <div class="mx-auto flex h-full max-w-[1120px] items-center gap-3 px-5">
     {#if searchRun.status === 'running'}
       <SearchProgress class="flex-1" />
@@ -43,8 +43,12 @@
     {:else}
       <PlanLine />
       <Button variant="outline" onclick={() => (presetOpen = true)}>Save as preset</Button>
+      <!-- aria-disabled, not disabled: the button stays focusable, so that a keyboard or screen-reader user hears why
+           it cannot start (aria-describedby: the problem line); start() does nothing until it can -->
       <Button
-        disabled={!plan.canStart}
+        aria-disabled={!plan.canStart}
+        class={plan.canStart ? undefined : 'cursor-not-allowed opacity-50'}
+        data-testid="start-search"
         aria-describedby={plan.problemShown ? 'start-problem' : undefined}
         aria-keyshortcuts={mac ? 'Meta+Enter' : 'Control+Enter'}
         onclick={start}>

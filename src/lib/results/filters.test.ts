@@ -292,6 +292,7 @@ describe('applyFilters', () => {
   })
 })
 
+
 describe('the protein text filter', () => {
   it("also finds a protein by the sequence of one of its peptides", () => {
     const m = model()
@@ -514,4 +515,36 @@ describe('performance', () => {
     expect(peptides.length).toBeGreaterThan(1000)
     expect(ms2).toBeLessThan(300)
   })
+})
+
+describe('PSM charge and range filters, and the decoy/target line', () => {
+  it('keeps only the charges and ranges chosen, and counts decoys of the subset', async () => {
+    const { applyFilters, targetDecoyOf, initialFilters } = await import('./filters')
+    const { buildModel } = await import('./model')
+    const { cutoffs, sampleDesign, sampleTables } = await import('./fixtures')
+    const m = buildModel(sampleTables(), sampleDesign(), { showTechReplicates: false, ...cutoffs })
+    const f = { ...initialFilters(m, 'psms'), showDecoys: true }
+    const all = applyFilters(m, 'psms', f)
+    const charge = m.tables.psms.charge[all[0]]
+    const byCharge = applyFilters(m, 'psms', { ...f, charges: [charge] })
+    expect(byCharge.length).toBeGreaterThan(0)
+    for (const i of byCharge) expect(m.tables.psms.charge[i]).toBe(charge)
+    const none = applyFilters(m, 'psms', { ...f, ranges: [{ key: 'mz', min: -2, max: -1 }] })
+    expect(none.length).toBe(0)
+    const td = targetDecoyOf(m, { ...f, showDecoys: false })
+    expect(td.targets + td.decoys).toBe(all.length)
+  })
+})
+
+it('the contaminants hidden by default are counted on the chip', async () => {
+  const { sampleDesign, sampleTables } = await import('./fixtures')
+  const { buildModel } = await import('./model')
+  const { hiddenContaminants, initialFilters } = await import('./filters')
+  const m = buildModel(sampleTables(), sampleDesign(), { showTechReplicates: false, psmFdr: 1, proteinFdr: 1 })
+  const f = initialFilters(m, 'proteins')
+  expect(f.hideContaminants).toBe(true)
+  // one contaminant protein (CON__ trypsin) and its one peptide
+  expect(hiddenContaminants(m, 'proteins', f)).toBe(1)
+  expect(hiddenContaminants(m, 'peptides', initialFilters(m, 'peptides'))).toBe(1)
+  expect(hiddenContaminants(m, 'proteins', { ...f, hideContaminants: false })).toBe(0)
 })

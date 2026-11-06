@@ -1,9 +1,11 @@
 <script lang="ts">
   // Notices (amber, never blocking) and one polite live region that announces their summary when it
   // changes, instead of a live region per notice.
+  import FaqLink from '$lib/components/help/FaqLink.svelte'
   import Notice from './Notice.svelte'
 
-  type Item = { message: string; action?: { label: string; run: () => void }; onDismiss?: () => void }
+  /** `help`: the id of the check behind the notice, for its Help entry (`settings/faq.ts`). */
+  type Item = { message: string; action?: { label: string; run: () => void }; onDismiss?: () => void; help?: string; info?: boolean }
 
   let { items }: { items: Item[] } = $props()
 
@@ -25,11 +27,12 @@
 
 <div class="sr-only" aria-live="polite" aria-atomic="true" data-testid="notice-announcer">{announced}</div>
 {#each items as item, k (k)}
-  <Notice onDismiss={item.onDismiss}>
+  <Notice onDismiss={item.onDismiss} info={item.info}>
     {item.message}
     {#if item.action}
       <button type="button" class="ml-1 underline underline-offset-2 hover:no-underline" onclick={item.action.run}
         >{item.action.label}</button>
     {/if}
+    <FaqLink check={item.help} />
   </Notice>
 {/each}
