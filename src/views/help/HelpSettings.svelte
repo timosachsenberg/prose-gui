@@ -1,6 +1,6 @@
 <script lang="ts">
   // Help › The settings: what to set first, the built-in presets, every setting behind the "?" of New search
-  // (`settings/help.ts`, ids "help-<key>"), the database summary and the SDRF.
+  // (`settings/help.ts`, ids "help-<key>"), the database summary and the design (SDRF, design.tsv).
   import { HELP, type HelpKey } from '$lib/settings/help'
   import { BUILTIN_PRESETS } from '$lib/settings/presets'
 
@@ -82,23 +82,21 @@
     and how many entries are of it, how many organisms there are in all, whether the headers are in UniProt style (accession,
     gene and organism can then be read), isoforms, contaminants, and decoys with their marker (e.g. rev_). Use it to check that
     the database is the one you meant: the right organism, complete, with or without decoys. Any FASTA can be searched: one whose
-    headers name no organism (Ensembl, custom databases) shows “organism not named in the headers”, which is no problem, only
-    the app cannot then compare it with the SDRF’s organism, and the tables show the accession without gene and organism.
+    headers name no organism (Ensembl, custom databases) shows “organism not named in the headers”, which is no problem; the
+    tables then show the accession without gene and organism.
   </p>
 </section>
 
 <section id="help-sdrf" aria-labelledby="help-sdrf-h">
-  <h2 id="help-sdrf-h">SDRF files</h2>
+  <h2 id="help-sdrf-h">The design: SDRF and design.tsv</h2>
   <p>
-    An SDRF (Sample and Data Relationship Format) file is a table that describes an experiment: its samples, their organism,
-    the data files, labels, modifications and the design (fractions, replicates, conditions). Added in New search with Add files
-    (or dropped on the window), it fills the design table and finds the data files (“Locate folder…” for those not found,
-    or “Locate…” for one file). The app then compares it with the search: the
-    modifications and labels it lists against the chosen ones, and its organism against the database. It does not set the
-    search chemistry for you; when it warns, either add what it lists or correct the SDRF.
+    An SDRF (Sample and Data Relationship Format) file is a table that describes an experiment: its samples, the data files
+    and the design (fractions, replicates, conditions). “Load design (SDRF, design.tsv)” above the design table reads one,
+    or an OpenMS design.tsv, and fills the table for the files whose names it lists. It does not set the search chemistry:
+    check the modifications and labels of the sample yourself (Search settings).
   </p>
   <p>
-    Without an SDRF, the design can come from the file names. When none is entered and the names suggest one (for example
+    Without a design file, the design can come from the file names. When none is entered and the names suggest one (for example
     <code>HeLa_EGF_R2_F03.raw</code>), a notice above the table offers “Use the file names”: parts like F3 or Fr03 become the
     fraction, R2 or Rep2 the replicate, and the words the condition. A bare number is taken as the replicate only when each
     condition has the same numbers; otherwise it reads as a run number. Check the table afterwards and correct what is wrong.

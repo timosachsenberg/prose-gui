@@ -1,15 +1,15 @@
 <script lang="ts">
   // Help › File formats: what the app reads (spectra, databases, designs, results of ProSE run elsewhere), what a
   // search writes into its folder, and what the exports hold. Kept to what the app actually does
-  // (src/lib/search/files.ts, src-tauri/src/args.rs, project.rs).
+  // (src/lib/search/files.ts, src-tauri/src/args.rs, archive.rs).
 </script>
 
 <section id="formats" aria-labelledby="formats-h">
   <h2 id="formats-h">File formats</h2>
   <p>
-    Everything goes in through one <b>Add files</b> button (or by dropping files on the window): spectra, a FASTA database and
-    an SDRF or design.tsv, together or one after the other. The app reads the files where they are; it never copies or
-    changes them.
+    Spectra and a FASTA database go in through one <b>Add files</b> button (or by dropping files on the window), together or
+    one after the other; a design (SDRF or design.tsv) through “Load design” above the design table. The app reads the files
+    where they are; it never copies or changes them.
   </p>
 
   <h3 id="formats-spectra">Spectra</h3>
@@ -65,8 +65,8 @@
     <li>
       <b>SDRF</b> (<code>.sdrf.tsv</code>, Sample and Data Relationship Format of SDRF-Proteomics): one row per sample and data
       file, with the organism, instrument, labels, enzyme, modifications and the factors of the experiment. It is the format
-      PRIDE uses. The app adds the files it names, fills the design table from it, and checks its modifications, labels and
-      organism against the search.
+      PRIDE uses. The app fills the design table from it (fractions, replicates and the factors as the condition) for the
+      files whose names it lists.
     </li>
     <li><b>design.tsv</b>: OpenMS's experimental design (files with fraction group, fraction, sample, condition). Its fields fill the design table.</li>
   </ul>
@@ -84,7 +84,6 @@
       <tr><td><code>prose.ini</code>, <code>command.txt</code></td><td>ProSE's parameters as it was given them, and its command line: to repeat the search outside the app.</td></tr>
       <tr><td><code>search.json</code>, <code>inputs.json</code></td><td>The app's record of the search (name, settings, design) and where its files were.</td></tr>
       <tr><td><code>proteins.fasta</code></td><td>The sequences of the identified proteins, so that the search opens without its database.</td></tr>
-      <tr><td><code>design.sdrf.tsv</code></td><td>The SDRF as ProSE was given it, when the search had one.</td></tr>
       <tr><td><code>mods/</code></td><td>An open search's mass-shift tables.</td></tr>
       <tr><td><code>prose.log</code></td><td>ProSE's log.</td></tr>
     </tbody>
@@ -103,32 +102,7 @@
     <li>
       <b>Results archive (.prose)</b>: a finished search as one zip, to import in ProSE on another computer (History ›
       Import results archive). It holds the results and the record, not the spectra, the database copy or the log, and it
-      names folders of the computer that searched. It is not a project (below).
+      names folders of the computer that searched.
     </li>
   </ul>
-
-  <h3 id="formats-project">Projects (.prose-project.json)</h3>
-  <p>
-    A <b>project</b> is the setup of a search, kept as a small JSON file, so that the same search can be set up again and
-    the app shows what it showed: <b>File › Save Project</b> (⌘/Ctrl S; Save Project As, ⌘/Ctrl ⇧ S, for another file) or
-    <b>Save project…</b> in New search writes it; <b>File › Open Project</b> (⌘/Ctrl O), <b>File › Open Recent</b> or
-    <b>Open project…</b> in New search opens it. It holds no results and no data, only:
-  </p>
-  <ul>
-    <li>the spectrum files by their full paths, with their names and sizes, and the design table's fields;</li>
-    <li>the database (its path, or the UniProt proteome a downloaded one is), contaminants and decoys;</li>
-    <li>the preset and every setting, the Percolator and PeptDeep switches, the threads, and the SDRF's path;</li>
-    <li>the views: the view shown, the Results tab, the filters, sort and columns of each table, the open protein and PSM, the Help page;</li>
-    <li>the ProSE and app versions, and the History search it ran as, if it has run.</li>
-  </ul>
-  <p>
-    Opening a project fills New search with its files, design, database and settings (the SDRF is read again where it
-    was), and, if History on this computer has its search, opens that in Results as it was. Nothing starts by itself: a
-    file that is no longer there or has another size, a database that is gone, a preset or search this computer does not
-    have, is named in New search, so that you can add it again before you search. A UniProt proteome that is no longer
-    on disk is downloaded again from UniProt and chosen (under Protein database, as its Download does); only if that
-    fails is it named too. The paths are those of the computer
-    that saved it; on another computer, files in other places are reported as missing. A project of a newer app
-    (a higher <code>schema</code>) is refused, with the version it needs.
-  </p>
 </section>
