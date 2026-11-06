@@ -47,7 +47,7 @@
       PSMs, not protein abundance. Leucine and isoleucine have the same mass, so a search cannot tell them apart.
     </li>
     <li><b>Spectrum:</b> measured peaks above, predicted (PeptDeep) or theoretical ions below. Drag across it to zoom, double-click to zoom out. Hovering an ion in the table marks its peak.</li>
-    <li><b>Samples:</b> the design of the search (and its SDRF): which file belongs to which sample, fraction and replicate.</li>
+    <li><b>Samples:</b> the design of the search: which file belongs to which sample, fraction and replicate.</li>
     <li><b>QC:</b> the scores, the precursor mass errors, the identifications by q-value cutoff (how many target PSMs and peptides each cutoff up to the search’s FDR keeps) and the PSMs per file. The charts show only PSMs that passed the FDR, so the score chart is not a full target-decoy separation plot.</li>
     <li><b>Modification positions</b> are where the search placed them, not localized with a site score.</li>
     <li>
@@ -55,8 +55,8 @@
       OpenMS tools; the design (design.tsv) for a quantification workflow; a methods section for a publication; or a results archive
       (.prose) for colleagues. A results archive holds the
       results and the search record, the sequences of the proteins in the results and the spectra of its PSMs, not the spectrum
-      files, the full searched FASTA or the log: to repeat the search, they need those too. To set the same search up again, save a project (File › Save
-      Project: the setup, not the results; Help › File formats).
+      files, the full searched FASTA or the log: to repeat the search, they need those too. To set the same search up again,
+      open it from History (Settings).
     </li>
   </ul>
 </section>

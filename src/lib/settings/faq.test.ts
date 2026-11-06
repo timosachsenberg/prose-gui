@@ -9,12 +9,12 @@ import { FAQ, FAQ_GROUPS, faqFor } from './faq'
  * (`search/plausibility.ts`). Left out: `adding`, `database-counting` and `inspecting` (Start waits; nothing to fix).
  */
 const ACTIONABLE = [
-  'no-files', 'sdrf', 'file-problem', 'design-cell', 'no-database', 'database-error', 'database-problem',
+  'no-files', 'file-problem', 'design-cell', 'no-database', 'database-error', 'database-problem',
   'range-inverted', 'range-outside', 'setting-invalid', 'psm-fdr', 'unknown-modification', 'tool',
   'profile-ms2', 'no-ms2', 'dia-suspected', 'no-charge', 'iontrap-ppm', 'spectra-not-checked', 'spectra-not-read', 'profile-ms2-share',
-  'decoys-twice', 'decoy-ratio', 'organism-mismatch',
+  'decoys-twice', 'decoy-ratio',
   'many-variable-mods', 'fragment-tolerance-wide', 'fragment-tolerance-narrow', 'fragment-da-highres',
-  'precursor-da-typo', 'precursor-da-wide', 'iontrap-precursor-ppm', 'sdrf-modifications', 'sdrf-label',
+  'precursor-da-typo', 'precursor-da-wide', 'iontrap-precursor-ppm',
   'low-id-rate', 'charge', 'percolator', 'contaminants', 'small-run',
   'tolerance-offset', 'tolerance-edge', 'tolerance-too-wide',
   'runs-missing', 'spectra-mismatch', 'no-decoys', 'all-q-zero', 'isotope-share', 'rt-unit', 'parameter-echo',

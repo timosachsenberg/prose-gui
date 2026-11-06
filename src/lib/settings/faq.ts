@@ -89,28 +89,26 @@ export const FAQ: FaqEntry[] = [
     group: 'few-ids',
     question: 'Does my search match how the sample was prepared?',
     symptoms:
-      'The SDRF (the table describing the experiment’s samples, see The settings) lists modifications the search does not include, or Overview › Sample chemistry says few peptides have a cysteine, many have a missed cleavage or a non-tryptic end. Often there is no message at all, only fewer identifications than expected.',
+      'Overview › Sample chemistry says few peptides have a cysteine, many have a missed cleavage or a non-tryptic end. Often there is no message at all, only fewer identifications than expected.',
     causes: [
       'The fixed modification on cysteine does not match the alkylation: the presets assume iodoacetamide (Carbamidomethyl (C)); acrylamide gives Propionamide (C), N-ethylmaleimide gives Nethylmaleimide (C), and a sample that was not alkylated needs none.',
       'A modification the sample carries is missing: a label, a chemical modification of the protocol, or the phosphorylation of an enriched sample.',
       'The enzyme or its specificity is wrong (a different protease, Trypsin against Trypsin/P, a semi-specific digest).',
-      'The SDRF itself is wrong or out of date.',
     ],
     fixes: [
       'Ask for, or look up, the protocol: alkylation agent, enzyme, labels and any enrichment. Set them under Search settings: Fixed modifications and Enzyme are under “Advanced settings”, Variable modifications above them.',
       'Make chemistry that every residue of a kind carries fixed (alkylation, a complete label); make variable only what may or may not be there (oxidation, phosphorylation).',
-      'If the SDRF is right, add exactly the modifications it lists, fixed or variable as its MT= field says; otherwise correct the SDRF.',
       'After the search, compare Sample chemistry: the share of peptides with a cysteine against the share expected from the proteins, and the missed cleavages and non-tryptic ends.',
       'To find an unexpected mass shift, search one file with the “Open search · ±500 Da” preset. The preset sets its own chemistry (a tryptic digest, Carbamidomethyl (C) fixed): restore the enzyme and labels of your sample after choosing it, and read each shift relative to the fixed modifications set. To test the alkylation, remove the fixed cysteine modification: alkylated cysteines then show as +57 Da (iodoacetamide). Add the modification that explains the main shift and search again normally.',
     ],
-    checks: ['sdrf-modifications', 'chemistry-cysteine', 'chemistry-missed-cleavages', 'chemistry-non-specific'],
+    checks: ['chemistry-cysteine', 'chemistry-missed-cleavages', 'chemistry-non-specific'],
   },
   {
     id: 'faq-isobaric-labels',
     group: 'few-ids',
     question: 'Why are my TMT, iTRAQ or SILAC peptides missing?',
     symptoms:
-      'New search says the SDRF labels the samples with TMT or iTRAQ but the search has no label modification, or Sample chemistry reports the label on only part of the peptides with a K.',
+      'Few identifications from a TMT, iTRAQ or SILAC sample, or Sample chemistry reports the label on only part of the peptides with a K.',
     causes: [
       'No label modification is set: a labelled peptide has a different mass, so without its label it cannot be matched.',
       'The label is set on only one site: TMT and iTRAQ label K and the peptide N-terminus (“N-term”), not only the protein N-terminus.',
@@ -124,7 +122,7 @@ export const FAQ: FaqEntry[] = [
       'For SILAC, add the heavy forms as variable modifications, each on its own residue, and keep the light form unmodified.',
       'To measure how completely the samples are labelled, search once with the label as a variable modification: Sample chemistry then shows “Label on K” (the share of K-containing peptides found labelled; close to 100 % for good labelling). With the label fixed it shows no such figure, and it does not judge the N-terminus or SILAC labels.',
     ],
-    checks: ['sdrf-label', 'chemistry-label'],
+    checks: ['chemistry-label'],
     outside:
       'prose-gui identifies the labelled peptides; it does not quantify reporter ions or SILAC pairs. Reporter extraction, SPS-MS3, impurity correction and ratios belong to a quantification tool such as OpenMS IsobaricAnalyzer or quantms, then a statistics tool such as MSstats.',
   },
@@ -261,23 +259,16 @@ export const FAQ: FaqEntry[] = [
     outside: 'A modification that is not in the list (a custom chemical) cannot be set in prose-gui; it needs ProSE or OpenMS from the command line with a custom modification definition. Crosslinks join two peptides and need a crosslink search engine (e.g. OpenPepXL); a modification cannot describe them.',
   },
   {
-    id: 'faq-sdrf-design',
+    id: 'faq-design',
     group: 'before',
-    question: 'Why does the SDRF or the design table stop the search?',
-    symptoms: 'The plan line names a problem of the SDRF (data files it lists that are not found) or a design cell that is not a whole number of at least 1.',
-    causes: [
-      'The SDRF names data files that are not where the app looked: moved, renamed, converted to another name, or not downloaded yet.',
-      'A design cell (fraction, replicate) holds text or a 0.',
-      'The SDRF lists a file the app cannot read.',
-    ],
+    question: 'Why does the design table stop the search?',
+    symptoms: 'The plan line names a design cell that is not a whole number of at least 1.',
+    causes: ['A design cell (fraction, replicate) holds text or a 0, typed in or loaded from a design.tsv or SDRF.'],
     fixes: [
-      'In the SDRF panel, use “Locate folder…” for the folder that holds the files, or “Locate…” for each missing file. Files of a public dataset (e.g. PRIDE) have to be downloaded first.',
-      'For a file the app cannot read, convert it to mzML and locate it again.',
-      'Tick “Search without them” only when you mean to leave those files out; the search then describes a different experiment than the SDRF.',
       'Correct the design cell to a whole number of at least 1, or empty it.',
-      'An SDRF does not set the search chemistry for you: check its modifications and labels (see the entries on sample chemistry and labels).',
+      'A design loaded from an SDRF sets the samples, not the search chemistry: check the modifications and labels yourself (see the entries on sample chemistry and labels).',
     ],
-    checks: ['sdrf', 'design-cell'],
+    checks: ['design-cell'],
   },
 
   // ---- Spectrum files and conversion ----
@@ -404,20 +395,18 @@ export const FAQ: FaqEntry[] = [
     id: 'faq-organism-database',
     group: 'database',
     question: 'Is this the right protein database for my sample?',
-    symptoms: 'New search warns that the SDRF names an organism the database’s entries do not have, or the results hold mainly contaminants and few proteins of the organism.',
+    symptoms: 'The results hold mainly contaminants and few proteins of the organism.',
     causes: [
       'A database of another organism, or of a related one with different sequences.',
       'An incomplete proteome: Swiss-Prot (reviewed) only, for an organism where most proteins are unreviewed.',
       'A sample of several organisms (host and pathogen, xenograft, spike-ins) searched against one.',
-      'The SDRF names the organism wrongly.',
     ],
     fixes: [
       'Compare the database summary on the database card (main organism, number of entries, isoforms, contaminants, decoys) with the sample.',
       'Download the organism’s reference proteome from UniProt; for poorly studied organisms take all entries, not only the reviewed ones.',
       'For a sample of several organisms, use one FASTA with all of them; the app does not warn about a FASTA of several organisms by itself.',
-      'Correct the SDRF if it is wrong. The check can only compare organisms the FASTA headers name (OS=): no warning does not show that the database is right.',
     ],
-    checks: ['organism-mismatch'],
+    checks: [],
   },
   {
     id: 'faq-contaminants',
@@ -626,7 +615,6 @@ export const FAQ: FaqEntry[] = [
       'Start from the search itself: History › Settings opens its files, design, database and settings in New search, History › Re-run starts it again. Either replaces what New search held; “Undo” there brings it back. A preset holds only settings (and a database), not the Percolator and PeptDeep switches.',
       'Keep with the results: the version and the methods section (Overview), the command line (“Copy command line” in Overview, “Command line” in History), the FASTA, and the input files.',
       'Compare two searches only at the same version, settings, database and FDR; if they differ when everything matches, report both records.',
-      'Save a project (File › Save Project, or Save project… in New search): a .prose-project.json with the files’ paths and sizes, the design, the database, every setting, the SDRF’s path and the state of the views. Open Project sets the same search up again and names any file that moved or changed since; it opens the search in Results if History has it.',
       'A results archive (.prose, Export › Results archive) holds the results and the search record for colleagues to view, but not the spectra, the full searched FASTA or the log (it keeps only the sequences of the proteins in the results): to repeat the search they need those too.',
       'When reporting a problem, give the app and ProSE versions, the command line, the log, and, if you can, a small input that shows it.',
     ],
