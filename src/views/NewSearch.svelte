@@ -15,6 +15,21 @@
   import { onFileDrop } from '$lib/desktop'
   import { searchForm as form } from '$lib/search/form.svelte'
   import { undoReplace } from '$lib/history/history.svelte'
+  import { openSetup, setupFile, saveSetup } from '$lib/setup/setup-file.svelte'
+  import { errorText } from '$lib/desktop'
+
+  /** What went wrong with the last Open or Save of a setup. */
+  let setupError = $state<string | null>(null)
+
+  /** Open Setup… and Save Setup… (also File › Open Setup, Save Setup in the desktop app). */
+  async function setupAction(action: () => Promise<unknown>, what: string) {
+    setupError = null
+    try {
+      await action()
+    } catch (e) {
+      setupError = `${what}: ${errorText(e)}`
+    }
+  }
 
   let dragging = $state(false)
 
@@ -48,9 +63,33 @@
 <section data-testid="view-search" class="flex flex-col gap-4">
   <div class="flex flex-wrap items-start gap-x-4 gap-y-2">
     <div class="min-w-0 flex-1">
-      <h1 class="mb-1 text-xl font-semibold tracking-tight">New search</h1>
+      <div class="mb-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+        <h1 class="text-xl font-semibold tracking-tight">New search</h1>
+        <!-- the window's setup, beside the title (the window's title names it too) -->
+        {#if setupFile.name}
+          <span class="rounded-md border px-1.5 py-0.5 text-xs text-muted-foreground" data-testid="setup-name">Setup: {setupFile.name}</span>
+        {/if}
+      </div>
       <p class="text-muted-foreground">Spectra and database stay on this computer.</p>
       <SearchesFolder class="mt-1" />
+    </div>
+    <!-- the setup file: this search's files, design, database and settings, and the views, as a .prose-setup.json (src/lib/setup) -->
+    <div class="flex items-center gap-2">
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={setupFile.busy}
+        title="Opens a search setup (.prose-setup.json): its files, design, database and settings here, and its search in Results if History has it"
+        data-testid="open-setup"
+        onclick={() => setupAction(() => openSetup(), 'Open setup')}>{setupFile.busy ? 'Opening setup…' : 'Open setup…'}</Button>
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={setupFile.busy}
+        title="Saves this setup and the state of the views as a .prose-setup.json file, to set up the same search again"
+        data-testid="save-setup"
+        onclick={() => setupAction(() => saveSetup(setupFile.name === null), 'Save setup')}
+        >{setupFile.name === null ? 'Save setup…' : 'Save setup'}</Button>
     </div>
     {#if form.files.length > 0 || form.database}
       <!-- the next search from scratch: no files, no database, the settings kept -->
@@ -70,6 +109,9 @@
       <Button variant="outline" size="sm" class="h-6 px-2 text-xs" disabled={form.busy} data-testid="undo-replace" onclick={undoReplace}>Undo</Button>
       <button type="button" class="underline underline-offset-2 hover:no-underline" onclick={() => (form.replaced = null)}>Dismiss</button>
     </p>
+  {/if}
+  {#if setupError}
+    <p class="text-sm text-destructive" role="alert" data-testid="setup-error">{setupError}</p>
   {/if}
   {#if form.files.length === 0}
     <EmptyState {dragging} />

@@ -1,4 +1,4 @@
-// The download of a UniProt proteome as the database (Protein database › Download, and a project whose proteome is
+// The download of a UniProt proteome as the database (Protein database › Download, and a search setup whose proteome is
 // no longer on disk): one at a time, its state shared so that the card shows it whichever of the two started it.
 
 import { downloadProteome } from '../desktop'

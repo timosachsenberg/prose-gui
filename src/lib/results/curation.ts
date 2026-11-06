@@ -2,7 +2,7 @@
 // table shows the mark (its Curation column) and filters by it, and the exports write it. The marks are per row of
 // `tables.psms` (`ResultModel.curation`, 0 = not curated) and are kept in the search's folder as `curation.json`
 // (CURATION_FILE), each PSM by what names it there (file, spectrum, peptide, charge), not by its row: a file that
-// another build of the reader would read in another order still finds its PSMs. A project file holds it.
+// another build of the reader would read in another order still finds its PSMs. A results archive holds it.
 
 import { psmProforma } from '../format/peptide'
 import { baseName, type ResultModel } from './model'

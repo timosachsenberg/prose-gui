@@ -33,7 +33,7 @@
   let organism = $state(ORGANISMS[0].id)
   let otherId = $state('')
   let reviewed = $state(true)
-  // (shared: a project whose proteome is gone downloads it again through the same download)
+  // (shared: a search setup whose proteome is gone downloads it again through the same download)
   const downloading = $derived(proteomeDownload.id !== null)
   let searchError = $state<string | null>(null)
   const downloadError = $derived(searchError ?? proteomeDownload.error)

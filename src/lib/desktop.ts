@@ -5,9 +5,10 @@
 // Commands (src-tauri/src/lib.rs): tool_info, start_search, cancel_search, read_search_file,
 // inspect_files, cpu_count, example_files, save_text, save_search_file, history_list, history_save_record,
 // history_save_proteins, history_rename, history_delete, history_files, history_import, open_archive_file,
-// save_archive_file, save_curation, answer_close, searches_location, choose_searches_folder,
-// use_default_searches_folder. Events: search://progress, search://done, search://failed,
-// archive://progress, app://close-requested. The system's dialogs open one at a time (`oneDialog`). The window's
+// save_archive_file, save_curation, answer_close, save_setup_file, open_setup_file, use_opened_setup_file,
+// forget_setup_file, menu_state, searches_location, choose_searches_folder, use_default_searches_folder.
+// Events: search://progress, search://done, search://failed, archive://progress, app://close-requested,
+// menu://action. The system's dialogs open one at a time (`oneDialog`). The window's
 // theme (`windowTheme`, `onWindowThemeChanged`, `setWindowTheme`).
 
 import { invoke } from '@tauri-apps/api/core'
@@ -458,3 +459,75 @@ export function answerClose(close: boolean): Promise<void> {
 export { errorText }
 
 
+/**
+ * Saves a setup file (`contents`, its JSON): to the setup opened or saved last unless `ask` (Save As, or no
+ * setup yet), else where the user chooses in the save dialog (suggesting `name`). The page's browser mode
+ * downloads it. -> `{ path, name }` of the file written, or null if cancelled.
+ */
+export function saveSetupFile(name: string, contents: string, ask: boolean): Promise<{ path: string; name: string } | null> {
+  if (!isDesktop()) {
+    const saved = browserDownload(name, new Blob([contents], { type: 'application/json' }))
+    return Promise.resolve({ path: saved, name: saved })
+  }
+  return oneDialog(null, () => invoke<{ path: string; name: string } | null>('save_setup_file', { name, contents, ask }))
+}
+
+/**
+ * Opens a setup file: the open dialog, or with `recent` the n-th of File › Open Recent (the shim keeps the list:
+ * the page never names a path). The page's browser mode asks with the browser's file picker. -> `{ path, text }`
+ * (in the browser `path` is the file's name), or null if cancelled.
+ */
+export function openSetupFile(recent?: number): Promise<{ path: string; text: string } | null> {
+  if (!isDesktop()) return pickTextFile('.json,application/json')
+  return oneDialog(null, () => invoke<{ path: string; text: string } | null>('open_setup_file', { recent: recent ?? null }))
+}
+
+/** The browser's file picker for one text file (the page's browser mode): its name and text, or null if cancelled. */
+function pickTextFile(accept: string): Promise<{ path: string; text: string } | null> {
+  return new Promise((resolve) => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = accept
+    input.style.display = 'none'
+    input.dataset.testid = 'setup-file-input'
+    input.addEventListener('change', () => {
+      const file = input.files?.[0]
+      input.remove()
+      if (!file) return resolve(null)
+      void file.text().then((text) => resolve({ path: file.name, text }), () => resolve(null))
+    })
+    input.addEventListener('cancel', () => {
+      input.remove()
+      resolve(null)
+    })
+    document.body.append(input)
+    input.click()
+  })
+}
+
+/**
+ * The file `openSetupFile` read is the window's setup file, now that the page has read it as one: Save writes there,
+ * it is first under Open Recent, and the window's title names it. A file the page refuses never becomes that.
+ */
+export function useOpenedSetupFile(): Promise<void> {
+  if (!isDesktop()) return Promise.resolve()
+  return invoke<void>('use_opened_setup_file').catch(() => undefined)
+}
+
+/** No current setup (File › New Search): the next Save asks where, the window's title is the app's again. */
+export function forgetSetupFile(): Promise<void> {
+  if (!isDesktop()) return Promise.resolve()
+  return invoke<void>('forget_setup_file').catch(() => undefined)
+}
+
+/** A click on a menu item of the page's (`menu://action`, src-tauri/src/menu.rs): its id. Returns the way to stop listening. */
+export async function onMenuAction(handler: (id: string) => void): Promise<() => void> {
+  if (!isDesktop()) return () => {}
+  return listen<string>('menu://action', (e) => handler(e.payload))
+}
+
+/** Which menu items apply: Export with an open result, its CSV and Excel with a table, the theme's check mark. */
+export function setMenuState(state: { result: boolean; table: boolean; theme: string }): Promise<void> {
+  if (!isDesktop()) return Promise.resolve()
+  return invoke<void>('menu_state', { state }).catch(() => undefined)
+}

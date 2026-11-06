@@ -3,7 +3,8 @@
   import CommandLine from '$lib/components/results/CommandLine.svelte'
   // History: the searches kept on this computer, each a folder of a searches folder (the tool's outputs and a
   // record of the settings and the design; the mzML files stay where they are). Open, rename and delete;
-  // "Import results archive (.prose)…" unpacks a .prose file into History. It stays usable while a search runs, and reads the
+  // "Import results archive (.prose)…" unpacks a .prose file into History (a setup, .prose-setup.json, is opened from
+  // File › Open Setup or New search). It stays usable while a search runs, and reads the
   // list again when it is shown. Beside each name: the search's database and, for searches of the same name,
   // what tells them apart (history/details.ts). A folder that is no search (no record, or a name that is not one
   // of a search) is listed with what is wrong, and can be deleted. Under the title: where new searches are saved,
