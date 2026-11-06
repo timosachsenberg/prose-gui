@@ -136,7 +136,7 @@ lock on `<id>.partial/.lock`, which the startup sweep honours.
 files without the `-qpx_extended` columns; or of task 11 before its fix round, QPX files without the run and
 provenance views): the reader refuses them with a clear message (`OldLayoutError`: "This
 search was saved by an earlier version of ProSE Desktop, whose results this version cannot read. Open it with that
-version, or run the search again."), shown where History or Open project opens them; nothing crashes.
+version, or run the search again."), shown where History or Import results archive opens them; nothing crashes.
 
 **Missing files**: the reader's `files` callback rejects with `FileNotFound` (anything with `notFound: true`) for a file
 that does not exist; only that counts as missing (a failed input's psm file, the pg file, mod TSVs, a FASTA source).

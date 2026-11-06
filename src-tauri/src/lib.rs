@@ -32,13 +32,13 @@
 //!   `use_default_searches_folder()` (back to `<app data>/searches`). History lists the searches of all the folders
 //!   the app has kept them in, and the commands above find a search by its id in them.
 //!
-//! - Projects (`setup_file`): `save_project_setup(name, contents, ask)` (the save dialog unless `ask` is false and a
-//!   project was opened or saved before: then that file again) -> `{ path, name }` or null;
-//!   `open_project_setup(recent?)` (the open dialog, or the `recent`-th entry of File › Open Recent) -> `{ path,
-//!   text }` or null, and `use_opened_project_setup()` once the page has read that file as a project (only then is it
-//!   the one Save writes to); both refuse other files than `.prose-project.json` (or the older `.prose-setup.json`)
-//!   and more than 4 MB, and put the file first in the recent projects; Save asks before it replaces a file whose
-//!   name it gave the project's extension; `forget_project_setup()` detaches the current one (New Search). `menu_state({ result, table, theme })`: which menu items apply (`menu`); a click on one
+//! - Search setups (`setup_file`): `save_setup_file(name, contents, ask)` (the save dialog unless `ask` is false and a
+//!   setup was opened or saved before: then that file again) -> `{ path, name }` or null;
+//!   `open_setup_file(recent?)` (the open dialog, or the `recent`-th entry of File › Open Recent) -> `{ path,
+//!   text }` or null, and `use_opened_setup_file()` once the page has read that file as a setup (only then is it
+//!   the one Save writes to); both refuse other files than `.prose-setup.json`
+//!   and more than 4 MB, and put the file first in the recent setups; Save asks before it replaces a file whose
+//!   name it gave the setup's extension; `forget_setup_file()` detaches the current one (New Search). `menu_state({ result, table, theme })`: which menu items apply (`menu`); a click on one
 //!   of the page's items is the event `menu://action` with its id.
 //! - closing the window while a search runs: the window stays and `app://close-requested` asks the page,
 //!   which answers with `answer_close(close)` ([`close_requested`])
@@ -78,9 +78,9 @@ use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 struct AppState {
     searches: Arc<Searches>,
     closing: std::sync::Mutex<Closing>,
-    /// The project file opened or saved last (`<name>.prose-project.json`): Save writes there again.
+    /// The setup file opened or saved last (`<name>.prose-setup.json`): Save writes there again.
     setup_path: std::sync::Mutex<Option<PathBuf>>,
-    /// The project file Open Project read last, until the page has taken it (`use_opened_project_setup`): a file the
+    /// The setup file Open Setup read last, until the page has taken it (`use_opened_setup_file`): a file the
     /// page refuses never becomes the one Save writes to.
     opened_setup: std::sync::Mutex<Option<PathBuf>>,
 }
@@ -850,12 +850,12 @@ async fn save_archive_file(
     .map_err(|e| e.to_string())?
 }
 
-/// The folder of the recent projects' list (the app's data folder), if there is one.
+/// The folder of the recent setups' list (the app's data folder), if there is one.
 fn recent_dir<R: tauri::Runtime>(app: &AppHandle<R>) -> Option<PathBuf> {
     app.path().app_data_dir().ok()
 }
 
-/// The project file `path` is the current one: Save writes there again, it is first under Open Recent, and the
+/// The setup file `path` is the current one: Save writes there again, it is first under Open Recent, and the
 /// window's title names it.
 fn use_setup_path(app: &AppHandle, state: &AppState, path: &Path) {
     *state.setup_path.lock().unwrap() = Some(path.to_path_buf());
@@ -871,7 +871,6 @@ fn use_setup_path(app: &AppHandle, state: &AppState, path: &Path) {
         .unwrap_or_default();
     let name = name
         .strip_suffix(setup_file::SETUP_EXTENSION)
-        .or_else(|| name.strip_suffix(setup_file::OLD_SETUP_EXTENSION))
         .unwrap_or(&name)
         .to_string();
     if let Some(window) = app.get_webview_window("main") {
@@ -879,11 +878,11 @@ fn use_setup_path(app: &AppHandle, state: &AppState, path: &Path) {
     }
 }
 
-/// Saves a project (`contents`, the page's JSON): to the current project file when `ask` is false and there is
+/// Saves a setup (`contents`, the page's JSON): to the current setup file when `ask` is false and there is
 /// one, else where the user chooses in the save dialog (suggesting `name`). -> `{ path, name }`, or null if
 /// cancelled.
 #[tauri::command]
-async fn save_project_setup(
+async fn save_setup_file(
     app: AppHandle,
     name: String,
     contents: String,
@@ -911,9 +910,9 @@ async fn save_project_setup(
                     None => match handle
                         .dialog()
                         .file()
-                        .set_title("Save the project: the setup of the search and of the views")
+                        .set_title("Save the search setup: its files, database and settings, and the views (no results)")
                         .set_file_name(&suggested)
-                        .add_filter("ProSE project", &["json"])
+                        .add_filter("ProSE setup", &["json"])
                         .blocking_save_file()
                     {
                         None => None,
@@ -921,8 +920,8 @@ async fn save_project_setup(
                     },
                 };
                 let Some(path) = chosen else { return Ok(None) };
-                // the file gets the project's extension: one of that name the dialog did not ask about is not
-                // replaced without asking (`exp.json` chosen, `exp.prose-project.json` there)
+                // the file gets the setup's extension: one of that name the dialog did not ask about is not
+                // replaced without asking (`exp.json` chosen, `exp.prose-setup.json` there)
                 let written = setup_file::with_setup_extension(&path);
                 if written != path
                     && written.exists()
@@ -930,10 +929,10 @@ async fn save_project_setup(
                     && !handle
                         .dialog()
                         .message(format!(
-                            "{} already exists. Replace it with this project?",
+                            "{} already exists. Replace it with this setup?",
                             written.display()
                         ))
-                        .title("Replace the project?")
+                        .title("Replace the setup?")
                         .kind(MessageDialogKind::Warning)
                         .buttons(MessageDialogButtons::OkCancelCustom(
                             "Replace".to_string(),
@@ -959,10 +958,10 @@ async fn save_project_setup(
     Ok(Some(serde_json::json!({ "path": path, "name": name })))
 }
 
-/// Opens a project file: the open dialog, or with `recent` the `recent`-th entry of File › Open Recent (the page
+/// Opens a setup file: the open dialog, or with `recent` the `recent`-th entry of File › Open Recent (the page
 /// never names a path). -> `{ path, text }`, or null if cancelled.
 #[tauri::command]
-async fn open_project_setup(
+async fn open_setup_file(
     app: AppHandle,
     recent: Option<usize>,
 ) -> Result<Option<serde_json::Value>, String> {
@@ -973,7 +972,7 @@ async fn open_project_setup(
             let listed = handles.and_then(|h| h.recent_paths.lock().unwrap().get(n).cloned());
             let listed = listed
                 .or_else(|| recent_dir(&app).and_then(|d| setup_file::recent(&d).get(n).cloned()));
-            Some(listed.ok_or("That recent project is no longer listed.")?)
+            Some(listed.ok_or("That recent setup is no longer listed.")?)
         }
     };
     let handle = app.clone();
@@ -983,8 +982,8 @@ async fn open_project_setup(
             None => match handle
                 .dialog()
                 .file()
-                .set_title("Open a project (.prose-project.json)")
-                .add_filter("ProSE project", &["json"])
+                .set_title("Open a setup (.prose-setup.json)")
+                .add_filter("ProSE setup", &["json"])
                 .blocking_pick_file()
             {
                 None => None,
@@ -1000,24 +999,24 @@ async fn open_project_setup(
     let Some((path, text)) = read else {
         return Ok(None);
     };
-    // (the project's file once the page has read it as a project: `use_opened_project_setup`)
+    // (the setup's file once the page has read it as a setup: `use_opened_setup_file`)
     *app.state::<AppState>().opened_setup.lock().unwrap() = Some(path.clone());
     Ok(Some(serde_json::json!({ "path": path, "text": text })))
 }
 
-/// The project file Open Project read last is the window's project, now that the page has read it as one: Save
+/// The setup file Open Setup read last is the window's setup file, now that the page has read it as one: Save
 /// writes there, it is first under Open Recent, and the window's title names it.
 #[tauri::command]
-fn use_opened_project_setup(app: AppHandle, state: State<'_, AppState>) {
+fn use_opened_setup_file(app: AppHandle, state: State<'_, AppState>) {
     let opened = state.opened_setup.lock().unwrap().take();
     if let Some(path) = opened {
         use_setup_path(&app, &state, &path);
     }
 }
 
-/// File › New Search: no current project any more (the next Save asks where), and the window's title is the app's.
+/// File › New Search: no current setup any more (the next Save asks where), and the window's title is the app's.
 #[tauri::command]
-fn forget_project_setup(app: AppHandle, state: State<'_, AppState>) {
+fn forget_setup_file(app: AppHandle, state: State<'_, AppState>) {
     *state.setup_path.lock().unwrap() = None;
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.set_title("ProSE");
@@ -1184,10 +1183,10 @@ pub fn run() {
             open_qpx_folder,
             history_import_qpx,
             save_archive_file,
-            save_project_setup,
-            open_project_setup,
-            use_opened_project_setup,
-            forget_project_setup,
+            save_setup_file,
+            open_setup_file,
+            use_opened_setup_file,
+            forget_setup_file,
             menu_state,
             answer_close,
             searches_location,

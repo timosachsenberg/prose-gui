@@ -1,7 +1,7 @@
 <script lang="ts">
   // Help › File formats: what the app reads (spectra, databases, designs, results of ProSE run elsewhere), what a
   // search writes into its folder, and what the exports hold. Kept to what the app actually does
-  // (src/lib/search/files.ts, src-tauri/src/args.rs, archive.rs, src/lib/project/setup.ts).
+  // (src/lib/search/files.ts, src-tauri/src/args.rs, archive.rs, src/lib/setup/setup.ts).
 </script>
 
 <section id="formats" aria-labelledby="formats-h">
@@ -102,16 +102,16 @@
     <li>
       <b>Results archive (.prose)</b>: a finished search as one zip, to import in ProSE on another computer (History ›
       Import results archive). It holds the results and the record, not the spectra, the database copy or the log, and it
-      names folders of the computer that searched. It is not a project (below).
+      names folders of the computer that searched. It is not a search setup (below).
     </li>
   </ul>
 
-  <h3 id="formats-project">Projects (.prose-project.json)</h3>
+  <h3 id="formats-setup">Search setups (.prose-setup.json)</h3>
   <p>
-    A <b>project</b> is the setup of a search, kept as a small JSON file, so that the same search can be set up again and
-    the app shows what it showed: <b>File › Save Project</b> (⌘/Ctrl S; Save Project As, ⌘/Ctrl ⇧ S, for another file) or
-    <b>Save project…</b> in New search writes it; <b>File › Open Project</b> (⌘/Ctrl O), <b>File › Open Recent</b> or
-    <b>Open project…</b> in New search opens it. It holds no results and no data, only:
+    A <b>search setup</b> is what New search holds, kept as a small JSON file with the state of the views, so that the
+    same search can be set up again and the app shows what it showed: <b>File › Save Setup</b> (⌘/Ctrl S; Save Setup As, ⌘/Ctrl ⇧ S, for another file) or
+    <b>Save setup…</b> in New search writes it; <b>File › Open Setup</b> (⌘/Ctrl O), <b>File › Open Recent</b> or
+    <b>Open setup…</b> in New search opens it. It holds no results and no data, only:
   </p>
   <ul>
     <li>the spectrum files by their full paths, with their names and sizes, and the design table's fields;</li>
@@ -121,12 +121,12 @@
     <li>the ProSE and app versions, and the History search it ran as, if it has run.</li>
   </ul>
   <p>
-    Opening a project fills New search with its files, design, database and settings, and, if History on this computer
+    Opening a setup fills New search with its files, design, database and settings, and, if History on this computer
     has its search, opens that in Results as it was. Nothing starts by itself: a file that is no longer there or has
     another size, a database that is gone, a preset or search this computer does not have, is named in New search, so
     that you can add it again before you search. A UniProt proteome that is no longer on disk is downloaded again from
     UniProt and chosen (under Protein database, as its Download does); only if that fails is it named too. The paths are
-    those of the computer that saved it; on another computer, files in other places are reported as missing. A project
-    of a newer app (a higher <code>schema</code>) is refused, with the version it needs.
+    those of the computer that saved it; on another computer, files in other places are reported as missing. A search
+    setup of a newer app (a higher <code>schema</code>) is refused, with the version it needs.
   </p>
 </section>

@@ -1,15 +1,15 @@
 //! The application menus: on macOS the menu bar with the app menu (About, Hide, Quit), on Windows and Linux the
 //! same menus as the window's menu bar (About under Help, Exit under File). Most items are the page's: a click
 //! emits `menu://action` with the item's id (below), which the page handles as its own buttons (`src/lib/menu.ts`);
-//! the page tells which items apply (`menu_state`: Save only with a project, Export only with an open result, the
+//! the page tells which items apply (`menu_state`: Save only with a setup, Export only with an open result, the
 //! theme's check marks). Edit's items are the system's own (predefined), so that the text fields have Undo, Cut,
 //! Copy and Paste with the usual keys. Close window and Exit close the window as its close button does (a running
 //! search asks first: `close_requested`); full screen is the system's (macOS) or the window's (F11).
 //!
-//! The page's ids: `new-search`, `open-project`, `save-project`, `save-project-as`, `open-qpx`, `import-results`,
+//! The page's ids: `new-search`, `open-setup`, `save-setup`, `save-setup-as`, `open-qpx`, `import-results`,
 //! `export-csv`, `export-xlsx`, `export-idxml`, `export-methods`, `export-archive`, `view-search`, `view-results`, `view-history`,
 //! `view-help`, `theme-system`, `theme-light`, `theme-dark`, `help`, `help-troubleshooting`, `help-shortcuts`,
-//! `help-webapp`, `help-issue`, and `recent:<n>` (the n-th recent project, `setup_file::recent`).
+//! `help-webapp`, `help-issue`, and `recent:<n>` (the n-th recent setup, `setup_file::recent`).
 
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -21,7 +21,7 @@ use tauri::{AppHandle, Emitter, Manager, Runtime};
 
 /// The event of a page's item.
 pub const MENU_EVENT: &str = "menu://action";
-/// The prefix of the recent projects' ids.
+/// The prefix of the recent setups' ids.
 pub const RECENT_PREFIX: &str = "recent:";
 const CLEAR_RECENT: &str = "recent-clear";
 const CLOSE_WINDOW: &str = "close-window";
@@ -102,21 +102,16 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<(Menu<R>, MenuHand
         .separator()
         .item(&item(
             app,
-            "open-project",
-            "Open Project…",
+            "open-setup",
+            "Open Setup…",
             Some("CmdOrCtrl+O"),
         )?)
         .item(&recent)
+        .item(&item(app, "save-setup", "Save Setup", Some("CmdOrCtrl+S"))?)
         .item(&item(
             app,
-            "save-project",
-            "Save Project",
-            Some("CmdOrCtrl+S"),
-        )?)
-        .item(&item(
-            app,
-            "save-project-as",
-            "Save Project As…",
+            "save-setup-as",
+            "Save Setup As…",
             Some("CmdOrCtrl+Shift+S"),
         )?)
         .separator()
@@ -299,7 +294,7 @@ impl<R: Runtime> MenuHandles<R> {
             self.recent.append(&MenuItem::with_id(
                 app,
                 "recent-none",
-                "No Recent Projects",
+                "No Recent Setups",
                 false,
                 None::<&str>,
             )?)?;

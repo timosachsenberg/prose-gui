@@ -17,33 +17,33 @@ const screens: { name: string; open: (page: Page) => Promise<void> }[] = [
     },
   },
   {
-    name: 'new-search-project',
+    name: 'new-search-setup',
     open: async (p) => {
       await p.goto('/#/search')
       const chooser = p.waitForEvent('filechooser')
       await p.getByTestId('open-setup').click()
       const setup = {
-        format: 'prose-project', schema: 1, name: 'exp',
+        format: 'prose-setup', schema: 1, name: 'exp',
         inputs: [{ path: '/data/run_1.mzML', name: 'run_1.mzML', size: 1000, condition: 'a' }],
         database: { path: '/db/ecoli.fasta', name: 'ecoli.fasta', size: 5000, proteome: null },
         presetId: 'orbitrap-hcd-tryptic', parameters: {}, ui: { view: 'search', showSettings: false, advanced: false },
       }
-      await (await chooser).setFiles({ name: 'exp.prose-project.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(setup)) })
-      await expect(p.getByTestId('project-name')).toHaveText('Project: exp')
+      await (await chooser).setFiles({ name: 'exp.prose-setup.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(setup)) })
+      await expect(p.getByTestId('setup-name')).toHaveText('Setup: exp')
     },
   },
   {
-    // File › New Search with unsaved project changes (a desktop menu item: opened here through the module)
-    name: 'dialog-new-project',
+    // File › New Search with unsaved setup changes (a desktop menu item: opened here through the module)
+    name: 'dialog-new-setup',
     open: async (p) => {
       await p.goto('/#/search')
       await expect(p.getByTestId('settings-summary')).toBeVisible()
       await p.evaluate(async (path) => {
         // (the dev server's module: the page's own instance)
         const m = await import(/* @vite-ignore */ path)
-        m.project.name = 'exp'
-        m.project.confirmNew = true
-      }, '/src/lib/project/project.svelte.ts')
+        m.setupFile.name = 'exp'
+        m.setupFile.confirmNew = true
+      }, '/src/lib/setup/setup-file.svelte.ts')
       await expect(p.getByTestId('new-setup-guard')).toBeVisible()
     },
   },

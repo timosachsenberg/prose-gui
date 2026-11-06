@@ -1,6 +1,6 @@
 // The application menus of the desktop app (src-tauri/src/menu.rs): a click on one of the page's items comes as
 // `menu://action` with its id and is done here with the functions the page's own buttons use (navigate, Help, the
-// exports, History, projects). The menu is told which items apply (Export with an open result, CSV and Excel with
+// exports, History, setups). The menu is told which items apply (Export with an open result, CSV and Excel with
 // a table, the theme's check mark). The menus' accelerators (⌘/Ctrl+N, O, S, ⇧S, W, ⇧1–4, /) belong to the menus:
 // Shortcuts.svelte leaves ⌘/Ctrl+⇧1–4 to them in the desktop app and keeps them in the browser.
 
@@ -8,7 +8,7 @@ import { toast } from 'svelte-sonner'
 import { isDesktop, onMenuAction, openUrl, setMenuState, errorText } from './desktop'
 import { openHelp } from './help-link.svelte'
 import { openArchiveFile, openQpxFolderFile, saveArchiveFile } from './history/history.svelte'
-import { newSetup, openProject, saveProject } from './project/project.svelte'
+import { newSetup, openSetup, saveSetup } from './setup/setup-file.svelte'
 import { exportCsv, exportIdXML, exportMethods, exportXlsx } from './results/exports'
 import { resultsViewFor } from './results/view.svelte'
 import { navigate, router } from './route.svelte'
@@ -40,10 +40,10 @@ export async function menuAction(id: string): Promise<void> {
   const result = shownResult()
   const view = result ? resultsViewFor(result) : null
   const recent = /^recent:(\d+)$/.exec(id)
-  if (recent) return attempt('Open Project', () => openProject(Number(recent[1])))
+  if (recent) return attempt('Open Setup', () => openSetup(Number(recent[1])))
   switch (id) {
     case 'new-search':
-      // a new, unsaved setup (asks first if the opened project has unsaved changes)
+      // a new, unsaved setup (asks first if the opened setup has unsaved changes)
       newSetup()
       return
     case 'view-search':
@@ -64,12 +64,12 @@ export async function menuAction(id: string): Promise<void> {
       return attempt('Opening the link', () => openUrl(WEB_APP_URL))
     case 'help-issue':
       return attempt('Opening the link', () => openUrl(ISSUES_URL))
-    case 'open-project':
-      return attempt('Open Project', () => openProject())
-    case 'save-project':
-      return attempt('Save Project', () => saveProject(false))
-    case 'save-project-as':
-      return attempt('Save Project As', () => saveProject(true))
+    case 'open-setup':
+      return attempt('Open Setup', () => openSetup())
+    case 'save-setup':
+      return attempt('Save Setup', () => saveSetup(false))
+    case 'save-setup-as':
+      return attempt('Save Setup As', () => saveSetup(true))
     case 'open-qpx':
       navigate({ view: 'history' })
       return attempt('Open QPX folder', () => openQpxFolderFile())

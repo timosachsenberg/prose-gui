@@ -1303,7 +1303,7 @@ fn prepare_folder(
             std::io::ErrorKind::InvalidData => e.to_string(),
             _ => format!("The database with contaminants cannot be written ({e})."),
         })?;
-        // where the user's FASTA was, for History's Re-run only (never read as a database, and not in projects)
+        // where the user's FASTA was, for History's Re-run only (never read as a database, and not in results archives)
         let source = serde_json::json!({ "path": request.database }).to_string();
         fs::write(dir.join(DATABASE_SOURCE), source)
             .map_err(|e| format!("{DATABASE_SOURCE} cannot be written ({e})."))?;

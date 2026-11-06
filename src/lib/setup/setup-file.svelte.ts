@@ -1,13 +1,13 @@
-// The project of this window (File › Open Project, Save Project, Save Project As): the setup of New search and the
-// state of the views saved as a `.prose-project.json` (setup.ts has the format), and opened again: New search gets the
+// The setup file of this window (File › Open Setup, Save Setup, Save Setup As): New search's setup and the
+// state of the views saved as a `.prose-setup.json` (setup.ts has the format), and opened again: New search gets the
 // files, design, database and settings back (`SearchForm.restoreSearch`); if the search the setup ran as is in
 // History, Results opens it with its tab, filters, columns and selection. Whatever cannot be brought back (a file moved
 // or changed, the database gone, the search not in History) is said in New search's notices, and in a message where
-// the project opens elsewhere: nothing starts by itself (but the download of a UniProt proteome that is no longer on
+// the setup opens elsewhere: nothing starts by itself (but the download of a UniProt proteome that is no longer on
 // disk).
 
 import { toast } from 'svelte-sonner'
-import { errorText, forgetProjectSetup, openProjectSetup, saveProjectSetup, useOpenedProjectSetup } from '../desktop'
+import { errorText, forgetSetupFile, openSetupFile, saveSetupFile, useOpenedSetupFile } from '../desktop'
 import { APP_VERSION } from '../history/history'
 import { history, openFromHistory, refreshHistory } from '../history/history.svelte'
 import { resultName } from '../results/display'
@@ -29,7 +29,7 @@ import {
   SETUP_FORMAT,
   SETUP_SCHEMA,
   setupName,
-  type ProjectSetup,
+  type SearchSetup,
   type ResultsUi,
   type SetupInput,
 } from './setup'
@@ -42,8 +42,8 @@ function sizes(was: number, now: number): string {
   return `${a} then, ${b} now`
 }
 
-/** The project of the window: its name (null: none saved or opened yet) and the search it ran as. */
-export const project = $state<{
+/** The setup of the window: its name (null: none saved or opened yet) and the search it ran as. */
+export const setupFile = $state<{
   name: string | null
   searchId: string | null
   busy: boolean
@@ -53,41 +53,41 @@ export const project = $state<{
   name: null,
   searchId: null,
   busy: false,
-  /** New Search asks first: the opened project has changes that are not saved (NewProjectDialog.svelte). */
+  /** New Search asks first: the opened setup has changes that are not saved (NewSetupDialog.svelte). */
   confirmNew: false,
-  /** Open Project (`recent`: from Open Recent) asks first, for the same reason. */
+  /** Open Setup (`recent`: from Open Recent) asks first, for the same reason. */
   confirmOpen: null,
 })
 
-/** The setup as it was when the project was opened or saved last (its search and views aside); null: no project. */
+/** The setup as it was when its file was opened or saved last (its search and views aside); null: no setup file. */
 let savedFingerprint: string | null = null
 
-/** What of a setup counts as a change to the project: everything but when it was saved, its name, search and views. */
+/** What of a setup counts as a change to its file: everything but when it was saved, its name, search and views. */
 function fingerprint(): string {
   const { savedAt: _t, name: _n, search: _s, ui: _u, ...rest } = captureSetup('')
   return JSON.stringify(rest)
 }
 
-/** The opened (or saved) project has changes in New search that are not saved. */
+/** The opened (or saved) setup has changes in New search that are not saved. */
 export function hasUnsavedChanges(): boolean {
-  return project.name !== null && savedFingerprint !== null && fingerprint() !== savedFingerprint
+  return setupFile.name !== null && savedFingerprint !== null && fingerprint() !== savedFingerprint
 }
 
 /**
- * File › New Search: a new, unsaved setup. The project is detached (the next Save asks where; the window's title loses
+ * File › New Search: a new, unsaved setup. The setup is detached (the next Save asks where; the window's title loses
  * its name) and the form is cleared as Start over clears it (with its Undo). With unsaved changes to an opened
- * project it asks first (`project.confirmNew`) unless `confirmed`. -> whether the new setup was made.
+ * setup it asks first (`setupFile.confirmNew`) unless `confirmed`. -> whether the new setup was made.
  */
 export function newSetup(confirmed = false): boolean {
   if (!confirmed && hasUnsavedChanges()) {
-    project.confirmNew = true
+    setupFile.confirmNew = true
     return false
   }
-  project.confirmNew = false
-  project.name = null
-  project.searchId = null
+  setupFile.confirmNew = false
+  setupFile.name = null
+  setupFile.searchId = null
   savedFingerprint = null
-  void forgetProjectSetup()
+  void forgetSetupFile()
   searchForm.startOver()
   navigate({ view: 'search' })
   return true
@@ -95,16 +95,16 @@ export function newSetup(confirmed = false): boolean {
 
 let started = false
 
-/** A search started here is the project's search (its id goes into the next save). */
-export function initProject(): void {
+/** A search started here is the setup's search (its id goes into the next save). */
+export function initSetupFile(): void {
   if (started) return
   started = true
   onSearchEnded((search) => {
-    project.searchId = search.id
+    setupFile.searchId = search.id
   })
 }
 
-/** The state of the Results view as a project keeps it. */
+/** The state of the Results view as a setup keeps it. */
 function resultsUiOf(view: ResultsView): ResultsUi {
   const level = (l: Level) => {
     const s = view[l]
@@ -121,13 +121,13 @@ function resultsUiOf(view: ResultsView): ResultsUi {
   }
 }
 
-/** The setup of the window now, as a project named `name` (setup.ts). */
-export function captureSetup(name: string): ProjectSetup {
+/** The setup of the window now, as a setup file named `name` (setup.ts). */
+export function captureSetup(name: string): SearchSetup {
   const form = searchForm
   const route = router.route
   const open = openResult.current
   const view = open ? (currentResultsView()?.result === open ? currentResultsView() : null) : null
-  const searchId = project.searchId ?? open?.id ?? null
+  const searchId = setupFile.searchId ?? open?.id ?? null
   const entry = searchId ? history.entries.find((e) => e.id === searchId) : undefined
   const inputs: SetupInput[] = form.files.map((r) => {
     const input: SetupInput = { path: r.file.path, name: r.file.name, size: r.file.size }
@@ -164,42 +164,42 @@ export function captureSetup(name: string): ProjectSetup {
   }
 }
 
-/** The name a new project is offered under: that of its files (as exports name them), or "project". */
+/** The name a new setup is offered under: that of its files (as exports name them), or "setup". */
 function suggestedName(): string {
-  if (project.name) return project.name
-  return searchForm.files.length > 0 ? resultName(searchForm.files.map((r) => r.file.name)) : 'project'
+  if (setupFile.name) return setupFile.name
+  return searchForm.files.length > 0 ? resultName(searchForm.files.map((r) => r.file.name)) : 'search'
 }
 
 /**
- * Save Project (`ask` false: to the project's file if there is one) or Save Project As (`ask`: the save dialog). ->
+ * Save Setup (`ask` false: to the setup's file if there is one) or Save Setup As (`ask`: the save dialog). ->
  * where it was saved, or null if cancelled.
  */
-export async function saveProject(ask: boolean): Promise<string | null> {
+export async function saveSetup(ask: boolean): Promise<string | null> {
   const name = suggestedName()
-  const saved = await saveProjectSetup(`${name}${SETUP_EXTENSION}`, serializeSetup(captureSetup(name)), ask || project.name === null)
+  const saved = await saveSetupFile(`${name}${SETUP_EXTENSION}`, serializeSetup(captureSetup(name)), ask || setupFile.name === null)
   if (!saved) return null
-  project.name = setupName(saved.name)
+  setupFile.name = setupName(saved.name)
   savedFingerprint = fingerprint()
-  toast.success('Project saved', { description: saved.path })
+  toast.success('Setup saved', { description: saved.path })
   return saved.path
 }
 
 /**
- * Open Project (the open dialog) or a recent one (`recent`: its place under File › Open Recent): the setup restored
- * (`restoreSetup`). With unsaved changes to the opened project it asks first (`project.confirmOpen`) unless
- * `confirmed`. The file becomes the window's project (Save writes there) only once it reads as one. Resolves with
+ * Open Setup (the open dialog) or a recent one (`recent`: its place under File › Open Recent): the setup restored
+ * (`restoreSetup`). With unsaved changes to the opened setup it asks first (`setupFile.confirmOpen`) unless
+ * `confirmed`. The file becomes the window's setup (Save writes there) only once it reads as one. Resolves with
  * false if cancelled or asking; throws with what is wrong with the file.
  */
-export async function openProject(recent?: number, confirmed = false): Promise<boolean> {
+export async function openSetup(recent?: number, confirmed = false): Promise<boolean> {
   if (!confirmed && hasUnsavedChanges()) {
-    project.confirmOpen = { recent }
+    setupFile.confirmOpen = { recent }
     return false
   }
-  project.confirmOpen = null
-  const chosen = await openProjectSetup(recent)
+  setupFile.confirmOpen = null
+  const chosen = await openSetupFile(recent)
   if (!chosen) return false
   const setup = parseSetup(chosen.text)
-  await useOpenedProjectSetup()
+  await useOpenedSetupFile()
   await restoreSetup(setup, setupName(chosen.path))
   return true
 }
@@ -209,8 +209,8 @@ export async function openProject(recent?: number, confirmed = false): Promise<b
  * History, Results with the view's state; then the view it was on. Returns the notices about what could not be
  * brought back (also in New search's notices).
  */
-export async function restoreSetup(setup: ProjectSetup, name = setup.name): Promise<string[]> {
-  project.busy = true
+export async function restoreSetup(setup: SearchSetup, name = setup.name): Promise<string[]> {
+  setupFile.busy = true
   const form = searchForm
   const notes: string[] = []
   try {
@@ -264,8 +264,8 @@ export async function restoreSetup(setup: ProjectSetup, name = setup.name): Prom
     }
     form.notices.push(...notes)
     const allNotes = [...form.notices.slice(before)]
-    project.name = name
-    project.searchId = setup.search?.id ?? null
+    setupFile.name = name
+    setupFile.searchId = setup.search?.id ?? null
     // (what could not be brought back is no change of the user's)
     savedFingerprint = fingerprint()
 
@@ -301,11 +301,11 @@ export async function restoreSetup(setup: ProjectSetup, name = setup.name): Prom
     }
     return allNotes
   } finally {
-    project.busy = false
+    setupFile.busy = false
   }
 }
 
-/** The Results view as a project saved it: rows by index, ignored where the search has no such row. */
+/** The Results view as a setup saved it: rows by index, ignored where the search has no such row. */
 export function applyResultsUi(view: ResultsView, ui: ResultsUi): void {
   view.setShowTechReplicates(ui.showTechReplicates)
   const counts: Record<Level, number> = {

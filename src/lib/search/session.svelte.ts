@@ -43,7 +43,7 @@ export type OpenResult = {
   accepted?: AcceptedCheck[]
   /** The advice New search showed (warn and info: DIA, ion trap in ppm, SDRF modifications, ...), kept with the search. */
   warned?: AcceptedCheck[]
-  /** Set for a result opened from History or a project file: its name there and who made it. */
+  /** Set for a result opened from History or a results archive: its name there and who made it. */
   stored?: { name: string; appVersion: string; moduleVersion: string }
   settings: {
     /** The parameters that differ from ProSE's defaults. */
@@ -155,7 +155,7 @@ export const openResult = {
 let held: OpenResult | null = null
 
 /**
- * Opens a result that did not come from this session's search (History, a project file) in
+ * Opens a result that did not come from this session's search (History, a results archive) in
  * place of the open one, whose view and caches are released. A stored search keeps its `id` and
  * `createdAt` (`origin`), so that its address stays the same. Returns the id.
  */

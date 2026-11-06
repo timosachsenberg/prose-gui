@@ -1,39 +1,36 @@
-//! Project files (`<name>.prose-project.json`; the older `.prose-setup.json` opens too): the setup of a search and the state of the app's views as JSON,
-//! written and read here for the page (which never names a path), and the list of recent projects in the app's
-//! data folder (`recent-projects.json`). The page makes and checks the JSON itself (`src/lib/project/setup.ts`
+//! Search setups (`<name>.prose-setup.json`): the setup of a search and the state of the app's views as JSON,
+//! written and read here for the page (which never names a path), and the list of recent setups in the app's
+//! data folder (`recent-setups.json`). The page makes and checks the JSON itself (`src/lib/setup/setup.ts`
 //! documents its fields); this side only checks that a file is one by its name and size, so that a stray large file
-//! is never read into the page. Not the results archive (`.prose`, a zip of a search: `project`).
+//! is never read into the page. Not the results archive (`.prose`, a zip of a search: `archive`).
 
 use std::path::{Path, PathBuf};
 
-/// The extension of a project file.
-pub const SETUP_EXTENSION: &str = ".prose-project.json";
-/// The extension of a project file before it was named after the project (the branch's first version); still read.
-pub const OLD_SETUP_EXTENSION: &str = ".prose-setup.json";
+/// The extension of a setup file.
+pub const SETUP_EXTENSION: &str = ".prose-setup.json";
 
-/// The largest project file read or written: a setup is a few kilobytes (a thousand inputs with their design
+/// The largest setup file read or written: a setup is a few kilobytes (a thousand inputs with their design
 /// fit in well under a megabyte).
 pub const MAX_SETUP_BYTES: u64 = 4 * 1024 * 1024;
 
-/// How many recent projects the File menu lists.
+/// How many recent setups the File menu lists.
 pub const MAX_RECENT: usize = 10;
 
-/// The file of the recent projects in the app's data folder.
-pub const RECENT_FILE: &str = "recent-projects.json";
+/// The file of the recent setups in the app's data folder.
+pub const RECENT_FILE: &str = "recent-setups.json";
 
-/// `path` names a project file (`.prose-project.json`, or the older `.prose-setup.json`; in any case).
+/// `path` names a setup file (`.prose-setup.json`, in any case).
 pub fn is_setup_name(path: &Path) -> bool {
     path.file_name()
         .map(|n| {
             let n = n.to_string_lossy().to_lowercase();
-            n.ends_with(SETUP_EXTENSION) || n.ends_with(OLD_SETUP_EXTENSION)
+            n.ends_with(SETUP_EXTENSION)
         })
         .unwrap_or(false)
 }
 
-/// The path a project is written to: `path` with `.prose-project.json` (the save dialog gives what the user typed:
-/// `run`, `run.json` and `run.prose-project.json` all become `run.prose-project.json`; an older `.prose-setup.json`
-/// that was opened is saved again under its own name).
+/// The path a setup is written to: `path` with `.prose-setup.json` (the save dialog gives what the user typed:
+/// `run`, `run.json` and `run.prose-setup.json` all become `run.prose-setup.json`).
 pub fn with_setup_extension(path: &Path) -> PathBuf {
     if is_setup_name(path) {
         return path.to_path_buf();
@@ -46,17 +43,17 @@ pub fn with_setup_extension(path: &Path) -> PathBuf {
         .strip_suffix(".json")
         .or_else(|| name.strip_suffix(".JSON"))
         .unwrap_or(&name);
-    let stem = if stem.is_empty() { "project" } else { stem };
+    let stem = if stem.is_empty() { "search" } else { stem };
     path.with_file_name(format!("{stem}{SETUP_EXTENSION}"))
 }
 
-/// The text of the project file at `path`: refused unless it is named as one ([`is_setup_name`]), it is a file of
+/// The text of the setup file at `path`: refused unless it is named as one ([`is_setup_name`]), it is a file of
 /// at most [`MAX_SETUP_BYTES`] and it is UTF-8.
 pub fn read_setup(path: &Path) -> Result<String, String> {
     let shown = path.display();
     if !is_setup_name(path) {
         return Err(format!(
-            "{shown} is not a ProSE project file (its name does not end with {SETUP_EXTENSION})."
+            "{shown} is not a ProSE setup file (its name does not end with {SETUP_EXTENSION})."
         ));
     }
     let meta = std::fs::metadata(path).map_err(|e| format!("{shown} cannot be read ({e})."))?;
@@ -65,7 +62,7 @@ pub fn read_setup(path: &Path) -> Result<String, String> {
     }
     if meta.len() > MAX_SETUP_BYTES {
         return Err(format!(
-            "{shown} is too large for a project file ({} bytes; at most {MAX_SETUP_BYTES}).",
+            "{shown} is too large for a setup file ({} bytes; at most {MAX_SETUP_BYTES}).",
             meta.len()
         ));
     }
@@ -78,7 +75,7 @@ pub fn read_setup(path: &Path) -> Result<String, String> {
 pub fn write_setup(path: &Path, contents: &str) -> Result<PathBuf, String> {
     if contents.len() as u64 > MAX_SETUP_BYTES {
         return Err(format!(
-            "The project is too large to save ({} bytes; at most {MAX_SETUP_BYTES}).",
+            "The setup is too large to save ({} bytes; at most {MAX_SETUP_BYTES}).",
             contents.len()
         ));
     }
@@ -98,7 +95,7 @@ pub fn write_setup(path: &Path, contents: &str) -> Result<PathBuf, String> {
     Ok(path)
 }
 
-/// The recent projects listed in `dir` (the app's data folder), the latest first; none if the list is missing or
+/// The recent setups listed in `dir` (the app's data folder), the latest first; none if the list is missing or
 /// broken (it is a convenience).
 pub fn recent(dir: &Path) -> Vec<PathBuf> {
     std::fs::read(dir.join(RECENT_FILE))
@@ -112,7 +109,7 @@ pub fn recent(dir: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
-/// Puts `path` first in the recent projects of `dir` (once; at most [`MAX_RECENT`]); -> the list.
+/// Puts `path` first in the recent setups of `dir` (once; at most [`MAX_RECENT`]); -> the list.
 pub fn remember(dir: &Path, path: &Path) -> Vec<PathBuf> {
     let mut list = recent(dir);
     list.retain(|p| p != path);
@@ -122,7 +119,7 @@ pub fn remember(dir: &Path, path: &Path) -> Vec<PathBuf> {
     list
 }
 
-/// Empties the recent projects of `dir`.
+/// Empties the recent setups of `dir`.
 pub fn forget_all(dir: &Path) {
     save_recent(dir, &[]);
 }
@@ -153,34 +150,32 @@ mod tests {
 
     #[test]
     fn the_extension_is_checked_and_added() {
-        assert!(is_setup_name(Path::new("/a/run.prose-project.json")));
-        assert!(is_setup_name(Path::new("/a/RUN.PROSE-PROJECT.JSON")));
+        assert!(is_setup_name(Path::new("/a/run.prose-setup.json")));
+        assert!(is_setup_name(Path::new("/a/RUN.PROSE-SETUP.JSON")));
         assert!(!is_setup_name(Path::new("/a/run.json")));
         assert!(!is_setup_name(Path::new("/a/run.prose")));
-        // (the older name opens too)
-        assert!(is_setup_name(Path::new("/a/run.prose-setup.json")));
         assert_eq!(
             with_setup_extension(Path::new("/a/run")),
-            PathBuf::from("/a/run.prose-project.json")
+            PathBuf::from("/a/run.prose-setup.json")
         );
         assert_eq!(
             with_setup_extension(Path::new("/a/run.json")),
-            PathBuf::from("/a/run.prose-project.json")
+            PathBuf::from("/a/run.prose-setup.json")
         );
         assert_eq!(
-            with_setup_extension(Path::new("/a/run.prose-project.json")),
-            PathBuf::from("/a/run.prose-project.json")
+            with_setup_extension(Path::new("/a/run.prose-setup.json")),
+            PathBuf::from("/a/run.prose-setup.json")
         );
     }
 
     #[test]
-    fn a_project_is_written_and_read_back() {
+    fn a_setup_is_written_and_read_back() {
         let dir = scratch("roundtrip");
-        let written = write_setup(&dir.join("exp"), "{\"format\":\"prose-project\"}").unwrap();
-        assert_eq!(written, dir.join("exp.prose-project.json"));
+        let written = write_setup(&dir.join("exp"), "{\"format\":\"prose-setup\"}").unwrap();
+        assert_eq!(written, dir.join("exp.prose-setup.json"));
         assert_eq!(
             read_setup(&written).unwrap(),
-            "{\"format\":\"prose-project\"}"
+            "{\"format\":\"prose-setup\"}"
         );
         // (no partial file is left)
         assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
@@ -194,47 +189,47 @@ mod tests {
         std::fs::write(&other, "{}").unwrap();
         assert!(read_setup(&other)
             .unwrap_err()
-            .contains("not a ProSE project file"));
-        assert!(read_setup(&dir.join("gone.prose-project.json"))
+            .contains("not a ProSE setup file"));
+        assert!(read_setup(&dir.join("gone.prose-setup.json"))
             .unwrap_err()
             .contains("cannot be read"));
-        let large = dir.join("large.prose-project.json");
+        let large = dir.join("large.prose-setup.json");
         std::fs::write(&large, vec![b' '; MAX_SETUP_BYTES as usize + 1]).unwrap();
         assert!(read_setup(&large).unwrap_err().contains("too large"));
-        let folder = dir.join("folder.prose-project.json");
+        let folder = dir.join("folder.prose-setup.json");
         std::fs::create_dir_all(&folder).unwrap();
         assert!(read_setup(&folder).unwrap_err().contains("not a file"));
-        let binary = dir.join("binary.prose-project.json");
+        let binary = dir.join("binary.prose-setup.json");
         std::fs::write(&binary, [0xff, 0xfe, 0x00]).unwrap();
         assert!(read_setup(&binary).unwrap_err().contains("not a text file"));
         let too_much = " ".repeat(MAX_SETUP_BYTES as usize + 1);
         assert!(write_setup(&dir.join("big"), &too_much)
             .unwrap_err()
             .contains("too large"));
-        assert!(!dir.join("big.prose-project.json").exists());
+        assert!(!dir.join("big.prose-setup.json").exists());
         let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
-    fn recent_projects_are_kept_latest_first_once_each() {
+    fn recent_setups_are_kept_latest_first_once_each() {
         let dir = scratch("recent");
         assert!(recent(&dir).is_empty());
-        let a = dir.join("a.prose-project.json");
-        let b = dir.join("b.prose-project.json");
+        let a = dir.join("a.prose-setup.json");
+        let b = dir.join("b.prose-setup.json");
         remember(&dir, &a);
         remember(&dir, &b);
         assert_eq!(remember(&dir, &a), vec![a.clone(), b.clone()]);
         for k in 0..20 {
-            remember(&dir, &dir.join(format!("p{k}.prose-project.json")));
+            remember(&dir, &dir.join(format!("p{k}.prose-setup.json")));
         }
         assert_eq!(recent(&dir).len(), MAX_RECENT);
-        assert_eq!(recent(&dir)[0], dir.join("p19.prose-project.json"));
-        // a broken list is no list; entries that are no project files are left out
+        assert_eq!(recent(&dir)[0], dir.join("p19.prose-setup.json"));
+        // a broken list is no list; entries that are no setup files are left out
         std::fs::write(dir.join(RECENT_FILE), "not json").unwrap();
         assert!(recent(&dir).is_empty());
         std::fs::write(
             dir.join(RECENT_FILE),
-            "[\"relative.prose-project.json\", \"/x/y.txt\"]",
+            "[\"relative.prose-setup.json\", \"/x/y.txt\"]",
         )
         .unwrap();
         assert!(recent(&dir).is_empty());

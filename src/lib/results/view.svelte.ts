@@ -541,7 +541,7 @@ export class ResultsView {
  * after the component that first asked for it unmounts (the state survives a visit to New search). */
 let cached: { view: ResultsView; destroy: () => void } | null = null
 
-/** The view state of the result open last, if there is one (a project saves it: `project/project.svelte.ts`). */
+/** The view state of the result open last, if there is one (a setup saves it: `setup/setup-file.svelte.ts`). */
 export function currentResultsView(): ResultsView | null {
   return cached?.view ?? null
 }

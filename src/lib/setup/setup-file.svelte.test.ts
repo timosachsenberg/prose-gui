@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest'
 import type { FileFacts } from '../desktop'
 
-// A project through New search (the shim's commands, History and the router are replaced): the setup
-// of the form saved and brought back, and what a project whose files moved or changed, or whose search is not in
+// A setup through New search (the shim's commands, History and the router are replaced): the setup
+// of the form saved and brought back, and what a setup whose files moved or changed, or whose search is not in
 // History, says.
 
 /** The files on "disk": path -> size (a path not here is missing). */
@@ -28,13 +28,13 @@ vi.mock('../desktop', () => ({
   inspectFiles: vi.fn(async (paths: string[]) => paths.map(facts)),
   inspectSpectra: vi.fn(async (paths: string[]) => paths.map(() => null)),
   errorText: (e: unknown) => String((e as Error)?.message ?? e),
-  saveProjectSetup: vi.fn(async (name: string, contents: string, ask: boolean) => {
+  saveSetupFile: vi.fn(async (name: string, contents: string, ask: boolean) => {
     saved.push({ name, contents, ask })
-    return { path: `/projects/${name}`, name }
+    return { path: `/setups/${name}`, name }
   }),
-  openProjectSetup: vi.fn(async () => toOpen),
-  useOpenedProjectSetup: vi.fn(async () => {}),
-  forgetProjectSetup: vi.fn(async () => {}),
+  openSetupFile: vi.fn(async () => toOpen),
+  useOpenedSetupFile: vi.fn(async () => {}),
+  forgetSetupFile: vi.fn(async () => {}),
   // (UniProt: the proteome lands in the app's databases folder, or fails when `uniprotDown`)
   downloadProteome: vi.fn(async (id: string, reviewed: boolean) => {
     if (uniprotDown) throw new Error('UniProt cannot be reached')
@@ -55,13 +55,13 @@ vi.mock('../results/view.svelte', () => ({ currentResultsView: () => null, resul
 
 const { searchForm: form } = await import('../search/form.svelte')
 const { toolState } = await import('../search/tool.svelte')
-const { captureSetup, hasUnsavedChanges, newSetup, openProject, project, restoreSetup, saveProject } = await import('./project.svelte')
+const { captureSetup, hasUnsavedChanges, newSetup, openSetup, setupFile, restoreSetup, saveSetup } = await import('./setup-file.svelte')
 const desktop = await import('../desktop')
 const { parseSetup, serializeSetup } = await import('./setup')
 
 const settle = () => new Promise((r) => setTimeout(r, 0))
 
-describe('projects in New search', () => {
+describe('setups in New search', () => {
   beforeEach(async () => {
     disk.clear()
     for (const [p, s] of [['/data/a.mzML', 1000], ['/data/b.mzML', 2000], ['/db/human.fasta', 9000]] as const) disk.set(p, s)
@@ -74,7 +74,7 @@ describe('projects in New search', () => {
     form.notices = []
     form.removed = null
     form.choosePreset('orbitrap-hcd-tryptic')
-    Object.assign(project, { name: null, searchId: null, busy: false, confirmNew: false, confirmOpen: null })
+    Object.assign(setupFile, { name: null, searchId: null, busy: false, confirmNew: false, confirmOpen: null })
     Object.assign(toolState, { status: 'ready', info: { version: '3.7.0', path: '/x/ProSE', onnx: true }, error: null })
     await form.addFiles(['/data/a.mzML', '/data/b.mzML', '/db/human.fasta'])
     await settle()
@@ -101,21 +101,21 @@ describe('projects in New search', () => {
   })
 
   test('saved and opened again: the same form, nothing to report', async () => {
-    await saveProject(false)
-    // (no project yet: Save asks where)
-    expect(saved[0]).toMatchObject({ name: 'prose-results.prose-project.json', ask: true })
-    expect(project.name).toBe('prose-results')
-    await saveProject(false)
+    await saveSetup(false)
+    // (no setup yet: Save asks where)
+    expect(saved[0]).toMatchObject({ name: 'prose-results.prose-setup.json', ask: true })
+    expect(setupFile.name).toBe('prose-results')
+    await saveSetup(false)
     expect(saved[1].ask).toBe(false)
-    // another setup in the form, then the project
+    // another setup in the form, then the saved one
     form.files = []
     form.threads = null
     form.peptdeep = false
     form.setParam('precursor:mass_tolerance', 20)
-    toOpen = { path: '/projects/prose-results.prose-project.json', text: saved[0].contents }
-    // (those are unsaved changes to the project: Open asks first, here answered with "Discard changes")
-    expect(await openProject()).toBe(false)
-    expect(await openProject(undefined, true)).toBe(true)
+    toOpen = { path: '/setups/prose-results.prose-setup.json', text: saved[0].contents }
+    // (those are unsaved changes to the setup: Open asks first, here answered with "Discard changes")
+    expect(await openSetup()).toBe(false)
+    expect(await openSetup(undefined, true)).toBe(true)
     await settle()
     expect(form.files.map((r) => [r.file.path, r.condition, r.replicate])).toEqual([
       ['/data/a.mzML', 'ctrl', undefined],
@@ -165,7 +165,7 @@ describe('projects in New search', () => {
     notes = await restoreSetup(setup)
     expect(openFromHistory).toHaveBeenCalledWith('42-1')
     expect(notes).toEqual([])
-    expect(project.searchId).toBe('42-1')
+    expect(setupFile.searchId).toBe('42-1')
   })
 
   test('a UniProt proteome no longer on disk is downloaded again and chosen; if that fails, the note stays', async () => {
@@ -197,67 +197,67 @@ describe('projects in New search', () => {
   })
 
   test('New Search: a new, unsaved setup, cleared as Start over clears it; it asks first about unsaved changes', async () => {
-    // an opened project, unchanged: no question
-    await saveProject(false)
-    toOpen = { path: '/projects/exp.prose-project.json', text: saved[0].contents }
-    await openProject()
+    // an opened setup, unchanged: no question
+    await saveSetup(false)
+    toOpen = { path: '/setups/exp.prose-setup.json', text: saved[0].contents }
+    await openSetup()
     await settle()
-    expect(project.name).toBe('exp')
+    expect(setupFile.name).toBe('exp')
     expect(hasUnsavedChanges()).toBe(false)
-    vi.mocked(desktop.forgetProjectSetup).mockClear()
+    vi.mocked(desktop.forgetSetupFile).mockClear()
     expect(newSetup()).toBe(true)
     expect(form.files).toEqual([])
     expect(form.database).toBeNull()
     expect(form.removed?.files.map((r) => r.file.name)).toEqual(['a.mzML', 'b.mzML'])
-    expect(project).toMatchObject({ name: null, searchId: null, confirmNew: false })
-    expect(desktop.forgetProjectSetup).toHaveBeenCalledTimes(1)
-    // Undo of Start over brings the files back; the next Save asks where (no project any more)
+    expect(setupFile).toMatchObject({ name: null, searchId: null, confirmNew: false })
+    expect(desktop.forgetSetupFile).toHaveBeenCalledTimes(1)
+    // Undo of Start over brings the files back; the next Save asks where (no setup any more)
     form.undoRemove()
     expect(form.files).toHaveLength(2)
-    await saveProject(false)
+    await saveSetup(false)
     expect(saved.at(-1)!.ask).toBe(true)
 
     // opened again, then changed: New Search asks and changes nothing until answered
-    await openProject()
+    await openSetup()
     await settle()
     form.setParam('precursor:mass_tolerance', 15)
     expect(hasUnsavedChanges()).toBe(true)
     expect(newSetup()).toBe(false)
-    expect(project.confirmNew).toBe(true)
-    expect(project.name).toBe('exp')
+    expect(setupFile.confirmNew).toBe(true)
+    expect(setupFile.name).toBe('exp')
     expect(form.files).toHaveLength(2)
     // "Discard changes"
     expect(newSetup(true)).toBe(true)
     expect(form.files).toEqual([])
-    expect(project).toMatchObject({ name: null, confirmNew: false })
+    expect(setupFile).toMatchObject({ name: null, confirmNew: false })
   })
 
-  test('Open Project asks first about unsaved changes, and a file it refuses never becomes the project', async () => {
-    await saveProject(false)
-    const good = { path: '/projects/exp.prose-project.json', text: saved[0].contents }
+  test('Open Setup asks first about unsaved changes, and a file it refuses never becomes the setup', async () => {
+    await saveSetup(false)
+    const good = { path: '/setups/exp.prose-setup.json', text: saved[0].contents }
     toOpen = good
-    await openProject()
+    await openSetup()
     await settle()
-    expect(project.name).toBe('exp')
-    expect(desktop.useOpenedProjectSetup).toHaveBeenCalledTimes(1)
+    expect(setupFile.name).toBe('exp')
+    expect(desktop.useOpenedSetupFile).toHaveBeenCalledTimes(1)
 
-    // changed, then Open Project (or Open Recent): asked first, nothing opened until answered
+    // changed, then Open Setup (or Open Recent): asked first, nothing opened until answered
     form.setParam('precursor:mass_tolerance', 15)
-    vi.mocked(desktop.openProjectSetup).mockClear()
-    expect(await openProject(2)).toBe(false)
-    expect(project.confirmOpen).toEqual({ recent: 2 })
-    expect(desktop.openProjectSetup).not.toHaveBeenCalled()
+    vi.mocked(desktop.openSetupFile).mockClear()
+    expect(await openSetup(2)).toBe(false)
+    expect(setupFile.confirmOpen).toEqual({ recent: 2 })
+    expect(desktop.openSetupFile).not.toHaveBeenCalled()
     expect(form.value('precursor:mass_tolerance')).toBe(15)
-    // "Discard changes": the recent project opens
-    expect(await openProject(2, true)).toBe(true)
-    expect(desktop.openProjectSetup).toHaveBeenCalledWith(2)
-    expect(project.confirmOpen).toBeNull()
+    // "Discard changes": the recent setup opens
+    expect(await openSetup(2, true)).toBe(true)
+    expect(desktop.openSetupFile).toHaveBeenCalledWith(2)
+    expect(setupFile.confirmOpen).toBeNull()
 
-    // a file that does not read as a project: an error, and the shim is not told to use it (Save keeps its file)
-    vi.mocked(desktop.useOpenedProjectSetup).mockClear()
-    toOpen = { path: '/projects/broken.prose-project.json', text: '{"format":"something else"}' }
-    await expect(openProject(undefined, true)).rejects.toThrow()
-    expect(desktop.useOpenedProjectSetup).not.toHaveBeenCalled()
-    expect(project.name).toBe('exp')
+    // a file that does not read as a setup: an error, and the shim is not told to use it (Save keeps its file)
+    vi.mocked(desktop.useOpenedSetupFile).mockClear()
+    toOpen = { path: '/setups/broken.prose-setup.json', text: '{"format":"something else"}' }
+    await expect(openSetup(undefined, true)).rejects.toThrow()
+    expect(desktop.useOpenedSetupFile).not.toHaveBeenCalled()
+    expect(setupFile.name).toBe('exp')
   })
 })
