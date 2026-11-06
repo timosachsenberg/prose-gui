@@ -274,7 +274,7 @@ export async function addAnyFiles(paths: string[]) {
   }
 }
 
-/** An SDRF (by its header) or a design.tsv, read from `path`. */
+/** An SDRF (by its header) or a design.tsv, read from `path` (also a project's SDRF: `project/project.svelte.ts`). */
 export async function loadDesign(path: string, text: string) {
   const chosen = { path, text }
   const header = chosen.text.replace(/^﻿/, '').split(/\r\n|\n|\r/, 1)[0].toLowerCase()

@@ -1,10 +1,13 @@
 <script lang="ts">
   import CloseGuard from '$lib/components/CloseGuard.svelte'
+  import NewProjectDialog from '$lib/components/NewProjectDialog.svelte'
   import Shortcuts from '$lib/components/Shortcuts.svelte'
   import TopBar from '$lib/components/TopBar.svelte'
   import { Toaster } from '$lib/components/ui/sonner'
   import * as Tooltip from '$lib/components/ui/tooltip'
   import { initHistory } from '$lib/history/history.svelte'
+  import { initMenu } from '$lib/menu.svelte'
+  import { initProject } from '$lib/project/project.svelte'
   import { readHash, router } from '$lib/route.svelte'
   import { loadTool } from '$lib/search/tool.svelte'
   import { initTheme } from '$lib/theme/theme.svelte'
@@ -20,6 +23,10 @@
   void loadTool()
   // finished searches are saved to History; the list is read
   initHistory()
+  // the project of the window (File › Save Project) learns the id of the search started here
+  initProject()
+  // the application menus (desktop only): their clicks, and which items apply
+  initMenu()
 </script>
 
 <svelte:window onhashchange={readHash} />
@@ -49,5 +56,8 @@
 </Tooltip.Provider>
 
 <CloseGuard />
+<!-- File › New Search with unsaved changes to the opened project -->
+<NewProjectDialog />
+<!-- Save Project when the created SDRF's file beside it is there already -->
 <!-- notifications: a search that finished while the user was elsewhere (search/finished.ts) -->
 <Toaster position="bottom-right" closeButton />
