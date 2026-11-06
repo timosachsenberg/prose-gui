@@ -69,6 +69,7 @@ libglvnd-gles` (Fedora).
 - The log of the last search that failed: `logs/last-failure.log` there (the error names it).
 - Proteomes downloaded from UniProt (New search › Protein database): `databases/UP…fasta` there.
 - Presets: the app's webview keeps them, on this computer.
+- The recent projects (File › Open Recent): `recent-projects.json` there (paths only).
 - The spectrum files (mzML, mzPeak, Thermo .raw, Bruker .d) and the FASTA are read where they are: never copied, and
   nothing is written beside them. Deleting a
   search in History removes its folder; uninstalling leaves the data folder, which can be deleted by hand.
@@ -87,6 +88,48 @@ Export › TSV (current view) saves the table as shown (Export › CSV or Excel 
 every marked or noted PSM, whatever the filters, with its mark and note. The marks and notes are saved in the
 search's folder as `curation.json` (`src/lib/results/curation.ts`: each PSM by its file, native ID, peptide and
 charge), so they stay with the search in History and go with its results archive.
+
+## Menus
+
+The desktop app has native menus (Tauri's menu API, `src-tauri/src/menu.rs`): on macOS the menu bar with the app menu
+(About ProSE, Services, Hide, Hide Others, Show All, Quit); on Windows and Linux the same menus on the window, with Ctrl
+for ⌘, About under Help and Exit under File. **File**: New Search ⌘N (a new, unsaved setup: the project is detached,
+so the next Save asks for a file, and the form is cleared as Start over clears it, with its Undo; unsaved changes to an
+opened project are asked about first), Open Project… ⌘O, Open Recent (the last ten
+projects, kept in `recent-projects.json` of the app's data folder), Save Project ⌘S, Save Project As… ⇧⌘S, Open QPX
+Folder…, Import Results Archive (.prose)…, Export ▸ (CSV, Excel, idXML, Methods section, Results archive; only with a result open,
+CSV and Excel only on a table), Close Window ⌘W. **Edit**: the system's Undo, Redo, Cut, Copy, Paste, Select All.
+**View**: New Search, Results, History, Help (⇧⌘1–4), Theme ▸ System/Light/Dark, full screen. **Window**: Minimize,
+Zoom. **Help**: ProSE Help, Troubleshooting, Keyboard Shortcuts (⌘/), ProSE Web App, Report an Issue (links open in
+the browser). A click on an item is the event `menu://action` to the page (`src/lib/menu.svelte.ts`), which does what
+its own buttons do; the page's ⇧⌘1–4 handler leaves those keys to the menu in the desktop app and keeps them in the
+browser. Close Window and Exit close as the window's close button does (a running search asks first).
+
+## Projects (`.prose-project.json`)
+
+A project is the setup of a search and the state of the views as one JSON file (format and fields:
+`src/lib/project/setup.ts`; schema 1). File › Save Project (or Save project… in New search) writes it where you
+choose (the save dialog is the Rust side's, `src-tauri/src/setup_file.rs`; Save writes the same file again, Save As
+asks; a name chosen without `.prose-project.json` gets it, and Save asks before it replaces a file of that name);
+Open Project, Open Recent or Open project… in New search reads it (only `.prose-project.json`, at most 4 MB), and asks
+first when the opened project has unsaved changes; a file that does not read as a project changes nothing. It holds:
+
+- `format` `"prose-project"`, `schema` `1`, `savedAt`, `appVersion`, `proseVersion`, `name`
+- `inputs`: each spectrum file's absolute `path`, `name` and `size` (bytes), and its design fields (`condition`,
+  `replicate`, `fraction`, `techReplicate`) as entered
+- `database` (`path`, `name`, `size`, `proteome`: the UniProt proteome id of a downloaded FASTA), `contaminants`,
+  `decoys`
+- `presetId` and `parameters` (every ProSE `Search:` parameter the form sets), `rescore`, `peptdeep`, `threads`
+- `search` (`id`, `name`: the History search it ran as, once it has run)
+- `ui`: the view, the Help page, the settings' toggles, and for Results the tab and per table (proteins, peptides,
+  PSMs) the filters, sort, hidden columns and selected row, the open protein and PSM
+
+Opening one fills New search (`SearchForm.restoreSearch`) and, when History has its search, opens it in Results
+with that state. Files that are gone or have another size, a missing database or preset, and a search History does
+not have are named in New search's notices; nothing starts by itself, but a UniProt proteome (`database.proteome`)
+that is no longer on disk is downloaded again and chosen (as Protein database › Download does, its progress there; if
+the download fails, the notices say to download it again). A newer schema is refused. A project is not a results
+archive: it holds paths and settings, no results.
 
 ## Results archives (`.prose`)
 

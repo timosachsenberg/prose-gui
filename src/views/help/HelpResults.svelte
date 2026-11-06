@@ -56,7 +56,8 @@
       (.prose) for colleagues. A results archive holds the
       results and the search record, the sequences of the proteins in the results and the spectra of its PSMs, not the spectrum
       files, the full searched FASTA or the log: to repeat the search, they need those too. To set the same search up again,
-      open it from History (Settings).
+      open it from History (Settings), or save a project (File › Save Project: the setup, not the results; Help › File
+      formats).
     </li>
   </ul>
 </section>
