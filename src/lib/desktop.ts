@@ -23,6 +23,28 @@ import { errorText } from './format/error'
 /** The ProSE tool the app runs: its version, where it is, and whether it has ONNX Runtime (PeptDeep). */
 export type ToolInfo = { version: string; path: string; onnx: boolean }
 
+/** What the first MS2 spectra of an mzML say, by their flags (src-tauri/src/spectra.rs): not verified against the peaks. */
+export type SpectraFacts = {
+  source?: 'flags'
+  peakPicking: boolean
+  analyzers: string[]
+  /** Spectra read per MS level ("1", "2", ...). */
+  levels: Record<string, number>
+  /** The whole spectrum list was read (the counts are the file's). */
+  complete: boolean
+  ms2Centroid: number
+  ms2Profile: number
+  ms2WithCharge: number
+  ms2WithPrecursor: number
+  activation: Record<string, number>
+  isolationCentres: number
+  isolationWidth: number | null
+  /** MS2 spectra read whose isolation target occurs at least 3 times (DIA cycles through the same windows). */
+  ms2RepeatedTarget: number
+  ms2Analyzer: Record<string, number>
+  filter: string | null
+}
+
 /** A file the user chose, by path (never read by the page; the shim reads it where it is). */
 export type InputFile = { path: string; name: string; size: number }
 
@@ -35,6 +57,8 @@ export type FileFacts = InputFile & {
   residues: number | null
   /** Why the file cannot be used (missing, unreadable). */
   error: string | null
+  /** The last modification (ms since 1970; null: not known): with the size, what an accepted red flag holds for. */
+  modified?: number | null
   /**
    * Why ProSE cannot search the file, which is there (src-tauri/src/content.rs): an mzML that is not one, is cut off
    * or has no spectra; a FASTA without entries, with an accession twice, a protein too long. Sentences, the file named.
@@ -42,6 +66,23 @@ export type FileFacts = InputFile & {
   problem: string | null
   /** What ProSE treats specially (a FASTA's entries listed twice, which it searches once): sentences, not blocking. */
   warnings: string[]
+  /** An mzML's instrument model from its header (PSI-MS). */
+  instrument?: { name: string; accession: string } | null
+  /** A FASTA's entries in numbers (src-tauri/src/content.rs `FastaSummary`; guidance G6). */
+  fasta?: FastaSummary | null
+}
+
+/** A FASTA's entries in numbers: organisms (OS=), UniProt headers, isoforms, contaminants, decoys and their marker. */
+export type FastaSummary = {
+  /** [organism, entries], most entries first (at most 5). */
+  organisms: [string, number][]
+  withOrganism: number
+  organismCount: number
+  uniprot: number
+  isoforms: number
+  contaminants: number
+  decoys: number
+  decoyMarker: string | null
 }
 
 /** The search request of the shim (src-tauri/src/args.rs `SearchRequest`, camelCase). */
@@ -185,6 +226,11 @@ export function inspectFiles(paths: string[]): Promise<FileFacts[]> {
   return invoke<FileFacts[]>('inspect_files', { paths })
 }
 
+/** What the first MS2 spectra of each mzML say (null: not an mzML), off the add-files path. */
+export function inspectSpectra(paths: string[]): Promise<(SpectraFacts | null)[]> {
+  return invoke<(SpectraFacts | null)[]>('inspect_spectra', { paths })
+}
+
 /** The cores the search's threads may use (`navigator.hardwareConcurrency` is capped by the webview). */
 export function cpuCount(): Promise<number> {
   return invoke<number>('cpu_count')
@@ -195,12 +241,22 @@ export function exampleFiles(): Promise<{ spectra: string[]; database: string }>
   return invoke('example_files')
 }
 
-/** The system's open dialog for spectra (several) or a database; the chosen paths ([] if cancelled). */
+/**
+ * The system's open dialog for spectra (several: mzML, mzPeak, Thermo .raw, and Bruker .d folders by their analysis.tdf,
+ * as the system's file dialog picks files or folders, not both) or a database; the chosen paths ([] if cancelled).
+ */
 export function chooseFiles(kind: 'spectra' | 'database'): Promise<string[]> {
   return oneDialog<string[]>([], async () => {
     const chosen = await open(
       kind === 'spectra'
-        ? { multiple: true, title: 'Add mzML files', filters: [{ name: 'mzML', extensions: ['mzML', 'mzml', 'gz'] }] }
+        ? {
+            multiple: true,
+            title: 'Add files: spectra or a FASTA database (for a Bruker .d folder, choose its analysis.tdf)',
+            filters: [
+              { name: 'Spectra, FASTA', extensions: ['mzML', 'mzml', 'gz', 'mzpeak', 'raw', 'tdf', 'fasta', 'fa', 'faa'] },
+              { name: 'Spectra (mzML, mzPeak, Thermo .raw, Bruker analysis.tdf)', extensions: ['mzML', 'mzml', 'gz', 'mzpeak', 'raw', 'tdf'] },
+            ],
+          }
         : { multiple: false, title: 'Choose a FASTA database', filters: [{ name: 'FASTA', extensions: ['fasta', 'fa', 'faa'] }] },
     )
     if (chosen === null) return []
@@ -250,9 +306,27 @@ export function saveText(name: string, contents: string): Promise<string | null>
   return oneDialog(null, () => invoke<string | null>('save_text', { name, contents }))
 }
 
+/** A UniProt proteome of an organism NCBI Taxonomy found by name. */
+export type ProteomeHit = { upid: string; organism: string; taxid: number; rank: string; proteins: number; reference: boolean; strain: string }
+
+/** The UniProt proteomes of the organisms NCBI Taxonomy finds for `name` (reference proteomes first). */
+export function findProteomes(name: string): Promise<ProteomeHit[]> {
+  return invoke<ProteomeHit[]>('find_proteomes', { name })
+}
+
+/** The file names of the proteomes downloaded before (the app's databases folder). */
+export function downloadedProteomes(): Promise<string[]> {
+  return invoke<string[]>('downloaded_proteomes')
+}
+
 /** Opens an https link in the system's browser (the Help page). */
 export function openUrl(url: string): Promise<void> {
   return invoke('open_url', { url })
+}
+
+/** UniProt's reference proteome `proteome` as a FASTA in the app's databases folder (downloaded once): its path. */
+export function downloadProteome(proteome: string, reviewed: boolean): Promise<string> {
+  return invoke<string>('download_proteome', { proteome, reviewed })
 }
 
 /**

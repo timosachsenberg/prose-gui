@@ -5,7 +5,7 @@ native `ProSE` command-line tool as the only native code, and the screens of the
 shadcn-svelte components and colours). Design and plan: `docs/superpowers/`.
 
 The packages come from CI (`.github/workflows/desktop.yml`); they bundle ProSE with its libraries and the PeptDeep
-models (`native/README.md`). Everything runs on the computer: the app makes no network connection except links you open from Help (ProSE's
+models (`native/README.md`). Everything runs on the computer: the app makes no network connection except when you ask for one: a proteome download from UniProt, with an organism-name search at NCBI Taxonomy (New search › Protein database), and links you open from Help (ProSE's
 update check is off, `native/README.md`).
 
 ## Install
@@ -39,7 +39,8 @@ libglvnd-gles` (Fedora).
   PeptDeep models among them).
 - Memory as the search needs it: ProSE has no limit of its own. The example takes well under 1 GB; a semi-tryptic
   TMT search of a 78 MB mzML against the human reference proteome (no database chunks) peaked at 7.1 GB. Larger
-  searches can split the database (Settings › Advanced, `database:chunk_size`). The results are read into the
+  searches can split the database (New search › Search settings › Advanced settings › Database chunk size,
+  `database:chunk_size`). The results are read into the
   app's page: see "Known limitations".
 - Disk: each search keeps ProSE's QPX outputs, most of it the spectra of the PSMs (the QPX mz view of each input: the
   100 most intense peaks per 100 m/z and every annotated peak): about 3.6 MB per thousand PSMs of an Orbitrap HCD
@@ -65,6 +66,7 @@ libglvnd-gles` (Fedora).
   there. ProSE keeps nothing but its searches in that folder, and never lists, deletes or cleans up anything else in
   it (`src-tauri/src/location.rs`; the choice is kept in the app's data folder, `searches-folder.json`).
 - The log of the last search that failed: `logs/last-failure.log` there (the error names it).
+- Proteomes downloaded from UniProt (New search › Protein database): `databases/UP…fasta` there.
 - Presets: the app's webview keeps them, on this computer.
 - The spectrum files (mzML, mzPeak, Thermo .raw, Bruker .d) and the FASTA are read where they are: never copied, and
   nothing is written beside them. Deleting a

@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { expect, test } from 'vitest'
 import { LEFT_OUT } from './history/history'
+import { isSpectrum } from './search/files'
 
 const rust = (file: string) => readFileSync(join(import.meta.dirname, '../../src-tauri/src', file), 'utf8')
 const strings = (line: string) => [...line.matchAll(/"([^"]+)"/g)].map((m) => m[1])
@@ -17,4 +18,11 @@ const constant = (file: string, name: string) => {
 test('the files a results archive leaves out are the same in Rust and TypeScript', () => {
   const line = constant('archive.rs', 'LEFT_OUT')
   expect(new Set(strings(line))).toEqual(LEFT_OUT)
+})
+
+test('the spectrum suffixes are the same in Rust and TypeScript', () => {
+  const line = constant('args.rs', 'SPECTRUM_SUFFIXES')
+  const suffixes = strings(line)
+  for (const s of suffixes) expect(isSpectrum(`run${s}`), s).toBe(true)
+  for (const other of ['.wiff', '.mgf', '.mzXML']) expect(isSpectrum(`run${other}`), other).toBe(false)
 })
