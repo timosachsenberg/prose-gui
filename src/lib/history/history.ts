@@ -14,8 +14,10 @@
 //
 // A results archive holds the same files (the links to the inputs are not files and stay out). It is written
 // by the Rust side, entry by entry from the folder's files to the file the user chose (src-tauri/src/archive.rs;
-// what it would hold is checked here first). Opening one writes its files to a fresh folder of the app, as a
-// new search of History.
+// what it would hold is checked here first), and opened by it the same way, entry by entry into a fresh folder
+// of the app, as a new search of History: an archive of any size (a large one is a zip64). A backend without
+// the Rust side (the browser build, the tests) makes and opens archives in memory, with fflate, here: plain
+// zips of at most MAX_UNPACKED.
 //
 // The disk is behind `HistoryBackend` (desktop.ts: the Rust commands), so that the tests run against
 // a folder in memory.
@@ -160,12 +162,21 @@ export interface HistoryBackend {
    */
   saveArchive(id: string, name: string, onProgress?: (fraction: number) => void): Promise<string | null>
   /**
-   * The open dialog for a `.prose` file and the bytes of the file chosen, or null if the user cancelled.
-   * (The dialog and the read are one step in Rust: the page never names a path to read.)
+   * The open dialog for a `.prose` file, then the file chosen unpacked where it is, entry by entry, into a new
+   * search folder (the Rust side: the page never names a path, and holds nothing of the archive), `onProgress`
+   * told how far (0–1). The new search's id, or null if the user cancelled. A backend without it opens archives
+   * in memory (`openArchive`, `importEntries`).
    */
-  openArchive(): Promise<Uint8Array | null>
-  /** Makes a search folder of the entries (see `frameEntries`): its new id. */
-  importEntries(body: Uint8Array): Promise<string>
+  importArchiveFile?(onProgress?: (fraction: number) => void): Promise<string | null>
+  /** In memory: the open dialog for a `.prose` file and the bytes of the file chosen, or null if the user cancelled. */
+  openArchive?(): Promise<Uint8Array | null>
+  /** In memory: makes a search folder of the entries (see `frameEntries`): its new id. */
+  importEntries?(body: Uint8Array): Promise<string>
+  /**
+   * The most a results archive of this backend holds: `bytes` (the search's files; absent: any size) and `files`.
+   * Absent: an archive made and opened in memory (MAX_UNPACKED, MAX_ZIP_ENTRIES).
+   */
+  archiveLimits?: { bytes?: number; files: number }
   /** Where new searches and opened results archives go (absent: a disk without folders to choose). */
   location?(): Promise<SearchesLocation>
   /**
@@ -427,10 +438,12 @@ export async function exportArchive(
     throw new ArchiveError(`The search is not saved to History (it has no ${RECORD_FILE}), so there is no archive to make.`)
   }
   const kept = listed.filter((f) => !LEFT_OUT.has(f.name))
-  // what the archive would hold, before anything is read: within what an archive opens with (MAX_UNPACKED)
-  // and what a zip without zip64 can hold (MAX_ZIP; the app writes no zip64)
+  // what the archive would hold, before anything is read: within what the backend's archives hold (the Rust
+  // side: any size, as zip64 beyond a plain zip; in memory: what opens there, MAX_UNPACKED, in a plain zip)
   const total = kept.reduce((n, f) => n + f.size, 0)
-  if (total > MAX_UNPACKED || kept.length > MAX_ZIP_ENTRIES) throw tooLargeForAnArchive(total, kept.length)
+  const limits = backend.archiveLimits ?? { bytes: MAX_UNPACKED, files: MAX_ZIP_ENTRIES }
+  if (total > (limits.bytes ?? Infinity)) throw tooLargeForAnArchive(total, limits.bytes ?? Infinity)
+  if (kept.length > limits.files) throw tooManyFilesForAnArchive(kept.length, limits.files)
   // inputs.json (small) is checked too: it cannot fail once the user has chosen where
   if (kept.some((f) => f.name === 'inputs.json')) withoutPaths(await backend.read(id, 'inputs.json'))
   return backend.saveArchive(id, archiveFileName(name), onProgress)
@@ -439,18 +452,26 @@ export async function exportArchive(
 /** The most a zip without zip64 holds: 4 GiB less a byte, and 65,535 entries. */
 export const MAX_ZIP = 2 ** 32 - 1
 export const MAX_ZIP_ENTRIES = 0xffff
+/** The most files of a results archive that the Rust side writes and opens (`archive.rs` `MAX_ENTRIES`). */
+export const MAX_ARCHIVE_FILES = 100_000
 
-/** Why a search makes no results archive: it is too large for one. */
-function tooLargeForAnArchive(bytes: number, files: number): ArchiveError {
-  const what = files > MAX_ZIP_ENTRIES ? `${files} files` : formatBytes(bytes)
+/** Why a search makes no results archive in memory: it is too large for one. */
+function tooLargeForAnArchive(bytes: number, most: number): ArchiveError {
   return new ArchiveError(
-    `This search is too large for a results archive: its results take ${what}, and a results archive holds at most ` +
-      `${formatBytes(MAX_UNPACKED)}. That is the most ProSE can open. A larger zip, over 4 GB or 65,535 files, needs ` +
-      'the zip64 format, which ProSE does not write. The search stays in History on this computer.',
+    `This search is too large for a results archive: its results take ${formatBytes(bytes)}, and a results archive holds at most ` +
+      `${formatBytes(most)} here. The search stays in History on this computer.`,
   )
 }
 
-/** The most an archive may unpack to (the zip is read into memory). */
+/** Why a search makes no results archive: it has more files than one holds. */
+function tooManyFilesForAnArchive(files: number, most: number): ArchiveError {
+  return new ArchiveError(
+    `This search is too large for a results archive: its results take ${files} files, and a results archive holds at most ` +
+      `${most.toLocaleString('en')}. The search stays in History on this computer.`,
+  )
+}
+
+/** The most an archive made or opened in memory may unpack to (the Rust side has no such limit). */
 export const MAX_UNPACKED = 3 * 1024 ** 3
 
 /**
@@ -491,7 +512,7 @@ function centralDirectory(bytes: Uint8Array): CentralEntry[] {
     }
   }
   const broken = () => new ArchiveError('This file is not a results archive: its zip directory cannot be read.')
-  const zip64 = () => new ArchiveError('This results archive uses the zip64 format, which is not supported.')
+  const zip64 = () => new ArchiveError('This results archive uses the zip64 format (a large search), which opens in the ProSE desktop app only.')
   if (eocd < 0) throw broken()
   if (eocd >= 20 && view.getUint32(eocd - 20, true) === 0x07064b50) throw zip64()
   const count = view.getUint16(eocd + 10, true)
@@ -609,15 +630,19 @@ export function frameEntries(entries: { name: string; data: Uint8Array }[]): Uin
 }
 
 /**
- * Opens the dialog for a `.prose` file (in Rust, which reads the file) and makes a search of it in History. Resolves with the new
- * search's id, or null if the user cancelled. Throws an ArchiveError that says what is wrong.
+ * Opens the dialog for a `.prose` file and makes a search of it in History: the Rust side unpacks the file where
+ * it is (`importArchiveFile`, `onProgress` told how far, 0–1); a backend without it reads the file into memory.
+ * Resolves with the new search's id, or null if the user cancelled. Throws an ArchiveError that says what is wrong.
  */
-export async function importArchive(backend: HistoryBackend): Promise<string | null> {
+export async function importArchive(backend: HistoryBackend, onProgress?: (fraction: number) => void): Promise<string | null> {
+  if (backend.importArchiveFile) return backend.importArchiveFile(onProgress)
+  if (!backend.openArchive) throw new ArchiveError('Results archives cannot be opened here.')
   const bytes = await backend.openArchive()
   return bytes === null ? null : importArchiveBytes(backend, bytes)
 }
 
-/** As `importArchive`, for the bytes of a results archive. */
+/** As `importArchive`, for the bytes of a results archive (read in memory). */
 export async function importArchiveBytes(backend: HistoryBackend, bytes: Uint8Array): Promise<string> {
+  if (!backend.importEntries) throw new ArchiveError('Results archives cannot be opened here.')
   return backend.importEntries(frameEntries(unpackArchive(bytes)))
 }

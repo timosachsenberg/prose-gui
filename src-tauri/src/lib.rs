@@ -22,8 +22,8 @@
 //!   `history_delete(searchId)`, `history_files(searchId)` (the regular files of the folder, for a results
 //!   archive), `save_archive_file(searchId, name)` (a save dialog, then the search's archive zip written there
 //!   entry by entry: `archive`; events `archive://progress` `{ searchId, written, total }`),
-//!   `open_archive_file()` (the open dialog, then the bytes of the file chosen; empty if
-//!   cancelled) and `history_import(body)` (the entries of an archive in a fresh folder -> the new id),
+//!   `import_archive_file()` (the open dialog, then the archive chosen unpacked entry by entry into a fresh
+//!   folder -> the new id, or null if cancelled; events `archive://import-progress` `{ written, total }`),
 //!   `save_curation(searchId, curation)` (the user's marks of the PSMs: the folder's `curation.json`). At
 //!   startup the partial folders of interrupted searches are swept (`history::sweep_in`).
 //! - where the searches are (`location`): `searches_location()` -> `{ folder, isDefault, defaultFolder }` (where new
@@ -646,46 +646,55 @@ async fn history_files(
     .await
 }
 
-/// The entries of a results archive (see `history::frame`; the raw body of the call) as a new search.
-#[tauri::command]
-async fn history_import(
-    app: AppHandle,
-    request: tauri::ipc::Request<'_>,
-) -> Result<String, String> {
-    let tauri::ipc::InvokeBody::Raw(body) = request.body() else {
-        return Err("The archive's entries are missing.".to_string());
-    };
-    let body = body.clone();
-    on_searches(&app, move |dir| history::import(&dir, &body)).await
+/// How far the opening of a results archive is (`archive://import-progress`): the bytes unpacked.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ImportProgress {
+    written: u64,
+    total: u64,
 }
 
-/// A results archive: the open dialog (in Rust: the page never names a path) and the bytes of the file the
-/// user chose, as raw bytes. Cancelled: an empty body (a results archive is never empty; it is refused). The
-/// dialog offers `.prose` files first and any file second (the page checks what the file holds).
+/// A results archive as a new search: the open dialog (in Rust: the page never names a path), then the file
+/// the user chose unpacked entry by entry into a fresh search folder (`history::import_archive`: nothing of
+/// it is held in memory), with `archive://import-progress` as it goes (at most once per percent). -> the new
+/// id, or null if cancelled. The dialog offers `.prose` files first and any file second (what the file holds
+/// is checked as it is read).
 #[tauri::command]
-async fn open_archive_file(app: AppHandle) -> Result<Response, String> {
+async fn import_archive_file(app: AppHandle) -> Result<Option<String>, String> {
+    let data = data_dir(&app)?;
     tauri::async_runtime::spawn_blocking(move || {
-        if let Some(path) = test_dialog_path() {
-            return history::read_chosen_archive(&path);
-        }
-        let chosen = app
-            .dialog()
-            .file()
-            .add_filter("ProSE results archive", &["prose"])
-            .add_filter("All files", &["*"])
-            .set_title("Open a results archive")
-            .blocking_pick_file();
-        match chosen {
-            None => Ok(Vec::new()),
-            Some(path) => {
-                let path = path.into_path().map_err(|e| e.to_string())?;
-                history::read_chosen_archive(&path)
+        let path = match test_dialog_path() {
+            Some(path) => path,
+            None => {
+                let chosen = app
+                    .dialog()
+                    .file()
+                    .add_filter("ProSE results archive", &["prose"])
+                    .add_filter("All files", &["*"])
+                    .set_title("Open a results archive")
+                    .blocking_pick_file();
+                match chosen {
+                    None => return Ok(None),
+                    Some(path) => path.into_path().map_err(|e| e.to_string())?,
+                }
             }
-        }
+        };
+        let dir = Locations::load(&data).current;
+        let mut shown = None;
+        let mut progress = |written: u64, total: u64| {
+            let percent = written.saturating_mul(100) / total.max(1);
+            if shown != Some(percent) {
+                shown = Some(percent);
+                let _ = app.emit(
+                    "archive://import-progress",
+                    ImportProgress { written, total },
+                );
+            }
+        };
+        history::import_archive(&dir, &path, &mut progress).map(Some)
     })
     .await
     .map_err(|e| e.to_string())?
-    .map(Response::new)
 }
 
 /// Where new searches go (`location`).
@@ -1205,9 +1214,8 @@ pub fn run() {
             history_rename,
             history_delete,
             history_files,
-            history_import,
             save_curation,
-            open_archive_file,
+            import_archive_file,
             open_qpx_folder,
             history_import_qpx,
             save_archive_file,

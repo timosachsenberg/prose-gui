@@ -4,10 +4,10 @@
 //
 // Commands (src-tauri/src/lib.rs): tool_info, start_search, cancel_search, read_search_file,
 // inspect_files, cpu_count, example_files, save_text, save_search_file, history_list, history_save_record,
-// history_save_proteins, history_rename, history_delete, history_files, history_import, open_archive_file,
+// history_save_proteins, history_rename, history_delete, history_files, import_archive_file,
 // save_archive_file, save_curation, answer_close, save_setup_file, open_setup_file, use_opened_setup_file,
 // forget_setup_file, set_setup_unsaved, menu_state, searches_location, choose_searches_folder, use_default_searches_folder.
-// Events: search://progress, search://done, search://failed, archive://progress, app://close-requested,
+// Events: search://progress, search://done, search://failed, archive://progress, archive://import-progress, app://close-requested,
 // menu://action. The system's dialogs open one at a time (`oneDialog`). The window's
 // theme (`windowTheme`, `onWindowThemeChanged`, `setWindowTheme`).
 
@@ -17,7 +17,7 @@ import { getCurrentWebview } from '@tauri-apps/api/webview'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { open } from '@tauri-apps/plugin-dialog'
 import { oneDialog } from './dialogs'
-import type { HistoryBackend, HistoryEntry, SearchesLocation } from './history/history'
+import { MAX_ARCHIVE_FILES, type HistoryBackend, type HistoryEntry, type SearchesLocation } from './history/history'
 import type { ByteRange, SearchFiles } from './results/read'
 import { errorText } from './format/error'
 
@@ -375,7 +375,7 @@ export function importQpxFolder(folder: string, record: string, inputs: string):
 
 /**
  * History's disk: the Rust commands (src-tauri/src/history.rs). A results archive is written by the Rust side
- * (src-tauri/src/archive.rs); an opened one and the entries of an import go as raw bodies, not as JSON numbers.
+ * and opened by it (src-tauri/src/archive.rs, history.rs), entry by entry: nothing of an archive comes to the page.
  */
 export const desktopBackend: HistoryBackend = {
   list: () => invoke<HistoryEntry[]>('history_list'),
@@ -399,13 +399,23 @@ export const desktopBackend: HistoryBackend = {
         unlisten?.()
       }
     }),
-  // the dialog and the read are one command: the page never names a path (cancelled: an empty body)
-  openArchive: () =>
+  // the dialog and the unpacking are one command: the page never names a path, and nothing of the archive comes
+  // here (it is unpacked from disk to disk, entry by entry; `archive://import-progress` says how far)
+  importArchiveFile: (onProgress) =>
     oneDialog(null, async () => {
-      const bytes = new Uint8Array(await invoke<ArrayBuffer>('open_archive_file'))
-      return bytes.length === 0 ? null : bytes
+      const unlisten = onProgress
+        ? await listen<{ written: number; total: number }>('archive://import-progress', (e) => {
+            onProgress(e.payload.total > 0 ? e.payload.written / e.payload.total : 1)
+          })
+        : null
+      try {
+        return await invoke<string | null>('import_archive_file')
+      } finally {
+        unlisten?.()
+      }
     }),
-  importEntries: (body) => invoke<string>('history_import', body),
+  // any size (a large archive is a zip64); the files as `archive.rs` `MAX_ENTRIES`
+  archiveLimits: { files: MAX_ARCHIVE_FILES },
   location: () => invoke<SearchesLocation>('searches_location'),
   // the dialog and the check are one command: the page never names a path
   chooseLocation: () => oneDialog(null, () => invoke<SearchesLocation | null>('choose_searches_folder')),

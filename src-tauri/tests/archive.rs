@@ -9,9 +9,10 @@ mod common;
 use common::TempDir;
 use flate2::read::DeflateDecoder;
 use prose_desktop_lib::archive::{
-    archive_files, dos_time, without_paths, write_archive, ZipWriter, INPUTS, RECORD,
+    archive_files, dos_time, extract, read_directory, without_paths, write_archive, ZipEntry,
+    ZipWriter, INPUTS, RECORD,
 };
-use prose_desktop_lib::history::save_record;
+use prose_desktop_lib::history::{import_archive, list, save_record};
 use std::fs;
 use std::io::{Cursor, Read};
 use std::path::{Path, PathBuf};
@@ -302,4 +303,457 @@ fn an_empty_zip_is_a_zip() {
     let bytes = zip.finish().unwrap().into_inner();
     assert_eq!(bytes.len(), 22);
     assert!(unzip(&bytes).is_empty());
+}
+
+//------------------------------------------------------------------------------------------------
+// Opening an archive
+
+/// The files of a folder, by their names relative to it.
+fn files_of(root: &Path) -> Vec<(String, Vec<u8>)> {
+    fn walk(root: &Path, dir: &Path, out: &mut Vec<(String, Vec<u8>)>) {
+        for entry in fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                walk(root, &path, out);
+            } else {
+                let name = path
+                    .strip_prefix(root)
+                    .unwrap()
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                out.push((name, fs::read(&path).unwrap()));
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(root, root, &mut out);
+    out.sort();
+    out
+}
+
+/// A zip of `entries` (name, data, stored), plain or zip64.
+fn zip_of(entries: &[(&str, &[u8], bool)], zip64: bool) -> Vec<u8> {
+    let mut zip = ZipWriter::with_format(Cursor::new(Vec::new()), fixture_time(), zip64);
+    for (name, data, store) in entries {
+        zip.add(name, &mut &data[..], *store, &mut |_| {}).unwrap();
+    }
+    zip.finish().unwrap().into_inner()
+}
+
+fn directory_of(bytes: &[u8]) -> Result<Vec<ZipEntry>, String> {
+    read_directory(&mut Cursor::new(bytes), bytes.len() as u64)
+}
+
+fn unpacked(bytes: &[u8], entry: &ZipEntry) -> Result<Vec<u8>, String> {
+    let mut out = Vec::new();
+    extract(
+        &mut Cursor::new(bytes),
+        bytes.len() as u64,
+        entry,
+        &mut out,
+        &mut |_| {},
+    )?;
+    Ok(out)
+}
+
+const SMALL_RECORD: &str = r#"{"schema":1,"id":"7-0","name":"Small"}"#;
+
+#[test]
+fn an_archive_opens_as_the_search_it_was_made_of() {
+    let tmp = TempDir::new("archive-import");
+    let dir = tmp.path().join("searches");
+    folder(&dir, "1-0");
+    let target = tmp.path().join("Fixture.prose");
+    write_archive(&dir, "1-0", &target, fixture_time(), &mut |_, _| {}).unwrap();
+
+    let other = tmp.path().join("elsewhere");
+    let mut reports = Vec::new();
+    let id = import_archive(&other, &target, &mut |written, total| {
+        reports.push((written, total))
+    })
+    .unwrap();
+    assert_ne!(id, "1-0");
+    // the folder has what the archive holds: the files as they were, but the record (its id, the import
+    // mark) and inputs.json (names only), and without what an archive leaves out
+    let got = files_of(&other.join(&id));
+    let names: Vec<&str> = got.iter().map(|(n, _)| n.as_str()).collect();
+    assert_eq!(
+        names,
+        [
+            "empty.txt",
+            INPUTS,
+            "mods/1__a_PTMStats.tsv",
+            "proteins.fasta",
+            "qpx/quantms.psm.parquet",
+            "qpx/runs/1__a.mz.parquet",
+            RECORD
+        ]
+    );
+    for (name, data) in &got {
+        if name != RECORD && name != INPUTS {
+            assert_eq!(
+                data,
+                &fs::read(dir.join("1-0").join(name)).unwrap(),
+                "{name}"
+            );
+        }
+    }
+    let record: serde_json::Value =
+        serde_json::from_slice(&fs::read(other.join(&id).join(RECORD)).unwrap()).unwrap();
+    assert_eq!(record["id"], id.as_str());
+    assert_eq!(record["imported"], true);
+    assert_eq!(record["name"], "Fixture");
+    // History lists it, and nothing else is left in the searches folder (no partial folder)
+    let entries = list(&other);
+    assert_eq!(entries.len(), 1);
+    assert_eq!(fs::read_dir(&other).unwrap().count(), 1);
+    // the progress: up to the total of the files, never back
+    let total = reports[0].1;
+    assert!(total > 0);
+    assert!(reports
+        .windows(2)
+        .all(|w| w[0].0 <= w[1].0 && w[1].1 == total));
+    assert!(reports.last().unwrap().0 <= total);
+}
+
+#[test]
+fn a_zip64_archive_is_written_and_read() {
+    let big: Vec<u8> = (0..300_000u32)
+        .flat_map(|i| (i % 251).to_le_bytes())
+        .collect();
+    let entries: [(&str, &[u8], bool); 4] = [
+        (RECORD, SMALL_RECORD.as_bytes(), false),
+        ("qpx/quantms.psm.parquet", &big, true),
+        ("proteins.fasta", &big, false),
+        ("empty.txt", b"", false),
+    ];
+    let plain = zip_of(&entries, false);
+    let zip64 = zip_of(&entries, true);
+    // the plain zip is the one earlier versions read; the zip64 one has the zip64 end record and its locator
+    // before the end record, whose counts and offsets are all ones
+    assert!(unzip(&plain).len() == 4);
+    let eocd = zip64.len() - 22;
+    assert_eq!(u32_at(&zip64, eocd), 0x0605_4b50);
+    assert_eq!(u16_at(&zip64, eocd + 10), 0xffff);
+    assert_eq!(u32_at(&zip64, eocd + 16), 0xffff_ffff);
+    assert_eq!(u32_at(&zip64, eocd - 20), 0x0706_4b50);
+    assert_eq!(u32_at(&zip64, eocd - 20 - 56), 0x0606_4b50);
+    for bytes in [&plain, &zip64] {
+        let directory = directory_of(bytes).unwrap();
+        assert_eq!(
+            directory
+                .iter()
+                .map(|e| e.name.as_str())
+                .collect::<Vec<_>>(),
+            entries.iter().map(|e| e.0).collect::<Vec<_>>()
+        );
+        for (entry, (_, data, store)) in directory.iter().zip(&entries) {
+            assert_eq!(entry.size, data.len() as u64);
+            assert_eq!(entry.method, if *store { 0 } else { 8 });
+            assert_eq!(&unpacked(bytes, entry).unwrap(), data, "{}", entry.name);
+        }
+    }
+    // and it opens as a search
+    let tmp = TempDir::new("archive-zip64");
+    let file = tmp.path().join("big.prose");
+    fs::write(&file, &zip64).unwrap();
+    let dir = tmp.path().join("searches");
+    let id = import_archive(&dir, &file, &mut |_, _| {}).unwrap();
+    assert_eq!(fs::read(dir.join(&id).join("proteins.fasta")).unwrap(), big);
+    assert_eq!(
+        fs::read(dir.join(&id).join("qpx/quantms.psm.parquet")).unwrap(),
+        big
+    );
+}
+
+/// The entries of sizes beyond 4 GiB: the zip64 fields are 64 bits wide where they are written. (A sparse
+/// source and a sink that only counts: nothing of that size is held or written.)
+#[test]
+fn a_zip64_entry_holds_more_than_four_gib() {
+    struct Zeros(u64);
+    impl Read for Zeros {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            let n = (buf.len() as u64).min(self.0) as usize;
+            buf[..n].fill(0);
+            self.0 -= n as u64;
+            Ok(n)
+        }
+    }
+    /// A seekable sink that keeps only the last bytes written (the directory and the end records).
+    struct Tail {
+        at: u64,
+        end: u64,
+        kept: Vec<(u64, Vec<u8>)>,
+    }
+    impl std::io::Write for Tail {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            // (the entry's data is zeros: only what is not all zeros is kept)
+            if buf.iter().any(|&b| b != 0) || buf.len() < 4096 {
+                self.kept.push((self.at, buf.to_vec()));
+            }
+            self.at += buf.len() as u64;
+            self.end = self.end.max(self.at);
+            Ok(buf.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    impl std::io::Seek for Tail {
+        fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64> {
+            self.at = match pos {
+                std::io::SeekFrom::Start(n) => n,
+                std::io::SeekFrom::Current(n) => (self.at as i64 + n) as u64,
+                std::io::SeekFrom::End(n) => (self.end as i64 + n) as u64,
+            };
+            Ok(self.at)
+        }
+    }
+    let size = (4u64 << 30) + 123;
+    let sink = Tail {
+        at: 0,
+        end: 0,
+        kept: Vec::new(),
+    };
+    let mut zip = ZipWriter::with_format(sink, fixture_time(), true);
+    zip.add("qpx/a.parquet", &mut Zeros(size), true, &mut |_| {})
+        .unwrap();
+    zip.add("after.txt", &mut &b"after"[..], true, &mut |_| {})
+        .unwrap();
+    let sink = zip.finish().unwrap();
+    // what was written, as a sparse file: read back through the reader
+    struct Sparse {
+        at: u64,
+        end: u64,
+        kept: Vec<(u64, Vec<u8>)>,
+    }
+    impl Read for Sparse {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            let n = (buf.len() as u64).min(self.end - self.at.min(self.end)) as usize;
+            buf[..n].fill(0);
+            // later writes win (the sizes patched into a header)
+            for (start, data) in &self.kept {
+                let (from, to) = (
+                    self.at.max(*start),
+                    (self.at + n as u64).min(start + data.len() as u64),
+                );
+                if from < to {
+                    buf[(from - self.at) as usize..(to - self.at) as usize]
+                        .copy_from_slice(&data[(from - start) as usize..(to - start) as usize]);
+                }
+            }
+            self.at += n as u64;
+            Ok(n)
+        }
+    }
+    impl std::io::Seek for Sparse {
+        fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64> {
+            self.at = match pos {
+                std::io::SeekFrom::Start(n) => n,
+                std::io::SeekFrom::Current(n) => (self.at as i64 + n) as u64,
+                std::io::SeekFrom::End(n) => (self.end as i64 + n) as u64,
+            };
+            Ok(self.at)
+        }
+    }
+    let mut file = Sparse {
+        at: 0,
+        end: sink.end,
+        kept: sink.kept,
+    };
+    assert!(file.end > size);
+    let end = file.end;
+    let directory = read_directory(&mut file, end).unwrap();
+    assert_eq!(directory.len(), 2);
+    assert_eq!(directory[0].size, size);
+    assert_eq!(directory[0].compressed, size);
+    assert_eq!(directory[0].offset, 0);
+    assert!(directory[1].offset > u64::from(u32::MAX));
+    let mut out = Vec::new();
+    extract(&mut file, end, &directory[1], &mut out, &mut |_| {}).unwrap();
+    assert_eq!(out, b"after");
+}
+
+#[test]
+fn a_file_that_is_not_an_archive_is_refused_and_leaves_nothing() {
+    let tmp = TempDir::new("archive-refused-import");
+    let dir = tmp.path().join("searches");
+    let refused = |name: &str, bytes: &[u8]| -> String {
+        let file = tmp.path().join(name);
+        fs::write(&file, bytes).unwrap();
+        let message = import_archive(&dir, &file, &mut |_, _| {}).unwrap_err();
+        // no folder, partial or finished
+        assert!(
+            !dir.exists() || fs::read_dir(&dir).unwrap().count() == 0,
+            "{name} left something"
+        );
+        message
+    };
+    let record = SMALL_RECORD.as_bytes();
+    assert!(refused(
+        "text.prose",
+        b"hello, this is text and not a zip file at all"
+    )
+    .contains("not a zip file"));
+    assert!(refused("short.prose", b"PK").contains("not a zip file"));
+    let good = zip_of(
+        &[(RECORD, record, false), ("qpx/a.parquet", b"PAR1", true)],
+        false,
+    );
+    // cut short: no end record, or a directory that does not lie in the file
+    assert!(refused("cut.prose", &good[..good.len() - 30]).contains("zip directory cannot be read"));
+    // no record, a record that is none, a newer one
+    assert!(
+        refused("none.prose", &zip_of(&[("a.txt", b"x", false)], false)).contains("no search.json")
+    );
+    assert!(
+        refused("json.prose", &zip_of(&[(RECORD, b"{ no", false)], false))
+            .contains("not valid JSON")
+    );
+    assert!(
+        refused("schema.prose", &zip_of(&[(RECORD, b"{}", false)], false)).contains("no schema")
+    );
+    assert!(refused(
+        "newer.prose",
+        &zip_of(&[(RECORD, br#"{"schema":99,"id":"1-0"}"#, false)], false)
+    )
+    .contains("newer version"));
+    // names that are not plain names inside the folder, or twice, or a file that is also a folder
+    for name in ["../x", "/abs/x", "a/../../x", "C:/x", "a\\b", ".lock"] {
+        let message = refused(
+            "name.prose",
+            &zip_of(&[(RECORD, record, false), (name, b"x", false)], false),
+        );
+        assert!(
+            message.contains("not a plain file name"),
+            "{name}: {message}"
+        );
+    }
+    assert!(refused(
+        "twice.prose",
+        &zip_of(
+            &[
+                (RECORD, record, false),
+                ("a", b"x", false),
+                ("a", b"y", false)
+            ],
+            false
+        )
+    )
+    .contains("twice"));
+    assert!(refused(
+        "clash.prose",
+        &zip_of(
+            &[
+                (RECORD, record, false),
+                ("a", b"x", false),
+                ("a/b", b"y", false)
+            ],
+            false
+        )
+    )
+    .contains("a file and a folder"));
+}
+
+#[test]
+fn a_damaged_or_dishonest_archive_is_refused_as_it_is_unpacked() {
+    let tmp = TempDir::new("archive-damaged");
+    let dir = tmp.path().join("searches");
+    let data: Vec<u8> = b"PEPTIDEK".repeat(4000);
+    let good = zip_of(
+        &[
+            (RECORD, SMALL_RECORD.as_bytes(), false),
+            ("proteins.fasta", &data, false),
+            ("qpx/a.parquet", &data, true),
+        ],
+        false,
+    );
+    let directory = directory_of(&good).unwrap();
+    let central = |bytes: &[u8], name: &str| -> usize {
+        // the central record of `name`
+        let needle = name.as_bytes();
+        (0..bytes.len() - needle.len())
+            .rev()
+            .find(|&at| &bytes[at..at + needle.len()] == needle)
+            .unwrap()
+            - 46
+    };
+    let refused = |name: &str, bytes: &[u8]| -> String {
+        let file = tmp.path().join(name);
+        fs::write(&file, bytes).unwrap();
+        let message = import_archive(&dir, &file, &mut |_, _| {}).unwrap_err();
+        assert!(
+            !dir.exists() || fs::read_dir(&dir).unwrap().count() == 0,
+            "{name} left something"
+        );
+        message
+    };
+    // a flipped byte of the stored data: another checksum
+    let mut flipped = good.clone();
+    let at = directory[2].offset as usize + 30 + "qpx/a.parquet".len() + 100;
+    flipped[at] ^= 0xff;
+    assert!(refused("crc.prose", &flipped).contains("another checksum"));
+    // a deflated entry that unpacks to more than the directory says (a zip bomb's lie): nothing beyond is written
+    let mut smaller = good.clone();
+    let record = central(&smaller, "proteins.fasta");
+    smaller[record + 24..record + 28].copy_from_slice(&100u32.to_le_bytes());
+    assert!(refused("bomb.prose", &smaller).contains("larger than the zip directory says"));
+    // ... or to less
+    let mut larger = good.clone();
+    larger[record + 24..record + 28].copy_from_slice(&(data.len() as u32 + 1).to_le_bytes());
+    assert!(refused("short.prose", &larger).contains("shorter than the zip directory says"));
+    // an encrypted entry, a symbolic link, another compression
+    let mut encrypted = good.clone();
+    encrypted[record + 8] |= 1;
+    assert!(refused("encrypted.prose", &encrypted).contains("encrypted"));
+    let mut link = good.clone();
+    link[record + 5] = 3; // made on Unix
+    link[record + 38..record + 42].copy_from_slice(&(0o120777u32 << 16).to_le_bytes());
+    assert!(refused("link.prose", &link).contains("contains a link"));
+    let mut method = good.clone();
+    method[record + 10] = 12; // bzip2
+    assert!(refused("method.prose", &method).contains("not supported"));
+    // an entry beyond the file
+    let mut beyond = good.clone();
+    beyond[record + 42..record + 46].copy_from_slice(&(good.len() as u32).to_le_bytes());
+    assert!(refused("beyond.prose", &beyond).contains("does not lie in the file"));
+    // and the good one opens
+    let file = tmp.path().join("good.prose");
+    fs::write(&file, &good).unwrap();
+    import_archive(&dir, &file, &mut |_, _| {}).unwrap();
+}
+
+#[test]
+fn a_zip_of_another_tool_opens() {
+    // made on Unix with folders listed, a data descriptor's flag and a comment: read by the directory
+    let record = SMALL_RECORD.as_bytes();
+    let mut bytes = zip_of(
+        &[
+            (RECORD, record, false),
+            ("qpx/", b"", true),
+            ("qpx/a.parquet", b"PAR1", true),
+        ],
+        false,
+    );
+    let comment = b"made elsewhere";
+    let eocd = bytes.len() - 22;
+    bytes[eocd + 20..eocd + 22].copy_from_slice(&(comment.len() as u16).to_le_bytes());
+    bytes.extend_from_slice(comment);
+    let directory = directory_of(&bytes).unwrap();
+    assert_eq!(
+        directory
+            .iter()
+            .map(|e| e.name.as_str())
+            .collect::<Vec<_>>(),
+        [RECORD, "qpx/a.parquet"]
+    );
+    let tmp = TempDir::new("archive-other");
+    let file = tmp.path().join("other.prose");
+    fs::write(&file, &bytes).unwrap();
+    let dir = tmp.path().join("searches");
+    let id = import_archive(&dir, &file, &mut |_, _| {}).unwrap();
+    assert_eq!(
+        fs::read(dir.join(&id).join("qpx/a.parquet")).unwrap(),
+        b"PAR1"
+    );
 }
