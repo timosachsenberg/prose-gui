@@ -37,11 +37,11 @@ import {
 } from './derive'
 import {
   chunkRange,
-  footerOf,
-  hasColumn,
+  columnRuns,
   metadataOfTail,
   openParquet,
   partOfParquet,
+  partsOfParquet,
   readLeaf,
   readStructList,
   startZstd,
@@ -205,7 +205,6 @@ interface ListLeaf<T> {
 /** The PSM rows of the search: the columns of quantms.psm.parquet. */
 interface PsmRows {
   count: number
-  footer: Map<string, string>
   sequence: unknown[]
   charge: Float64Array
   pep: Float64Array
@@ -246,63 +245,133 @@ function listLeaf<T>(file: ParquetFile, column: string, mode: LeafMode = 'values
 /** A psm file without the columns of -qpx_extended. */
 class NotExtended extends Error {}
 
-async function readRows(name: string, bytes: Uint8Array): Promise<PsmRows> {
-  const flat = <T>(file: ParquetFile, column: string) => readLeaf(file, [column]).values as T
+/** The columns of quantms.psm.parquet that the PSM rows are read from. */
+const ROW_COLUMNS = [
+  'sequence',
+  'charge',
+  'posterior_error_probability',
+  'is_decoy',
+  'additional_scores',
+  'modifications',
+  'psm_id',
+  'rt',
+  'observed_mz',
+  'calculated_mz',
+  ...EXTENDED_COLUMNS,
+]
+
+/**
+ * The fewest rows read at a time: the row groups of quantms.psm.parquet are read one after the other (ProSE writes
+ * about a million rows per group), small ones together until they have this many rows.
+ */
+const BATCH_ROWS = 1 << 17
+
+/** The metadata of a Parquet file from its last bytes (its footer); null if the file is not there. */
+async function metadataOf(files: SearchFiles, name: string): Promise<FileMetaData | null> {
+  const tail = async (range: ByteRange) => {
+    try {
+      return await files(name, range)
+    } catch (e) {
+      if (isNotFound(e)) return null
+      throw new Error(`${name}: ${errorText(e)}`, { cause: e })
+    }
+  }
+  const first = await tail({ tail: 1 << 16 })
+  if (!first) return null
   return inFile(name, async () => {
-    const qpx = openParquet(bytes)
-    if (EXTENDED_COLUMNS.some((c) => !hasColumn(qpx, c))) {
-      throw new NotExtended(`${name}: the QPX psm view has not the columns of ProSE's -qpx_extended`)
+    let metadata = metadataOfTail(first)
+    if (typeof metadata === 'number') {
+      const more = await tail({ tail: metadata })
+      if (!more) throw new FileNotFound(name)
+      metadata = metadataOfTail(more)
     }
-    const scores = readStructList(qpx, 'additional_scores', ['score_name', 'score_value'], { score_name: 'codes' })
-    const evidence = readStructList(qpx, 'protein_mappings', ['accession', 'aa_before', 'aa_after', 'start', 'end'])
-    // the modifications (a list of structs with a list): as leaves, without an object per row; only if some row has any
-    const modLeaf = readLeaf(qpx, ['modifications', 'list', 'element', 'name'], 'codes')
-    const modified = modLeaf.offsets![qpx.rows] > 0
-    let modifications: Modifications | null = null
-    if (modified) {
-      const accession = readLeaf(qpx, ['modifications', 'list', 'element', 'accession'], 'codes')
-      const position = readLeaf(qpx, ['modifications', 'list', 'element', 'positions', 'list', 'element', 'position'])
-      modifications = {
-        offsets: modLeaf.offsets!,
-        name: modLeaf.values as Int32Array,
-        names: modLeaf.dictionary ?? [],
-        accession: accession.values as Int32Array,
-        accessions: accession.dictionary ?? [],
-        positionOffsets: position.offsets2!,
-        position: position.values as Float64Array,
-      }
-      if (position.offsets![qpx.rows] !== modLeaf.offsets![qpx.rows]) throw new Error('the modifications and their positions do not agree')
-    }
-    return {
-      count: qpx.rows,
-      footer: footerOf(qpx),
-      sequence: flat<unknown[]>(qpx, 'sequence'),
-      charge: flat<Float64Array>(qpx, 'charge'),
-      pep: flat<Float64Array>(qpx, 'posterior_error_probability'),
-      decoy: flat<unknown[]>(qpx, 'is_decoy'),
-      scores: {
-        offsets: scores.offsets,
-        name: scores.score_name as Int32Array,
-        names: scores.dictionaries.score_name ?? [],
-        value: scores.score_value as Float64Array,
-      },
-      modifications,
-      psmId: flat<Float64Array>(qpx, 'psm_id'),
-      nativeId: flat<unknown[]>(qpx, 'spectrum_reference'),
-      rt: flat<Float32Array>(qpx, 'rt'),
-      observedMz: flat<Float32Array>(qpx, 'observed_mz'),
-      calculatedMz: flat<Float32Array>(qpx, 'calculated_mz'),
-      isotope: flat<Float64Array>(qpx, 'isotope_error'),
-      evidence: {
-        offsets: evidence.offsets,
-        accession: evidence.accession as unknown[],
-        aa_before: evidence.aa_before as unknown[],
-        aa_after: evidence.aa_after as unknown[],
-        start: evidence.start as Float64Array,
-        end: evidence.end as Float64Array,
-      },
-    }
+    if (typeof metadata === 'number') throw new Error('its footer cannot be read')
+    return metadata
   })
+}
+
+/**
+ * The row groups of a file in batches of at least `batchRows` rows (the last may have fewer), in order: the
+ * groups of each batch and its first row.
+ */
+function batchesOf(metadata: FileMetaData, batchRows: number): { groups: number[]; from: number; rows: number }[] {
+  const batches: { groups: number[]; from: number; rows: number }[] = []
+  let from = 0
+  let current: { groups: number[]; from: number; rows: number } | null = null
+  metadata.row_groups.forEach((group, g) => {
+    if (!current) batches.push((current = { groups: [], from, rows: 0 }))
+    current.groups.push(g)
+    current.rows += Number(group.num_rows)
+    from += Number(group.num_rows)
+    if (current.rows >= batchRows) current = null
+  })
+  return batches
+}
+
+/** The columns `columns` of the row groups `groups` of the file `name`: only their bytes are read. */
+async function readColumns(files: SearchFiles, name: string, metadata: FileMetaData, groups: number[], columns: string[]): Promise<ParquetFile> {
+  const parts = await Promise.all(
+    columnRuns(metadata, groups, columns).map(async ({ start, end }) => {
+      const bytes = await files(name, { offset: start, length: end - start })
+      if (bytes.byteLength !== end - start) throw new Error(`${bytes.byteLength} bytes at ${start}, expected ${end - start}`)
+      return { bytes, base: start }
+    }),
+  )
+  return partsOfParquet(metadata, parts)
+}
+
+/** The PSM rows of the row groups `groups` of a psm file (whose ROW_COLUMNS of these groups are read). */
+function readRows(qpx: ParquetFile, groups: number[]): PsmRows {
+  const flat = <T>(column: string) => readLeaf(qpx, [column], 'values', groups).values as T
+  const scores = readStructList(qpx, 'additional_scores', ['score_name', 'score_value'], { score_name: 'codes' }, groups)
+  const evidence = readStructList(qpx, 'protein_mappings', ['accession', 'aa_before', 'aa_after', 'start', 'end'], {}, groups)
+  // the modifications (a list of structs with a list): as leaves, without an object per row; only if some row has any
+  const modLeaf = readLeaf(qpx, ['modifications', 'list', 'element', 'name'], 'codes', groups)
+  const count = modLeaf.rows
+  const modified = modLeaf.offsets![count] > 0
+  let modifications: Modifications | null = null
+  if (modified) {
+    const accession = readLeaf(qpx, ['modifications', 'list', 'element', 'accession'], 'codes', groups)
+    const position = readLeaf(qpx, ['modifications', 'list', 'element', 'positions', 'list', 'element', 'position'], 'values', groups)
+    modifications = {
+      offsets: modLeaf.offsets!,
+      name: modLeaf.values as Int32Array,
+      names: modLeaf.dictionary ?? [],
+      accession: accession.values as Int32Array,
+      accessions: accession.dictionary ?? [],
+      positionOffsets: position.offsets2!,
+      position: position.values as Float64Array,
+    }
+    if (position.offsets![count] !== modLeaf.offsets![count]) throw new Error('the modifications and their positions do not agree')
+  }
+  return {
+    count,
+    sequence: flat<unknown[]>('sequence'),
+    charge: flat<Float64Array>('charge'),
+    pep: flat<Float64Array>('posterior_error_probability'),
+    decoy: flat<unknown[]>('is_decoy'),
+    scores: {
+      offsets: scores.offsets,
+      name: scores.score_name as Int32Array,
+      names: scores.dictionaries.score_name ?? [],
+      value: scores.score_value as Float64Array,
+    },
+    modifications,
+    psmId: flat<Float64Array>('psm_id'),
+    nativeId: flat<unknown[]>('spectrum_reference'),
+    rt: flat<Float32Array>('rt'),
+    observedMz: flat<Float32Array>('observed_mz'),
+    calculatedMz: flat<Float32Array>('calculated_mz'),
+    isotope: flat<Float64Array>('isotope_error'),
+    evidence: {
+      offsets: evidence.offsets,
+      accession: evidence.accession as unknown[],
+      aa_before: evidence.aa_before as unknown[],
+      aa_after: evidence.aa_after as unknown[],
+      start: evidence.start as Float64Array,
+      end: evidence.end as Float64Array,
+    },
+  }
 }
 
 //------------------------------------------------------------------------------
@@ -348,8 +417,12 @@ const isQValueName = (name: string) => name.toLowerCase().replace(/[^a-z]/g, '')
 //------------------------------------------------------------------------------
 // The reader
 
-/** Reads the search folder that `files` serves. */
-export async function readSearch(files: SearchFiles): Promise<SearchResult> {
+/**
+ * Reads the search folder that `files` serves. The PSM rows (quantms.psm.parquet) are read a batch of row groups
+ * at a time, of at least `options.batchRows` rows (BATCH_ROWS), and only the columns the tables are made of: the
+ * file is never in memory as a whole, and what is decoded of a batch is let go before the next.
+ */
+export async function readSearch(files: SearchFiles, options: { batchRows?: number } = {}): Promise<SearchResult> {
   const zstd = startZstd()
   const warnings: string[] = []
   /** a file that may be missing: null if it does not exist */
@@ -369,36 +442,34 @@ export async function readSearch(files: SearchFiles): Promise<SearchResult> {
   )
   await zstd
 
-  const [runBytes, provenanceBytes, psmBytes, groupBytes] = await Promise.all([
+  // quantms.psm.parquet is not read as a whole: its footer here, its rows below, a batch of row groups at a time
+  const [runBytes, provenanceBytes, psmMetadata, groupBytes] = await Promise.all([
     optional(RUNS),
     optional(PROVENANCE),
-    optional(MERGED_PSMS),
+    metadataOf(files, MERGED_PSMS),
     optional(GROUPS),
   ])
   if (!runBytes || !provenanceBytes) {
     // the earlier layouts of the app's search folders: summary.yaml, or QPX files without these views
-    if (psmBytes || (await optional('summary.yaml'))) throw new OldLayoutError()
+    if (psmMetadata || (await optional('summary.yaml'))) throw new OldLayoutError()
     throw new Error(`The search folder has no results of ProSE (${RUNS}, ${PROVENANCE}).`)
   }
   const meta: SearchMeta = await inFile(`${RUNS}, ${PROVENANCE}`, () => readMeta(runBytes, provenanceBytes))
   if (meta.runs.length !== inputs.length) {
     throw new Error(`${RUNS}: ${meta.runs.length} runs, but the search has ${inputs.length} input(s).`)
   }
-  let rows: PsmRows | null = null
-  if (psmBytes) {
-    try {
-      rows = await readRows(MERGED_PSMS, psmBytes)
-    } catch (e) {
-      if (e instanceof NotExtended || (e as { cause?: unknown })?.cause instanceof NotExtended) {
-        if (await optional('summary.yaml')) throw new OldLayoutError()
-      }
-      throw e
+  if (psmMetadata) {
+    const columns = new Set(psmMetadata.schema.map((e) => e.name))
+    const missing = EXTENDED_COLUMNS.filter((c) => !columns.has(c))
+    if (missing.length > 0) {
+      if (await optional('summary.yaml')) throw new OldLayoutError()
+      throw new NotExtended(`${MERGED_PSMS}: the QPX psm view has not the columns of ProSE's -qpx_extended`)
     }
   }
   // the rows of each input in quantms.psm.parquet: input k has rows from[k] .. from[k + 1]
   const from = [0]
   meta.runs.forEach((r) => from.push(from[from.length - 1] + r.psm_rows))
-  const count = rows?.count ?? 0
+  const count = psmMetadata ? Number(psmMetadata.num_rows) : 0
   if (from[inputs.length] !== count) {
     throw new Error(`${MERGED_PSMS}: ${count} rows, but ${RUNS} gives its inputs ${from[inputs.length]}.`)
   }
@@ -531,13 +602,21 @@ export async function readSearch(files: SearchFiles): Promise<SearchResult> {
   //------------------------------------------------------------------------------
   // PSMs and their peptides
 
+  // the charges of the PSMs (for the charge<N> features): the column alone, of every row group
   let minCharge = parameterNumber(S, 'min_charge', Infinity)
   let maxCharge = parameterNumber(S, 'max_charge', -Infinity)
-  if (rows) {
-    for (const c of rows.charge) {
-      minCharge = Math.min(minCharge, c)
-      maxCharge = Math.max(maxCharge, c)
-    }
+  const batches = psmMetadata ? batchesOf(psmMetadata, options.batchRows ?? BATCH_ROWS) : []
+  if (psmMetadata) {
+    const metadata = psmMetadata
+    await inFile(MERGED_PSMS, async () => {
+      for (const batch of batches) {
+        const file = await readColumns(files, MERGED_PSMS, metadata, batch.groups, ['charge'])
+        for (const c of readLeaf(file, ['charge'], 'values', batch.groups).values as Float64Array) {
+          minCharge = Math.min(minCharge, c)
+          maxCharge = Math.max(maxCharge, c)
+        }
+      }
+    })
   }
 
   // the features: ln(hyperscore), the standard .pin features (PercolatorInfile::getStandardFeatureSet
@@ -609,6 +688,7 @@ export async function readSearch(files: SearchFiles): Promise<SearchResult> {
   const isotopeError = new Int8Array(count)
   const deltaMass = new Float64Array(count)
   const decoy = new Uint8Array(count)
+  const psmId = new Float64Array(count)
   const features = new Float64Array(count * nFeatures).fill(NaN)
   const featurePresent = new Uint8Array(nFeatures)
   featurePresent[0] = 1
@@ -633,12 +713,15 @@ export async function readSearch(files: SearchFiles): Promise<SearchResult> {
 
   const clampInt8 = (v: number) => (Number.isNaN(v) ? 0 : Math.max(-128, Math.min(127, Math.round(v))))
 
-  if (rows) {
-    const f = rows
+  for (let k = 0; k < inputs.length; k++) psmFile.fill(k, from[k], from[k + 1])
+  // the rows, a batch of row groups at a time: what is read of a batch is let go before the next is read
+  for (const batch of batches) {
+    const f = await inFile(MERGED_PSMS, async () => readRows(await readColumns(files, MERGED_PSMS, psmMetadata!, batch.groups, ROW_COLUMNS), batch.groups))
+    if (f.count !== batch.rows) throw new Error(`${MERGED_PSMS}: ${f.count} rows in the row groups ${batch.groups[0]} to ${batch.groups[batch.groups.length - 1]}, its footer says ${batch.rows}`)
     const scoreUses = f.scores.names.map(useOf)
-    for (let k = 0; k < inputs.length; k++) psmFile.fill(k, from[k], from[k + 1])
-    for (let i = 0; i < count; i++) {
-      const r = i
+    psmId.set(f.psmId, batch.from)
+    for (let r = 0; r < f.count; r++) {
+      const i = batch.from + r
       nativeId[i] = String(f.nativeId[r] ?? '')
       rt[i] = f.rt[r]
       const observed = f.observedMz[r]
@@ -762,12 +845,15 @@ export async function readSearch(files: SearchFiles): Promise<SearchResult> {
     }
   }
 
-  // only the features some PSM has
+  // only the features some PSM has: moved together in place (a kept feature never moves to the right), and the
+  // array cut to them without a second one of its size where the buffer can be cut (ArrayBuffer.transfer)
   const kept = featureNames.map((_, j) => j).filter((j) => featurePresent[j])
   let keptFeatures = features
   if (kept.length !== nFeatures) {
-    keptFeatures = new Float64Array(count * kept.length)
-    for (let r = 0; r < count; r++) for (let c = 0; c < kept.length; c++) keptFeatures[r * kept.length + c] = features[r * nFeatures + kept[c]]
+    for (let r = 0; r < count; r++) for (let c = 0; c < kept.length; c++) features[r * kept.length + c] = features[r * nFeatures + kept[c]]
+    const length = count * kept.length
+    const buffer = features.buffer as ArrayBuffer & { transfer?: (newByteLength: number) => ArrayBuffer }
+    keptFeatures = typeof buffer.transfer === 'function' ? new Float64Array(buffer.transfer(length * 8)) : features.slice(0, length)
   }
 
   const paths = inputs.map((r) => r.path)
@@ -826,7 +912,7 @@ export async function readSearch(files: SearchFiles): Promise<SearchResult> {
     files,
     inputs.map((input) => input.stem),
     from,
-    { nativeId, psmId: rows?.psmId ?? new Float64Array(0), precursorMz: mz, rt },
+    { nativeId, psmId, precursorMz: mz, rt },
     meta.runs.some((r) => r.prediction_nce !== null),
   )
 

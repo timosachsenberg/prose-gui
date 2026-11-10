@@ -9,7 +9,7 @@ import { flushSync, mount, unmount } from 'svelte'
 import { afterEach, describe, expect, it } from 'vitest'
 import { input } from '../../design/fixtures'
 import { resolveDesign } from '../../design/model'
-import { FileNotFound, readSearch } from '../../results/read'
+import { bytesOfRange, FileNotFound, readSearch, type ByteRange } from '../../results/read'
 import { releaseResultsView, resultsViewFor } from '../../results/view.svelte'
 import type { OpenResult } from '../../search/session.svelte'
 import PeptidesTable from './PeptidesTable.svelte'
@@ -20,10 +20,10 @@ import PsmsTable from './PsmsTable.svelte'
 const fixture = join(process.cwd(), 'src/lib/results/fixtures/empty')
 
 /** The files of the fixture's search folder; an absolute path (the user's FASTA) is in user/. */
-async function files(name: string): Promise<Uint8Array> {
+async function files(name: string, range?: ByteRange): Promise<Uint8Array> {
   const path = name.startsWith('/') ? join(fixture, 'user', basename(name)) : join(fixture, name)
   try {
-    return new Uint8Array(readFileSync(path))
+    return bytesOfRange(new Uint8Array(readFileSync(path)), range)
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code === 'ENOENT') throw new FileNotFound(name)
     throw e

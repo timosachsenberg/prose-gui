@@ -49,6 +49,8 @@ export interface ParquetFile {
   bytes: Uint8Array
   /** the position of `bytes` in the file */
   base: number
+  /** several parts of the file (see partsOfParquet), in place of `bytes` and `base` */
+  parts?: FilePart[]
   buffer: ArrayBuffer
   metadata: FileMetaData
   tree: SchemaTree
@@ -93,6 +95,65 @@ export function chunkRange(meta: { dictionary_page_offset?: bigint; data_page_of
  */
 export function partOfParquet(metadata: FileMetaData, bytes: Uint8Array, base: number): ParquetFile {
   return { bytes, base, buffer: bytes.buffer as ArrayBuffer, metadata, tree: parquetSchema(metadata), rows: Number(metadata.num_rows) }
+}
+
+/** Bytes of a file: `bytes` from position `base` on. */
+export interface FilePart {
+  bytes: Uint8Array
+  base: number
+}
+
+/**
+ * Parts of a Parquet file whose metadata is known: each the bytes from its `base` on, together enough for the
+ * column chunks that readLeaf is asked for (a chunk lies in one part: see columnRuns).
+ */
+export function partsOfParquet(metadata: FileMetaData, parts: FilePart[]): ParquetFile {
+  const first = parts[0] ?? { bytes: new Uint8Array(0), base: 0 }
+  return { bytes: first.bytes, base: first.base, parts, buffer: first.bytes.buffer as ArrayBuffer, metadata, tree: parquetSchema(metadata), rows: Number(metadata.num_rows) }
+}
+
+/**
+ * Where the column chunks of the top-level columns `columns` of the row groups `groups` are in the file: byte runs
+ * by position, chunks that follow each other (or nearly: at most `gap` bytes apart) as one run of at most `most`
+ * bytes (a larger chunk is a run of its own), so that the columns between them that are not asked for are not
+ * read, and no read is larger than the app serves. Throws if a row group has not one of the columns.
+ */
+export function columnRuns(
+  metadata: FileMetaData,
+  groups: number[],
+  columns: string[],
+  gap = 1 << 16,
+  most = 1 << 28,
+): { start: number; end: number }[] {
+  const wanted = new Set(columns)
+  const chunks: { start: number; end: number }[] = []
+  for (const g of groups) {
+    const present = new Set<string>()
+    for (const c of metadata.row_groups[g].columns) {
+      const name = c.meta_data?.path_in_schema[0]
+      if (!c.meta_data || name === undefined || !wanted.has(name)) continue
+      present.add(name)
+      chunks.push(chunkRange(c.meta_data))
+    }
+    const missing = columns.filter((c) => !present.has(c))
+    if (missing.length > 0) throw new Error(`row group ${g} has not the columns ${missing.join(', ')}`)
+  }
+  chunks.sort((a, b) => a.start - b.start)
+  const runs: { start: number; end: number }[] = []
+  for (const c of chunks) {
+    const last = runs[runs.length - 1]
+    if (last && c.start <= last.end + gap && Math.max(last.end, c.end) - last.start <= most) last.end = Math.max(last.end, c.end)
+    else runs.push({ ...c })
+  }
+  return runs
+}
+
+/** The bytes start .. end of the file, which one of the parts read holds. */
+function bytesOf(file: ParquetFile, start: number, end: number, what: string): Uint8Array {
+  for (const part of file.parts ?? [file]) {
+    if (start >= part.base && end - part.base <= part.bytes.byteLength) return part.bytes.subarray(start - part.base, end - part.base)
+  }
+  throw new Error(`readLeaf: ${what} is not in the bytes read`)
 }
 
 /** The key-value metadata of the file's footer. */
@@ -228,8 +289,7 @@ export function readLeaf<T extends Values = Values>(file: ParquetFile, path: str
       utf8: true,
     }
     const { start, end } = chunkRange(meta)
-    if (start < file.base || end - file.base > file.bytes.byteLength) throw new Error(`readLeaf: ${path.join('.')} is not in the bytes read`)
-    const bytes = file.bytes.subarray(start - file.base, end - file.base)
+    const bytes = bytesOf(file, start, end, path.join('.'))
     const reader = { view: new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength), offset: 0 }
     let dictionary: DecodedArray | undefined
     let seen = 0
@@ -331,19 +391,20 @@ export function readLeaf<T extends Values = Values>(file: ParquetFile, path: str
   }
 }
 
-/** The leaves `fields` of the list of structs `column` (`column.list.element.<field>`). */
+/** The leaves `fields` of the list of structs `column` (`column.list.element.<field>`), of the row groups `groups` (all, if not given). */
 export function readStructList<F extends string>(
   file: ParquetFile,
   column: string,
   fields: F[],
   modes: Partial<Record<F, LeafMode>> = {},
+  groups?: number[],
 ): { offsets: Uint32Array; nullList: Uint8Array; dictionaries: Partial<Record<F, string[]>> } & Record<F, Values> {
   const out: Record<string, unknown> = {}
   const dictionaries: Partial<Record<F, string[]>> = {}
   let offsets: Uint32Array | null = null
   let nullList: Uint8Array | null = null
   for (const field of fields) {
-    const leaf = readLeaf(file, [column, 'list', 'element', field], modes[field])
+    const leaf = readLeaf(file, [column, 'list', 'element', field], modes[field], groups)
     if (leaf.dictionary) dictionaries[field] = leaf.dictionary
     offsets ??= leaf.offsets
     nullList ??= leaf.nullList

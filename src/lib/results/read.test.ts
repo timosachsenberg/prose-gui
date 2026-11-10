@@ -1273,6 +1273,59 @@ async function writeLargeFolder(dir: string, n: number): Promise<void> {
   writeFileSync(join(dir, 'inputs.json'), JSON.stringify(inputs))
 }
 
+describe('the PSM rows are read a batch of row groups at a time', () => {
+  test('never the file as a whole, and only the columns of the tables', async () => {
+    const { files, asked, ranges } = folder(join(fixtures, 'suitability'))
+    await readSearch(files)
+    const name = 'qpx/quantms.psm.parquet'
+    // every read of it is a byte range: its footer, then column chunks
+    expect(asked.filter((n) => n === name).length).toBeGreaterThan(1)
+    expect(asked.filter((n) => n === name).length).toBe(ranges.filter((r) => r.name === name).length)
+    // less than the file: the columns that are not read (the fragment annotations of the PSMs among them) stay on disk
+    const size = readFileSync(join(fixtures, 'suitability', name)).length
+    const read = ranges
+      .filter((r) => r.name === name)
+      .reduce((n, r) => n + ('tail' in r.range ? Math.min(size, r.range.tail) : r.range.length), 0)
+    expect(read).toBeLessThan(size)
+  })
+
+  test('with the same result whatever the row groups and the batches are', async () => {
+    const whole = await readSearch(folder(join(fixtures, 'suitability')).files)
+    await withCopy('suitability', async (dir) => {
+      // the file again in row groups of 100 rows, read 250 rows at a time (three groups a batch, the last ones fewer)
+      const name = join(dir, 'qpx/quantms.psm.parquet')
+      const bytes = new Uint8Array(readFileSync(name))
+      writeFileSync(name, rewrite(bytes, await rowsOf(bytes), () => {}, 100))
+      expect(parquetMetadata(readFileSync(name).buffer as ArrayBuffer).row_groups.length).toBe(18)
+      for (const batchRows of [250, 100, 1 << 17]) {
+        const { files, ranges } = folder(dir)
+        const batched = await readSearch(files, { batchRows })
+        expect(batched.tables, `batches of ${batchRows}`).toEqual(whole.tables)
+        expect(batched.summary).toEqual(whole.summary)
+        expect(batched.warnings).toEqual(whole.warnings)
+        // the spectra of a PSM of a later batch: its psm_id is the row's
+        const row = whole.tables.psms.count - 3
+        expect((await batched.spectra.load(row)).spectrumRow).toBe((await whole.spectra.load(row)).spectrumRow)
+        if (batchRows === 250) {
+          // (the charge column of each batch, then its rows: more reads than batches)
+          expect(ranges.filter((r) => r.name === 'qpx/quantms.psm.parquet').length).toBeGreaterThanOrEqual(1 + 2 * 6)
+        }
+      }
+    })
+  })
+
+  test('a file cut short says which bytes are missing', async () => {
+    await withCopy('suitability', async (dir) => {
+      const { files } = folder(dir)
+      const cut: typeof files = async (name, range) => {
+        const bytes = await files(name, range)
+        return name === 'qpx/quantms.psm.parquet' && range && 'offset' in range ? bytes.subarray(0, bytes.length - 1) : bytes
+      }
+      await expect(readSearch(cut)).rejects.toThrow(/qpx\/quantms\.psm\.parquet: \d+ bytes at \d+, expected \d+/)
+    })
+  })
+})
+
 describe('performance', () => {
   test('reads a 150k-PSM fixture in under 3 s, and the spectrum of a PSM in under 300 ms', async () => {
     const N = 150_000
