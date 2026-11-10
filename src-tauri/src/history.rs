@@ -16,10 +16,12 @@
 //! when it can take that lock itself (an owner that died has released it), so no app instance sweeps a
 //! live folder of another.
 //!
-//! A results archive (`.prose`) is a zip of the search folder's regular files. Zip is handled by the
-//! front end; Rust reads the chosen file (`open_archive_file`, with [`read_chosen_archive`]) and writes the entries the front end
-//! sends ([`import`], in the framing of [`frame`]), after checking every path again.
+//! A results archive (`.prose`) is a zip of the search folder's regular files, written and read by `archive`.
+//! [`import_archive`] makes a search of the file the user chose (`import_archive_file`), unpacking it entry by
+//! entry into a fresh folder after checking every name; [`import`] does the same for entries given as bytes
+//! (in the framing of [`frame`]).
 
+use crate::archive::{self, ZipEntry};
 use crate::args::is_input_link;
 use crate::files::{resolve_search_file, valid_id, valid_relative};
 use serde::Serialize;
@@ -495,26 +497,6 @@ pub fn folder_files(dir: &Path, id: &str) -> Result<Vec<FolderFile>, String> {
     Ok(files)
 }
 
-/// The bytes of the results archive that the user chose in the open dialog (`open_archive_file`; the page
-/// never names a path). Any name will do (an archive renamed, or sent without its `.prose`): the front end
-/// checks the content. Refused unless it is an absolute path that is a regular file itself: a link is not
-/// followed.
-pub fn read_chosen_archive(path: &Path) -> Result<Vec<u8>, String> {
-    let shown = path.display();
-    if !path.is_absolute() {
-        return Err(format!("{shown} is not an absolute path."));
-    }
-    let meta = fs::symlink_metadata(path).map_err(|e| format!("{shown} cannot be read ({e})."))?;
-    if !meta.is_file() {
-        return Err(format!("{shown} is not a regular file."));
-    }
-    let bytes = fs::read(path).map_err(|e| format!("{shown} cannot be read ({e})."))?;
-    if bytes.is_empty() {
-        return Err(format!("{shown} is empty."));
-    }
-    Ok(bytes)
-}
-
 //------------------------------------------------------------------------------------------------
 // Locks of partial folders
 
@@ -684,6 +666,12 @@ pub fn import(dir: &Path, body: &[u8]) -> Result<String, String> {
 pub enum Entry<'a> {
     Bytes(&'a [u8]),
     File(PathBuf),
+    /// An entry of the results archive `archive` (of `length` bytes), unpacked from it as it is written.
+    Archived {
+        archive: &'a Path,
+        length: u64,
+        entry: ZipEntry,
+    },
 }
 
 impl Entry<'_> {
@@ -692,11 +680,111 @@ impl Entry<'_> {
         match self {
             Entry::Bytes(b) => Ok(b.to_vec()),
             Entry::File(p) => fs::read(p).map_err(|e| e.to_string()),
+            Entry::Archived {
+                archive,
+                length,
+                entry,
+            } => {
+                if entry.size > MAX_RECORD {
+                    return Err(format!("{} is too large.", entry.name));
+                }
+                let mut bytes = Vec::with_capacity(entry.size as usize);
+                let mut source = fs::File::open(archive).map_err(|e| e.to_string())?;
+                archive::extract(&mut source, *length, entry, &mut bytes, &mut |_| {})?;
+                Ok(bytes)
+            }
+        }
+    }
+
+    /// Writes the entry `name` to `file`; `written` is told the bytes written so far.
+    fn write_to(
+        &self,
+        name: &str,
+        file: &mut fs::File,
+        written: &mut dyn FnMut(u64),
+    ) -> Result<(), String> {
+        let failed = |e: io::Error| format!("{name} cannot be written ({e}).");
+        match self {
+            Entry::Bytes(b) => file.write_all(b).map_err(failed),
+            Entry::File(source) => fs::File::open(source)
+                .and_then(|mut f| std::io::copy(&mut f, file).map(|_| ()))
+                .map_err(failed),
+            Entry::Archived {
+                archive,
+                length,
+                entry,
+            } => {
+                let mut source = fs::File::open(archive)
+                    .map_err(|e| format!("The results archive cannot be read ({e})."))?;
+                let mut out = io::BufWriter::with_capacity(1 << 20, &mut *file);
+                archive::extract(&mut source, *length, entry, &mut out, written)?;
+                out.flush().map_err(failed)
+            }
         }
     }
 }
 
+/// The file the user chose as a results archive (the open dialog; the page never names a path), checked: an
+/// absolute path that is a regular file itself (a link is not followed) and not empty. Any name will do (an
+/// archive renamed, or sent without its `.prose`): what it holds is checked as it is read. -> its size.
+pub fn chosen_archive(path: &Path) -> Result<u64, String> {
+    let shown = path.display();
+    if !path.is_absolute() {
+        return Err(format!("{shown} is not an absolute path."));
+    }
+    let meta = fs::symlink_metadata(path).map_err(|e| format!("{shown} cannot be read ({e})."))?;
+    if !meta.is_file() {
+        return Err(format!("{shown} is not a regular file."));
+    }
+    if meta.len() == 0 {
+        return Err(format!("{shown} is empty."));
+    }
+    Ok(meta.len())
+}
+
+/// Makes a search of the results archive `path` (a zip, see `archive`) in a fresh folder, and returns its id.
+/// The archive is read where it is, entry by entry: its directory first (`archive::read_directory`), whose
+/// names are checked as [`import`] checks them, then each file unpacked straight into the folder, with its
+/// size and checksum checked (`archive::extract`), so that an archive of any size opens, and nothing but the
+/// record is held in memory. `progress` is told the bytes unpacked so far, and their total. A failure leaves
+/// no folder.
+pub fn import_archive(
+    dir: &Path,
+    path: &Path,
+    progress: &mut dyn FnMut(u64, u64),
+) -> Result<String, String> {
+    let length = chosen_archive(path)?;
+    let mut source =
+        fs::File::open(path).map_err(|e| format!("{} cannot be read ({e}).", path.display()))?;
+    let listed = archive::read_directory(&mut source, length)?;
+    drop(source);
+    let total: u64 = listed.iter().map(|e| e.size).sum();
+    let entries = listed
+        .into_iter()
+        .map(|entry| {
+            (
+                entry.name.clone(),
+                Entry::Archived {
+                    archive: path,
+                    length,
+                    entry,
+                },
+            )
+        })
+        .collect();
+    import_entries_with(dir, entries, &mut |written| progress(written, total))
+}
+
 fn import_entries(dir: &Path, entries: Vec<(String, Entry<'_>)>) -> Result<String, String> {
+    import_entries_with(dir, entries, &mut |_| {})
+}
+
+/// [`import_entries`]; `progress` is told the bytes of the entries written so far.
+fn import_entries_with(
+    dir: &Path,
+    entries: Vec<(String, Entry<'_>)>,
+    progress: &mut dyn FnMut(u64),
+) -> Result<String, String> {
     if entries.is_empty() {
         return Err("The archive is empty.".to_string());
     }
@@ -747,6 +835,7 @@ fn import_entries(dir: &Path, entries: Vec<(String, Entry<'_>)>) -> Result<Strin
     let (id, partial, lock) = reserve_import(dir)?;
     let written = (|| -> Result<(), String> {
         let root = fs::canonicalize(&partial).map_err(|e| e.to_string())?;
+        let mut done = 0u64;
         for (name, data) in &entries {
             if name == RECORD {
                 continue;
@@ -765,12 +854,9 @@ fn import_entries(dir: &Path, entries: Vec<(String, Entry<'_>)>) -> Result<Strin
                 .create_new(true)
                 .open(&path)
                 .map_err(|e| format!("{name} cannot be written ({e})."))?;
-            match data {
-                Entry::Bytes(b) => file.write_all(b),
-                Entry::File(source) => fs::File::open(source)
-                    .and_then(|mut f| std::io::copy(&mut f, &mut file).map(|_| ())),
-            }
-            .map_err(|e| format!("{name} cannot be written ({e})."))?;
+            data.write_to(name, &mut file, &mut |n| progress(done + n))?;
+            done += file.metadata().map(|m| m.len()).unwrap_or(0);
+            progress(done);
         }
         map.insert("id".to_string(), serde_json::Value::String(id.clone()));
         let text = serde_json::to_vec_pretty(&map).map_err(|e| e.to_string())?;

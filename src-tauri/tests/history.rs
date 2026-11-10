@@ -5,9 +5,10 @@ mod common;
 
 use common::{set_folder_modified, TempDir};
 use prose_desktop_lib::history::{
-    delete, finish_partial, folder_files, frame, import, import_qpx, list, lock_partial, qpx_stems,
-    read_chosen_archive, remove_partial, rename, save_curation, save_proteins, save_record, sweep,
-    with_backoff, BACKOFF_TRIES, LOCK_FILE, NOT_A_SEARCH, NO_RECORD, SWEEP_GRACE,
+    chosen_archive, delete, finish_partial, folder_files, frame, import, import_archive,
+    import_qpx, list, lock_partial, qpx_stems, remove_partial, rename, save_curation,
+    save_proteins, save_record, sweep, with_backoff, BACKOFF_TRIES, LOCK_FILE, NOT_A_SEARCH,
+    NO_RECORD, SWEEP_GRACE,
 };
 use std::fs;
 use std::io;
@@ -493,40 +494,40 @@ fn frames_have_a_fixed_layout() {
 }
 
 #[test]
-fn read_chosen_archive_serves_any_regular_file() {
+fn chosen_archive_takes_any_regular_file() {
     let tmp = TempDir::new("archive");
     let good = tmp.write("a.prose", "zip");
-    assert_eq!(read_chosen_archive(&good).unwrap(), b"zip");
+    assert_eq!(chosen_archive(&good).unwrap(), 3);
     let upper = tmp.write("B.PROSE", "zip");
-    assert!(read_chosen_archive(&upper).is_ok());
-    // any name: the front end checks what the file holds
+    assert!(chosen_archive(&upper).is_ok());
+    // any name: what the file holds is checked as it is read
     for name in ["a.zip", "archive", "a.prose.zip", "Ergebnis ü.txt"] {
-        assert_eq!(
-            read_chosen_archive(&tmp.write(name, "zip")).unwrap(),
-            b"zip"
-        );
+        assert_eq!(chosen_archive(&tmp.write(name, "zip")).unwrap(), 3);
     }
     assert!(
-        read_chosen_archive(Path::new("a.prose")).is_err(),
+        chosen_archive(Path::new("a.prose")).is_err(),
         "absolute paths only"
     );
-    assert!(read_chosen_archive(&tmp.path().join("absent.prose")).is_err());
+    assert!(chosen_archive(&tmp.path().join("absent.prose")).is_err());
     fs::create_dir_all(tmp.path().join("dir.prose")).unwrap();
-    assert!(read_chosen_archive(&tmp.path().join("dir.prose")).is_err());
-    assert!(read_chosen_archive(&tmp.write("empty.prose", ""))
+    assert!(chosen_archive(&tmp.path().join("dir.prose")).is_err());
+    assert!(chosen_archive(&tmp.write("empty.prose", ""))
         .unwrap_err()
         .contains("empty"));
 }
 
 #[cfg(unix)]
 #[test]
-fn read_chosen_archive_does_not_follow_a_link() {
+fn chosen_archive_does_not_follow_a_link() {
     let tmp = TempDir::new("archive-link");
     let secret = tmp.write("secret.txt", "not an archive");
     let link = tmp.path().join("x.prose");
     std::os::unix::fs::symlink(&secret, &link).unwrap();
-    let err = read_chosen_archive(&link).unwrap_err();
+    let err = chosen_archive(&link).unwrap_err();
     assert!(err.contains("not a regular file"), "{err}");
+    // and nothing is imported through one
+    let (_tmp, dir) = searches();
+    assert!(import_archive(&dir, &link, &mut |_, _| {}).is_err());
 }
 
 #[test]

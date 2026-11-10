@@ -144,38 +144,42 @@ database searched without them) and `database-source.json` (the path of one sear
 outputs name folders of the computer that searched** (e.g. the database's path and all of ProSE's
 parameters in the QPX provenance view, the input and database paths in the idXML), and the archive carries them as they are: share it
 where that is fine. A search saved by an earlier version of the app (with `summary.yaml` and OpenMS' own Parquet
-files, or without the QPX run and provenance views) does not open in this one: History and Import results archive say so. A results archive holds at
-most 3 GB (larger searches are refused with a message; they stay in History).
+files, or without the QPX run and provenance views) does not open in this one: History and Import results archive say so.
+
+An archive has no size limit: it is written to disk entry by entry, and opened the same way, each file unpacked
+from the archive straight into the new search's folder with its size and checksum checked, so nothing of it is held
+in memory (History shows how far the unpacking is). The archive of a search of up to 3 GB (and 65,535 files) is a
+plain zip, which every version of the app opens; a larger one is a zip64, which this version and later ones open
+(app 0.5.0 and earlier, which held an archive in memory, do not). Any zip tool lists and unpacks
+both.
 
 ## Known limitations
 
-- **Large results.** The page reads a search's PSM rows into memory (`quantms.psm.parquet` through the app's IPC,
-  decoded into the tables, column by column, without an object per row); the peaks and predictions of a PSM are
-  read from its input's mz view and psm file when the PSM is opened (one row group of 256, the last four kept), so
-  they do not count. The computer's memory bounds the largest result that opens. Measured with saved searches of one
-  input made of the rows of a real Orbitrap HCD search (iPRG2015, 20,716 PSMs, ~30 scores and features per PSM,
-  modifications on most rows) repeated (`e2e/large.spec.ts`; WebKitGTK 2.52 on Linux, a 128-core machine; the files
-  hold the spectra of the original search only, which are not read at open):
+- **Large results.** The page keeps a search's PSM rows in memory: a dozen numbers and the native ID of each PSM,
+  in typed arrays, without an object per row. They are read from `quantms.psm.parquet` a batch of row groups at a
+  time, and only the columns the tables are made of (`src/lib/results/read.ts`): the file is never in memory as a
+  whole, and what is decoded of a batch is let go before the next. What belongs to one PSM is read when it is
+  opened, from its input's psm file and mz view (one row group of 256, the last four kept): its peaks, PeptDeep's
+  prediction, and its features (the ~35 values Percolator saw, which would be most of a row). The computer's memory
+  bounds the largest result that opens. Measured in the app (`e2e/large.spec.ts`; WebKitGTK 2.52 on Linux, 4 cores)
+  with saved searches of one input made of the rows of the web app's example repeated, ~30 scores per PSM, in row
+  groups of 100,000 rows (the files hold the spectra of the original search only, which are not read at open):
 
-  | PSMs | opens in | memory of the web process |
-  | --- | --- | --- |
-  | 500,000 | 6 s | 1.6 GB |
-  | 1,000,000 | 13 s | 2.8 GB |
-  | 2,000,000 | 34 s | 4.5 GB |
-  | 4,000,000 | 105 s | 8.6 GB |
-  | 8,000,000 | 382 s | 16.7 GB |
+  | PSMs | opens in | peak memory of the web process | app 0.5.0, the same machine |
+  | --- | --- | --- | --- |
+  | 1,000,000 | 6 s | 1.1 GB | 11 s, 1.9 GB |
+  | 2,000,000 | 12 s | 1.1 GB | 34 s, 3.1 GB |
 
-  About 2.1 GB per million PSMs: a computer with 16 GB opens about 5 million, with 32 GB about 10 million (no larger
-  result was tried). The memory figures are lower bounds, so these counts are upper estimates. The repeated rows share
-  their native-ID strings and have only the search's 20,000 distinct peptides, so a real search of as many distinct
-  spectra and peptides needs somewhat more memory (estimated +10–20 %). Opening the first PSM of an input also maps
-  its native IDs to the spectra for a moment. The PSM rows take about 0.3 MB of disk per thousand PSMs, the spectra
-  2.8 MB (not read at open).
-  On Windows the webview (WebView2) runs Chromium's JavaScript engine, whose arrays are smaller (an earlier
-  measurement in Node.js, the same engine, read 4 million synthetic PSMs but not 8 million), so there the limit may
-  be lower; macOS' webview is WebKit, as on Linux. Results archives are written to disk entry by entry (after the save
-  dialog), but read in memory when opened, and hold at most 3 GB (no zip64 is written or read; a larger search is
-  refused with a message). Later, not now: reading the archive's zip entry by entry (with zip64).
+  Larger results were not measured with this version (app 0.5.0 took 2.1 GB per million PSMs, up to 8 million with
+  16.7 GB, on a 128-core machine). Two things make a real search take more than these files. ProSE writes
+  `quantms.psm.parquet` in row groups of about a million rows, and a row group is decoded as a whole: about 0.7 GB
+  more while one is read, whatever the size of the result (measured with the reader in a WebKitGTK page, batches of
+  a million rows: a peak of 1.6 GB at one million PSMs, 1.7 GB at two). And the repeated rows share their native-ID
+  strings and have few distinct peptides; a real search has a string per spectrum and a row per peptide (estimated:
+  about 0.1 GB more per million PSMs). Opening the first PSM of an input also maps its native IDs to the spectra for
+  a moment. The PSM rows take about 0.3 MB of disk per thousand PSMs, the spectra 2.8 MB (not read at open).
+  On Windows the webview (WebView2) runs Chromium's JavaScript engine and on macOS WebKit, as on Linux; neither was
+  measured with this version.
 - macOS: Apple silicon only; not signed with a Developer ID (see Install).
 - Windows: two inputs of one name are searched together only when they are on the drive of the app's data.
 
@@ -243,7 +247,8 @@ npm run test:ui                   # starts Vite on port 5179 itself
 `e2e/run.sh` builds the debug binary first (`E2E_SKIP_BUILD=1` skips that) and enters `in-env.sh` itself if it
 is not in it.
 
-The specs that run searches need the tool: `PROSE_BIN=/path/to/ProSE` (without it they skip); the bundled one,
+The specs that run searches need the tool: `PROSE_BIN=/path/to/ProSE` (without it they skip; `e2e/archive.spec.ts`, a
+results archive written and opened by the app from a saved search of the reader's fixtures, needs none); the bundled one,
 `src-tauri/resources/prose/bin/ProSE`, is the one with PeptDeep (its build manifest says so, see `native/README.md`). Each spec file
 gets an app of its own with its own data folder (`XDG_DATA_HOME`, made per run, removed at its end), and
 `tauri-driver` runs for the whole run in a process group of its own; port 4444 must be free (a leftover

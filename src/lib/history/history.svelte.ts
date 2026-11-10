@@ -343,14 +343,14 @@ export async function restoreFromHistory(id: string): Promise<boolean> {
 }
 
 /**
- * Asks for a results archive (the open dialog), makes a saved search of it and opens it in Results.
- * Resolves with false if the user cancelled. Throws an ArchiveError (an ArchiveVersionError for a newer
+ * Asks for a results archive (the open dialog), makes a saved search of it (`onProgress` told how far its
+ * unpacking is, 0–1) and opens it in Results. Resolves with false if the user cancelled. Throws an ArchiveError (an ArchiveVersionError for a newer
  * file) that says what is wrong.
  */
-export async function openArchiveFile(): Promise<boolean> {
+export async function openArchiveFile(onProgress?: (fraction: number) => void): Promise<boolean> {
   let id: string | null
   try {
-    id = await importArchive(backend)
+    id = await importArchive(backend, onProgress)
   } catch (e) {
     if (e instanceof ArchiveError) throw e
     throw new ArchiveError(errorText(e))

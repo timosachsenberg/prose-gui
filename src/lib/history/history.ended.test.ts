@@ -5,7 +5,7 @@
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SearchRequest } from '../desktop'
-import type { SearchFiles } from '../results/read'
+import type { ByteRange, SearchFiles } from '../results/read'
 import type { MemoryBackend as Disk } from './memory-backend'
 
 const fake = vi.hoisted(() => ({
@@ -20,7 +20,8 @@ vi.mock('../desktop', () => ({
   startSearch: fake.start,
   cancelSearch: fake.cancel,
   // the shim's files of a search: the disk's
-  searchFiles: (id: string) => (name: string) => fake.disk!.read(id, name),
+  // (with the byte range asked for: the reader reads the psm file's row groups, not the file)
+  searchFiles: (id: string) => (name: string, range?: ByteRange) => fake.disk!.read(id, name, range),
   errorText: (e: unknown) => (e instanceof Error ? e.message : String(e)),
   desktopBackend: {},
 }))

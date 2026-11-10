@@ -31,6 +31,8 @@
   let problem = $state<{ title: string; text: string } | null>(null)
   /** The search being read from storage, or 'archive'. */
   let busy = $state<string | null>(null)
+  /** How far the unpacking of a results archive is (0–1); null: not known yet. */
+  let imported = $state<number | null>(null)
   /** The row being renamed and the name typed so far. */
   let renaming = $state<string | null>(null)
   let draft = $state('')
@@ -73,8 +75,9 @@
   async function openFile() {
     problem = null
     busy = 'archive'
+    imported = null
     try {
-      await openArchiveFile()
+      await openArchiveFile((fraction) => (imported = fraction))
     } catch (e) {
       problem = { title: 'Could not open', text: `The results archive could not be imported: ${message(e)}` }
     } finally {
@@ -164,7 +167,7 @@
         {busy === 'qpx' ? 'Opening folder…' : 'Open QPX folder…'}
       </Button>
       <Button variant="outline" size="sm" disabled={busy !== null} onclick={openFile} data-testid="import-archive">
-        {busy === 'archive' ? 'Importing…' : 'Import results archive (.prose)…'}
+        {busy === 'archive' ? (imported === null ? 'Importing…' : `Importing… ${Math.floor(imported * 100)} %`) : 'Import results archive (.prose)…'}
       </Button>
     </div>
   </div>

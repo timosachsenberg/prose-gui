@@ -89,7 +89,7 @@ export function makeTables(spec: TablesSpec): ResultTables {
     deltaMass: new Float64Array(psms.length),
     decoy: Uint8Array.from(psms, (p) => (p.decoy ?? peptides[p.peptide].decoy ?? false) ? 1 : 0),
     featureNames: [] as string[],
-    features: new Float64Array(0),
+    chimericRank: null,
   }
 
   return {
@@ -316,7 +316,7 @@ export function makeLargeTables(nPsms: number, nPeptides: number, nProteins: num
       deltaMass: delta,
       decoy: psmDecoy,
       featureNames: [],
-      features: new Float64Array(0),
+      chimericRank: null,
     },
     peptides: {
       count: nPeptides,

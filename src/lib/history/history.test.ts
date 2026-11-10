@@ -15,6 +15,7 @@ import {
   importArchive,
   importArchiveBytes,
   isPlainName,
+  MAX_ARCHIVE_FILES,
   MAX_UNPACKED,
   MAX_ZIP_ENTRIES,
   openSearch,
@@ -309,6 +310,42 @@ describe('results archives', () => {
     // an archive of more files than a zip without zip64 holds
     backend.files = async () => Array.from({ length: MAX_ZIP_ENTRIES + 1 }, (_, i) => ({ name: i === 0 ? 'search.json' : `f/${i}`, size: 1 }))
     await expect(exportArchive(backend, '100-0', 'x')).rejects.toThrow(/its results take 65536 files/)
+  })
+
+  test('a backend that writes archives itself (the Rust side) takes a search of any size, up to its number of files', async () => {
+    const backend = await savedBackend()
+    backend.archiveLimits = { files: MAX_ARCHIVE_FILES }
+    const files = backend.files.bind(backend)
+    // more than an archive in memory holds, and more than a plain zip: written as zip64 there
+    backend.files = async (id: string) => [...(await files(id)), { name: 'qpx/huge.psm.parquet', size: 40 * MAX_UNPACKED }]
+    expect(await exportArchive(backend, '100-0', 'x')).toBe('/saved/x.prose')
+    backend.files = async () => Array.from({ length: MAX_ZIP_ENTRIES + 1 }, (_, i) => ({ name: i === 0 ? 'search.json' : `f/${i}`, size: 1 }))
+    expect(await exportArchive(backend, '100-0', 'x')).toBe('/saved/x.prose')
+    backend.files = async () => Array.from({ length: MAX_ARCHIVE_FILES + 1 }, (_, i) => ({ name: i === 0 ? 'search.json' : `f/${i}`, size: 1 }))
+    await expect(exportArchive(backend, '100-0', 'x')).rejects.toThrow(/its results take 100001 files, and a results archive holds at most 100,000/)
+  })
+
+  test('a backend that opens archives itself (the Rust side) is given the file: nothing of it is read here', async () => {
+    const backend = await savedBackend()
+    const open = vi.spyOn(backend, 'openArchive')
+    const entries = vi.spyOn(backend, 'importEntries')
+    const reports: number[] = []
+    backend.importArchiveFile = async (onProgress) => {
+      onProgress?.(0.5)
+      onProgress?.(1)
+      return '7-i0'
+    }
+    expect(await importArchive(backend, (fraction) => reports.push(fraction))).toBe('7-i0')
+    expect(reports).toEqual([0.5, 1])
+    expect(open).not.toHaveBeenCalled()
+    expect(entries).not.toHaveBeenCalled()
+    // cancelled, and a failure as the backend says it
+    backend.importArchiveFile = async () => null
+    expect(await importArchive(backend)).toBeNull()
+    backend.importArchiveFile = async () => {
+      throw new Error('This results archive is damaged: qpx/a.parquet has another checksum than the zip directory says.')
+    }
+    await expect(importArchive(backend)).rejects.toThrow(/another checksum/)
   })
 
   test('the archive of a search that is not saved is refused', async () => {

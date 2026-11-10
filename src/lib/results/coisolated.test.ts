@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { chimericRank, isCoisolated, sameSpectrum } from './coisolated'
 import { makeTables } from './synthetic'
 
-// Co-isolated precursors: ProSE's chimeric_rank among the PSM features, and the PSMs of one spectrum.
+// Co-isolated precursors: ProSE's chimeric_rank (a PSM feature the tables keep), and the PSMs of one spectrum.
 
 /** PSMs of two inputs: scan 1 of input 0 has three precursors, scan 2 one, scan 1 of input 1 two. */
 function tables(ranks: number[] | null) {
@@ -23,10 +23,8 @@ function tables(ranks: number[] | null) {
     ],
   })
   if (ranks === null) return t
-  // two features, chimeric_rank the second
-  const features = new Float64Array(ranks.length * 2)
-  ranks.forEach((r, i) => ((features[i * 2] = 5), (features[i * 2 + 1] = r)))
-  return { ...t, psms: { ...t.psms, featureNames: ['ln(hyperscore)', 'chimeric_rank'], features } }
+  // two features, chimeric_rank the second: the tables keep its values
+  return { ...t, psms: { ...t.psms, featureNames: ['ln(hyperscore)', 'chimeric_rank'], chimericRank: Float32Array.from(ranks) } }
 }
 
 describe('co-isolated precursors', () => {

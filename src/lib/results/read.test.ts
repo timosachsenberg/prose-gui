@@ -18,7 +18,7 @@ import { resolveDesign } from '../design/model'
 import { keyFigures } from './figures'
 import { buildModel } from './model'
 import { inputNotices, inputWarnings, psmFdrFact, psmFdrNotice } from './overview'
-import { bytesOfRange, FileNotFound, OldLayoutError, readSearch, ZSTD, type ByteRange } from './read'
+import { bytesOfRange, FileNotFound, OldLayoutError, readSearch, ZSTD, type ByteRange, type PsmSpectra } from './read'
 import type { ProSEMultiSummary, ResultTables, StoredSpectra } from './types'
 
 const fixtures = fileURLToPath(new URL('./fixtures/', import.meta.url))
@@ -151,8 +151,24 @@ function webRows(t: ResultTables, w: Json): number[] {
   })
 }
 
-/** ResultTables equal the web app's: strings exactly, numbers within the tolerances. */
-function expectTables(t: ResultTables, w: Json, names: string[], tol: Tolerances) {
+/**
+ * The features of every PSM of a result, row-major by the tables' featureNames (as the web app's tables have
+ * them): read as the PSM view reads them, with the spectrum of each PSM, since the tables do not keep them.
+ */
+async function featureMatrix(result: { tables: ResultTables; spectra: PsmSpectra }): Promise<Float64Array> {
+  const { count, featureNames } = result.tables.psms
+  const n = featureNames.length
+  const out = new Float64Array(count * n)
+  for (let i = 0; i < count; i++) {
+    const { features } = await result.spectra.load(i)
+    expect(features.length).toBe(n)
+    out.set(features, i * n)
+  }
+  return out
+}
+
+/** ResultTables equal the web app's: strings exactly, numbers within the tolerances; `features`: featureMatrix. */
+function expectTables(t: ResultTables, features: Float64Array, w: Json, names: string[], tol: Tolerances) {
   expect(t.files.map((f) => basename(f))).toEqual(names)
   const p = t.psms
   const wp = w.psms
@@ -181,15 +197,15 @@ function expectTables(t: ResultTables, w: Json, names: string[], tol: Tolerances
 
   expect(p.featureNames).toEqual(wp.featureNames)
   const n = p.featureNames.length
-  expect(p.features.length).toBe(p.count * n)
+  expect(features.length).toBe(p.count * n)
   p.featureNames.forEach((name, j) => {
     const column = (f: ArrayLike<number | null>) => Array.from({ length: p.count }, (_, i) => num(f[i * n + j]))
-    if (MASS_FEATURES.includes(name)) expectCloseRelative(`feature ${name}`, column(p.features), column(wp.features), FLOAT32)
+    if (MASS_FEATURES.includes(name)) expectCloseRelative(`feature ${name}`, column(features), column(wp.features), FLOAT32)
     // the difference of two float32 m/z: within their precision, a relative 1e-7 of the m/z (2e-4 at m/z 2000)
-    else if (name === 'dm' || name === 'absdm') expectClose(`feature ${name}`, column(p.features), column(wp.features), 2e-4)
+    else if (name === 'dm' || name === 'absdm') expectClose(`feature ${name}`, column(features), column(wp.features), 2e-4)
     // the RT error: seconds of the RT calibration's spline over real retention times (the app's example), within 1e-4 s
-    else if (name === 'rt_abs_error') expectClose(`feature ${name}`, column(p.features), column(wp.features), 1e-4)
-    else expectClose(`feature ${name}`, column(p.features), column(wp.features), PEPTDEEP_FEATURES.includes(name) ? 1e-5 : 1e-6)
+    else if (name === 'rt_abs_error') expectClose(`feature ${name}`, column(features), column(wp.features), 1e-4)
+    else expectClose(`feature ${name}`, column(features), column(wp.features), PEPTDEEP_FEATURES.includes(name) ? 1e-5 : 1e-6)
   })
 
   const pt = t.peptides
@@ -294,7 +310,7 @@ describe('readSearch', () => {
   test('the web app\'s example reads as the web app\'s result', async () => {
     const w = web('suitability')
     const { files, asked } = folder(join(fixtures, 'suitability'))
-    const { summary, tables } = await readSearch(files)
+    const { summary, tables, spectra } = await readSearch(files)
 
     // the counts of the web app's example with PeptDeep: 1,790 target PSMs at 1 % (895 of each replicate)
     expect(tables.psms.count).toBe(1792)
@@ -303,7 +319,7 @@ describe('readSearch', () => {
     expect(tables.files).toEqual(['/data/DatabaseSuitability_1.mzML', '/data/DatabaseSuitability_2.mzML'])
 
     // (Percolator's scores, q-values and PEPs: the test below)
-    expectTables(tables, w.tables, w.names, { score: 'differs' })
+    expectTables(tables, await featureMatrix({ tables, spectra }), w.tables, w.names, { score: 'differs' })
     expectSummary(summary, w.summary)
     expect(summary.files.map((f) => f.path)).toEqual(tables.files)
     // only relative names: the folder's files, and its database with the contaminants
@@ -314,7 +330,7 @@ describe('readSearch', () => {
   test('the app\'s example (E. coli, LTQ Orbitrap CID): the web app\'s PSMs of it read as the web app\'s', async () => {
     const w = web('example')
     const { files, asked } = folder(join(fixtures, 'example'))
-    const { summary, tables } = await readSearch(files)
+    const { summary, tables, spectra } = await readSearch(files)
 
     // one run of 139 spectra searched as two replicates with the ProSE tool's defaults (since OpenMS #10740: decoys
     // generate with decoy_method keep_termini, the terminal rescoring features), at the example's PSM FDR of 2 %
@@ -345,6 +361,7 @@ describe('readSearch', () => {
     expect(p.featureNames).toEqual([...wp.featureNames, 'protein_nterm', 'met_clipped'])
     const n = p.featureNames.length
     const wn = wp.featureNames.length
+    const features = await featureMatrix({ tables, spectra })
     rows.forEach((i, k) => {
       if (i < 0) return
       const label = `PSM ${wp.nativeId[k]} of file ${wp.file[k]}`
@@ -355,7 +372,7 @@ describe('readSearch', () => {
       expectClose(`precursorErrorPpm of ${label}`, [p.precursorErrorPpm[i]], [wp.precursorErrorPpm[k]], 1e-6)
       expectClose(`deltaMass of ${label}`, [p.deltaMass[i]], [wp.deltaMass[k]], 1e-6)
       wp.featureNames.forEach((name: string, j: number) => {
-        const [a, e] = [p.features[i * n + j], num(wp.features[k * wn + j])]
+        const [a, e] = [features[i * n + j], num(wp.features[k * wn + j])]
         if (MASS_FEATURES.includes(name)) expectCloseRelative(`${name} of ${label}`, [a], [e], FLOAT32)
         else if (name === 'dm' || name === 'absdm') expectClose(`${name} of ${label}`, [a], [e], 2e-4)
         // the RT error: the RT calibration's spline, fitted on the PSMs of each search (the web app's: 60 a file); the
@@ -406,9 +423,9 @@ describe('readSearch', () => {
   test('modified peptides read as the web app\'s', async () => {
     const w = web('mods')
     const { files, asked } = folder(join(fixtures, 'mods'))
-    const { summary, tables } = await readSearch(files)
+    const { summary, tables, spectra } = await readSearch(files)
     expect(tables.peptides.openms).toContain('IALSRPNVEVVALNDPFITNDYAAYM(Oxidation)FK')
-    expectTables(tables, w.tables, w.names, { score: 1e-6, qValue: 'conservative' })
+    expectTables(tables, await featureMatrix({ tables, spectra }), w.tables, w.names, { score: 1e-6, qValue: 'conservative' })
     // three target PSMs and no decoy PSM: q = 1/3 (the web app's ProSE: 0)
     expect(Array.from(tables.psms.qValue)).toEqual([1 / 3, 1 / 3, 1 / 3])
     expectSummary(summary, w.summary)
@@ -418,8 +435,8 @@ describe('readSearch', () => {
 
   test('an open search reads as the web app\'s', async () => {
     const w = web('open')
-    const { summary, tables } = await readSearch(folder(join(fixtures, 'open')).files)
-    expectTables(tables, w.tables, w.names, { score: 1e-6, qValue: 'conservative' })
+    const { summary, tables, spectra } = await readSearch(folder(join(fixtures, 'open')).files)
+    expectTables(tables, await featureMatrix({ tables, spectra }), w.tables, w.names, { score: 1e-6, qValue: 'conservative' })
     expectSummary(summary, w.summary)
     expect(Array.from(tables.psms.deltaMass).some((d) => d > 15)).toBe(true)
 
@@ -1072,24 +1089,29 @@ describe('missing and broken files', () => {
     // one input with the protein FDR: ProSE removes the references to the proteins that failed it, so the PSM has
     // no protein mappings left (the PSMs of the iPRG2015 subset showed empty features)
     const before = await readSearch(folder(join(fixtures, 'suitability')).files)
+    const featuresBefore = await featureMatrix(before)
     await withCopy('suitability', async (dir) => {
-      await changeRows(dir, 'qpx/quantms.psm.parquet', (rows) => {
-        rows[0].protein_mappings = []
-      })
-      const { tables } = await readSearch(folder(dir).files)
-      const { featureNames, features } = tables.psms
+      // (the rows of the search and of the PSM's input, which are the same rows)
+      for (const name of ['qpx/quantms.psm.parquet', 'qpx/runs/1__DatabaseSuitability_1.psm.parquet']) {
+        await changeRows(dir, name, (rows) => {
+          rows[0].protein_mappings = []
+        })
+      }
+      const read = await readSearch(folder(dir).files)
+      const { featureNames } = read.tables.psms
+      const features = await featureMatrix(read)
       expect(featureNames).toEqual(before.tables.psms.featureNames)
       const n = featureNames.length
       const kept = ['CalcMass', 'mass', 'peplen', 'charge2', 'charge3', 'enzInt', 'dm', 'absdm']
       for (const name of featureNames) {
         const j = featureNames.indexOf(name)
-        const [value, was] = [features[j], before.tables.psms.features[j]]
+        const [value, was] = [features[j], featuresBefore[j]]
         if (name === 'enzN' || name === 'enzC') expect(value, name).toBeNaN()
         else expect(value, name).toBe(was)
         if (kept.includes(name)) expect(value, name).not.toBeNaN()
       }
       // the other PSMs are as they were
-      expect(Array.from(features.subarray(n))).toEqual(Array.from(before.tables.psms.features.subarray(n)))
+      expect(Array.from(features.subarray(n))).toEqual(Array.from(featuresBefore.subarray(n)))
     })
   })
 
@@ -1169,14 +1191,18 @@ describe('values the reader computes or picks', () => {
   test("the isotope error is QPX's; its feature and dm have the sign of ProSE's convention, as Percolator saw them", async () => {
     await withCopy('suitability', async (dir) => {
       // row 0 at its 13C peak: observed minus theoretical +1
-      await changeRows(dir, 'qpx/quantms.psm.parquet', (rows) => {
-        rows[0].isotope_error = 1
-        for (const s of rows[0].additional_scores) if (s.score_name === 'isotope_error') s.score_value = 1
-      })
+      // (in the rows of the search and of the PSM's input, which are the same rows)
+      for (const name of ['qpx/quantms.psm.parquet', 'qpx/runs/1__DatabaseSuitability_1.psm.parquet']) {
+        await changeRows(dir, name, (rows) => {
+          rows[0].isotope_error = 1
+          for (const s of rows[0].additional_scores) if (s.score_name === 'isotope_error') s.score_value = 1
+        })
+      }
       const read = async () => {
-        const { tables } = await readSearch(folder(dir).files)
+        const { tables, spectra } = await readSearch(folder(dir).files)
         const p = tables.psms
-        const at = (name: string) => p.features[p.featureNames.indexOf(name)]
+        const { features } = await spectra.load(0)
+        const at = (name: string) => features[p.featureNames.indexOf(name)]
         return { isotope: p.isotopeError[0], feature: at('isotope_error'), dm: at('dm'), charge: p.charge[0] }
       }
       const observed = await read()
@@ -1198,9 +1224,9 @@ describe('protein sequences', () => {
       cpSync(join(dir, 'user', 'SimpleSearchEngine_1.fasta'), join(dir, 'proteins.fasta'))
       rmSync(join(dir, 'user'), { recursive: true })
       const { files, asked } = folder(dir)
-      const { tables, warnings } = await readSearch(files)
+      const { tables, warnings, spectra } = await readSearch(files)
       expect(asked.filter((n) => n.endsWith('.fasta'))).toEqual(['proteins.fasta'])
-      expectTables(tables, w.tables, w.names, { score: 1e-6, qValue: 'conservative' })
+      expectTables(tables, await featureMatrix({ tables, spectra }), w.tables, w.names, { score: 1e-6, qValue: 'conservative' })
       expect(warnings).toEqual([])
     })
   })
@@ -1272,6 +1298,59 @@ async function writeLargeFolder(dir: string, n: number): Promise<void> {
   const inputs = JSON.parse(readFileSync(join(source, 'inputs.json'), 'utf8')).slice(0, 1)
   writeFileSync(join(dir, 'inputs.json'), JSON.stringify(inputs))
 }
+
+describe('the PSM rows are read a batch of row groups at a time', () => {
+  test('never the file as a whole, and only the columns of the tables', async () => {
+    const { files, asked, ranges } = folder(join(fixtures, 'suitability'))
+    await readSearch(files)
+    const name = 'qpx/quantms.psm.parquet'
+    // every read of it is a byte range: its footer, then column chunks
+    expect(asked.filter((n) => n === name).length).toBeGreaterThan(1)
+    expect(asked.filter((n) => n === name).length).toBe(ranges.filter((r) => r.name === name).length)
+    // less than the file: the columns that are not read (the fragment annotations of the PSMs among them) stay on disk
+    const size = readFileSync(join(fixtures, 'suitability', name)).length
+    const read = ranges
+      .filter((r) => r.name === name)
+      .reduce((n, r) => n + ('tail' in r.range ? Math.min(size, r.range.tail) : r.range.length), 0)
+    expect(read).toBeLessThan(size)
+  })
+
+  test('with the same result whatever the row groups and the batches are', async () => {
+    const whole = await readSearch(folder(join(fixtures, 'suitability')).files)
+    await withCopy('suitability', async (dir) => {
+      // the file again in row groups of 100 rows, read 250 rows at a time (three groups a batch, the last ones fewer)
+      const name = join(dir, 'qpx/quantms.psm.parquet')
+      const bytes = new Uint8Array(readFileSync(name))
+      writeFileSync(name, rewrite(bytes, await rowsOf(bytes), () => {}, 100))
+      expect(parquetMetadata(readFileSync(name).buffer as ArrayBuffer).row_groups.length).toBe(18)
+      for (const batchRows of [250, 100, 1 << 17]) {
+        const { files, ranges } = folder(dir)
+        const batched = await readSearch(files, { batchRows })
+        expect(batched.tables, `batches of ${batchRows}`).toEqual(whole.tables)
+        expect(batched.summary).toEqual(whole.summary)
+        expect(batched.warnings).toEqual(whole.warnings)
+        // the spectra of a PSM of a later batch: its psm_id is the row's
+        const row = whole.tables.psms.count - 3
+        expect((await batched.spectra.load(row)).spectrumRow).toBe((await whole.spectra.load(row)).spectrumRow)
+        if (batchRows === 250) {
+          // (the charge column of each batch, then its rows: more reads than batches)
+          expect(ranges.filter((r) => r.name === 'qpx/quantms.psm.parquet').length).toBeGreaterThanOrEqual(1 + 2 * 6)
+        }
+      }
+    })
+  })
+
+  test('a file cut short says which bytes are missing', async () => {
+    await withCopy('suitability', async (dir) => {
+      const { files } = folder(dir)
+      const cut: typeof files = async (name, range) => {
+        const bytes = await files(name, range)
+        return name === 'qpx/quantms.psm.parquet' && range && 'offset' in range ? bytes.subarray(0, bytes.length - 1) : bytes
+      }
+      await expect(readSearch(cut)).rejects.toThrow(/qpx\/quantms\.psm\.parquet: \d+ bytes at \d+, expected \d+/)
+    })
+  })
+})
 
 describe('performance', () => {
   test('reads a 150k-PSM fixture in under 3 s, and the spectrum of a PSM in under 300 ms', async () => {
