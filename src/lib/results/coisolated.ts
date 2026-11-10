@@ -1,6 +1,6 @@
 // Co-isolated precursors (a search with chimeric:enabled): one MS2 spectrum can have PSMs of several
 // precursors that were isolated together. ProSE ranks them in the feature chimeric_rank (one of the run's
-// extra features, so a column of `tables.psms.features`): 1 for the precursor the spectrum was taken of, 2
+// extra features; the tables keep it as `psms.chimericRank`): 1 for the precursor the spectrum was taken of, 2
 // and up for the others of its isolation window. The PSM table marks the co-isolated PSMs, and the PSM view
 // links the PSMs of the same spectrum (the same input and native ID).
 
@@ -11,19 +11,9 @@ type Psms = ResultTables['psms']
 /** The feature of ProSE's rank of a PSM among the precursors of its spectrum. */
 export const CHIMERIC_RANK = 'chimeric_rank'
 
-/** The column of chimeric_rank in the features, per PSM table (-1: a search without co-isolated precursors). */
-const rankColumns = new WeakMap<Psms, number>()
-
-function rankColumn(psms: Psms): number {
-  let j = rankColumns.get(psms)
-  if (j === undefined) rankColumns.set(psms, (j = psms.featureNames.indexOf(CHIMERIC_RANK)))
-  return j
-}
-
 /** ProSE's rank of PSM `i` among the precursors of its spectrum (1: the isolated one); NaN without one. */
 export function chimericRank(psms: Psms, i: number): number {
-  const j = rankColumn(psms)
-  return j < 0 ? NaN : psms.features[i * psms.featureNames.length + j]
+  return psms.chimericRank ? psms.chimericRank[i] : NaN
 }
 
 /** PSM `i` is of a co-isolated precursor: not the one its spectrum was taken of (chimeric rank 2 or more). */
@@ -44,7 +34,7 @@ function spectrumIndex(psms: Psms): Map<string, number[]> {
   let index = spectra.get(psms)
   if (!index) {
     index = new Map()
-    if (rankColumn(psms) >= 0) {
+    if (psms.chimericRank) {
       for (let i = 0; i < psms.count; i++) {
         // (no native ID: ProSE stored no spectrum for the PSM, which then shares nothing)
         if (psms.nativeId[i] === '') continue
@@ -65,7 +55,7 @@ function spectrumIndex(psms: Psms): Map<string, number[]> {
  * order. None for a search without co-isolated precursors.
  */
 export function sameSpectrum(psms: Psms, i: number): number[] {
-  if (psms.nativeId[i] === '' || rankColumn(psms) < 0) return []
+  if (psms.nativeId[i] === '' || !psms.chimericRank) return []
   const rows = spectrumIndex(psms).get(spectrumKey(psms, i)) ?? []
   const rank = (r: number) => {
     const v = chimericRank(psms, r)

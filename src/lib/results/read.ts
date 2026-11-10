@@ -48,6 +48,7 @@ import {
   type LeafMode,
   type ParquetFile,
 } from './parquet'
+import { CHIMERIC_RANK } from './coisolated'
 import { parameterFlag, parameterNumber, parseModificationAnalysis, readMeta, toSummary, type SearchMeta } from './summary'
 import type { PredictedSpectra, ProSESummary, ProSEMultiSummary, ResultTables, StoredSpectra } from './types'
 
@@ -119,13 +120,18 @@ export interface LoadedSpectra {
   row: number
   /** the peak filter ProSE applied to the input's spectra (the PSM view says so; its mz view's footer); null: every peak */
   peakFilter: PeakFilter | null
+  /**
+   * The PSM's features, by ResultTables.psms.featureNames (NaN: absent): Percolator's input features as ProSE's
+   * rescoring gives them, read from the PSM's row of its input's psm file (the tables do not keep them).
+   */
+  features: Float64Array
 }
 
 /** The peaks and predictions of the PSM rows, read when a PSM is opened. */
 export interface PsmSpectra {
   /** ProSE predicted spectra (it has ONNX Runtime): some input has the NCE of a prediction */
   predictions: boolean
-  /** The peaks and the prediction of PSM row `row` (of ResultTables.psms), read from its input's psm file. */
+  /** The peaks, the prediction and the features of PSM row `row` (of ResultTables.psms), read from its input's files. */
   load(row: number): Promise<LoadedSpectra>
 }
 
@@ -689,9 +695,65 @@ export async function readSearch(files: SearchFiles, options: { batchRows?: numb
   const deltaMass = new Float64Array(count)
   const decoy = new Uint8Array(count)
   const psmId = new Float64Array(count)
-  const features = new Float64Array(count * nFeatures).fill(NaN)
+  // the features of the PSMs are not kept (some 35 doubles per PSM, most of what the rows would take): the tables
+  // have their names, those some PSM has (`featurePresent`), and ProSE's rank of the co-isolated precursors, which
+  // the PSM table shows; the others are read with the spectrum of a PSM, when it is opened (PsmSpectra.load)
   const featurePresent = new Uint8Array(nFeatures)
   featurePresent[0] = 1
+  const rankJ = featureIndex.get(CHIMERIC_RANK) ?? -1
+  const rank = rankJ >= 0 ? new Float32Array(count).fill(NaN) : null
+  /** the features of the row `evaluate` was last given, by `featureNames` (NaN: absent) */
+  const scratch = new Float64Array(nFeatures)
+  const usesOf = new WeakMap<PsmRows, ([number, number] | null)[]>()
+  /**
+   * The scores (`values`, by SCORES) and the features (`scratch`) of row r of `f`, rows of quantms.psm.parquet or of
+   * an input's psm file, which has the same rows.
+   */
+  const evaluate = (f: PsmRows, r: number): void => {
+    let scoreUses = usesOf.get(f)
+    if (!scoreUses) usesOf.set(f, (scoreUses = f.scores.names.map(useOf)))
+    const observed = f.observedMz[r]
+    const calc = f.calculatedMz[r]
+    const z = f.charge[r]
+    // the scores and the features among them
+    values.fill(NaN)
+    scratch.fill(NaN)
+    for (let k = f.scores.offsets[r]; k < f.scores.offsets[r + 1]; k++) {
+      const c = f.scores.name[k]
+      const use = c < 0 ? null : scoreUses[c]
+      if (use === null) continue
+      const v = f.scores.value[k]
+      if (use[0] >= 0) values[use[0]] = v
+      if (use[1] >= 0 && !Number.isNaN(v)) scratch[use[1]] = use[1] === isotopeFeatureJ ? isotopeSign * v : v
+    }
+    scratch[0] = values[hyperscoreS]
+    // the isotope error of QPX (observed minus theoretical)
+    const isotope = first(f.isotope[r], values[isotopeErrorS])
+
+    // the .pin features (PercolatorInfile::stampPinFeaturesOnHits). Percolator saw every hit with its proteins, but a
+    // hit whose proteins all failed the protein FDR has none left in QPX (one input: ProSE removes the references):
+    // its features are those of the hit alone, without enzN and enzC, which need the residues around the peptide
+    // in a protein
+    const sequence = String(f.sequence[r] ?? '')
+    const e0 = f.evidence.offsets[r]
+    // Percolator's dm: corrected by ProSE's isotope error meta value as it is (with its convention's sign)
+    const iso = Math.fround(isotopeSign * isotope)
+    const dm = (Number.isNaN(iso) ? observed : observed - (iso * C13C12_MASSDIFF_U) / z) - calc
+    scratch[calcMassJ] = calc
+    scratch[massJ] = observed
+    scratch[peplenJ] = sequence.length
+    for (let c = 0; c < chargeColumns.length; c++) scratch[chargeColumns[c]] = minCharge + c === z ? 1 : 0
+    if (f.evidence.offsets[r + 1] > e0) {
+      // a protein terminus ('-' in QPX) as OpenMS' '[' and ']', which Percolator's features were computed with
+      const before = f.evidence.aa_before[e0] === '-' ? '[' : String(f.evidence.aa_before[e0] ?? '')
+      const after = f.evidence.aa_after[e0] === '-' ? ']' : String(f.evidence.aa_after[e0] ?? '')
+      scratch[enzNJ] = isEnz(before.charAt(0), sequence.charAt(0), enzyme) ? 1 : 0
+      scratch[enzCJ] = isEnz(sequence.charAt(sequence.length - 1), after.charAt(0), enzyme) ? 1 : 0
+    }
+    scratch[enzIntJ] = countEnzymatic(sequence, enzyme)
+    scratch[dmJ] = dm
+    scratch[absdmJ] = Math.abs(dm)
+  }
 
   const peptideRow = new Map<string, number>()
   const pt = {
@@ -718,7 +780,6 @@ export async function readSearch(files: SearchFiles, options: { batchRows?: numb
   for (const batch of batches) {
     const f = await inFile(MERGED_PSMS, async () => readRows(await readColumns(files, MERGED_PSMS, psmMetadata!, batch.groups, ROW_COLUMNS), batch.groups))
     if (f.count !== batch.rows) throw new Error(`${MERGED_PSMS}: ${f.count} rows in the row groups ${batch.groups[0]} to ${batch.groups[batch.groups.length - 1]}, its footer says ${batch.rows}`)
-    const scoreUses = f.scores.names.map(useOf)
     psmId.set(f.psmId, batch.from)
     for (let r = 0; r < f.count; r++) {
       const i = batch.from + r
@@ -731,61 +792,23 @@ export async function readSearch(files: SearchFiles, options: { batchRows?: numb
       charge[i] = clampInt8(z)
       decoy[i] = f.decoy[r] === true ? 1 : 0
 
-      // the scores and the features among them
-      values.fill(NaN)
-      const row = i * nFeatures
-      for (let k = f.scores.offsets[r]; k < f.scores.offsets[r + 1]; k++) {
-        const c = f.scores.name[k]
-        const use = c < 0 ? null : scoreUses[c]
-        if (use === null) continue
-        const v = f.scores.value[k]
-        if (use[0] >= 0) values[use[0]] = v
-        if (use[1] >= 0 && !Number.isNaN(v)) {
-          features[row + use[1]] = use[1] === isotopeFeatureJ ? isotopeSign * v : v
-          featurePresent[use[1]] = 1
-        }
-      }
+      // its scores, and its features: which of them it has, and the rank of a co-isolated precursor
+      evaluate(f, r)
+      for (let j = 1; j < nFeatures; j++) if (scratch[j] === scratch[j]) featurePresent[j] = 1
+      if (rank) rank[i] = scratch[rankJ]
       const hyperscore = values[hyperscoreS]
       const percolator = values[percolatorScoreS]
       const s = Number.isNaN(percolator) ? hyperscore : percolator
       score[i] = s
       qValue[i] = first(values[qS], values[percolatorQS])
       pep[i] = first(f.pep[r], values[percolatorPepS])
-      // the isotope error of QPX (observed minus theoretical)
       const isotope = first(f.isotope[r], values[isotopeErrorS])
       isotopeError[i] = clampInt8(isotope)
       const corrected = observed - ((Number.isNaN(isotope) ? 0 : isotope) * C13C12_MASSDIFF_U) / z
       precursorErrorPpm[i] = first(values[precursorErrorS], calc > 0 ? ((corrected - calc) / calc) * 1e6 : NaN)
       deltaMass[i] = values[deltaMassS]
-      features[row] = hyperscore
-
-      // the .pin features (PercolatorInfile::stampPinFeaturesOnHits). Percolator saw every hit with its proteins, but a
-      // hit whose proteins all failed the protein FDR has none left in QPX (one input: ProSE removes the references):
-      // its features are those of the hit alone, without enzN and enzC, which need the residues around the peptide
-      // in a protein
       const sequence = String(f.sequence[r] ?? '')
       const e0 = f.evidence.offsets[r]
-      const set = (j: number, v: number) => {
-        features[row + j] = v
-        if (!Number.isNaN(v)) featurePresent[j] = 1
-      }
-      // Percolator's dm: corrected by ProSE's isotope error meta value as it is (with its convention's sign)
-      const iso = Math.fround(isotopeSign * isotope)
-      const dm = (Number.isNaN(iso) ? observed : observed - (iso * C13C12_MASSDIFF_U) / z) - calc
-      set(calcMassJ, calc)
-      set(massJ, observed)
-      set(peplenJ, sequence.length)
-      for (let c = 0; c < chargeColumns.length; c++) set(chargeColumns[c], minCharge + c === z ? 1 : 0)
-      if (f.evidence.offsets[r + 1] > e0) {
-        // a protein terminus ('-' in QPX) as OpenMS' '[' and ']', which Percolator's features were computed with
-        const before = f.evidence.aa_before[e0] === '-' ? '[' : String(f.evidence.aa_before[e0] ?? '')
-        const after = f.evidence.aa_after[e0] === '-' ? ']' : String(f.evidence.aa_after[e0] ?? '')
-        set(enzNJ, isEnz(before.charAt(0), sequence.charAt(0), enzyme) ? 1 : 0)
-        set(enzCJ, isEnz(sequence.charAt(sequence.length - 1), after.charAt(0), enzyme) ? 1 : 0)
-      }
-      set(enzIntJ, countEnzymatic(sequence, enzyme))
-      set(dmJ, dm)
-      set(absdmJ, Math.abs(dm))
 
       // its peptide, unique by the OpenMS string
       const mods = modificationsOf(f.modifications, r, sequence.length)
@@ -845,15 +868,12 @@ export async function readSearch(files: SearchFiles, options: { batchRows?: numb
     }
   }
 
-  // only the features some PSM has: moved together in place (a kept feature never moves to the right), and the
-  // array cut to them without a second one of its size where the buffer can be cut (ArrayBuffer.transfer)
+  // only the features some PSM has
   const kept = featureNames.map((_, j) => j).filter((j) => featurePresent[j])
-  let keptFeatures = features
-  if (kept.length !== nFeatures) {
-    for (let r = 0; r < count; r++) for (let c = 0; c < kept.length; c++) features[r * kept.length + c] = features[r * nFeatures + kept[c]]
-    const length = count * kept.length
-    const buffer = features.buffer as ArrayBuffer & { transfer?: (newByteLength: number) => ArrayBuffer }
-    keptFeatures = typeof buffer.transfer === 'function' ? new Float64Array(buffer.transfer(length * 8)) : features.slice(0, length)
+  /** The features of row r of `f` (see `evaluate`), by the tables' `featureNames`. */
+  const featuresOf = (f: PsmRows, r: number): Float64Array => {
+    evaluate(f, r)
+    return Float64Array.from(kept, (j) => scratch[j])
   }
 
   const paths = inputs.map((r) => r.path)
@@ -875,7 +895,7 @@ export async function readSearch(files: SearchFiles, options: { batchRows?: numb
       deltaMass,
       decoy,
       featureNames: kept.map((j) => featureNames[j]),
-      features: keptFeatures,
+      chimericRank: rank && featurePresent[rankJ] ? rank : null,
     },
     peptides: {
       count: pt.openms.length,
@@ -914,6 +934,7 @@ export async function readSearch(files: SearchFiles, options: { batchRows?: numb
     from,
     { nativeId, psmId, precursorMz: mz, rt },
     meta.runs.some((r) => r.prediction_nce !== null),
+    featuresOf,
   )
 
   //------------------------------------------------------------------------------
@@ -1002,9 +1023,16 @@ function groupOf(layout: Layout, row: number): [number, number] {
  * one per spectrum in the order of its first PSM (else found by their ids). A search of app 0.1.x has these files next
  * to quantms.* (`qpx/<stems[k]>.*`): decided per input by its psm file, and used for its mz file too.
  */
-function psmSpectra(files: SearchFiles, stems: string[], from: number[], rows: RowIdentity, predictions: boolean): PsmSpectra {
+function psmSpectra(
+  files: SearchFiles,
+  stems: string[],
+  from: number[],
+  rows: RowIdentity,
+  predictions: boolean,
+  featuresOf: (rows: PsmRows, row: number) => Float64Array,
+): PsmSpectra {
   const layouts = new Map<string, Promise<Layout>>()
-  const predictionCache = new Map<string, Promise<{ psmId: Float64Array; predicted: PredictedSpectra }>>()
+  const predictionCache = new Map<string, Promise<{ psmId: Float64Array; predicted: PredictedSpectra; rows: PsmRows }>>()
   const peakCache = new Map<string, Promise<{ id: unknown[]; startTime: Float32Array; spectra: StoredSpectra }>>()
   /** the inputs whose mz rows are found by their ids (the order of the PSMs did not give them) */
   const byIds = new Set<number>()
@@ -1079,12 +1107,16 @@ function psmSpectra(files: SearchFiles, stems: string[], from: number[], rows: R
     return partOfParquet(layout.metadata, bytes, start)
   }
 
-  /** The predictions of row group g of input k's psm file, and its psm_id. */
+  /**
+   * The predictions of row group g of input k's psm file, its psm_id, and its rows as the PSM rows are read
+   * (ROW_COLUMNS: for the features of a PSM), from one read of the row group's columns.
+   */
   const predictionsOf = (k: number, layout: Layout, g: number) =>
     once(predictionCache, `${k}/${g}`, () =>
       inFile(psmName(k), async () => {
-        const file = await groupFile(psmName(k), layout, g, ['psm_id', ...PREDICTION_COLUMNS])
+        const file = await groupFile(psmName(k), layout, g, [...ROW_COLUMNS, ...PREDICTION_COLUMNS])
         const groups = [g]
+        const rows = readRows(file, groups)
         const psmId = readLeaf(file, ['psm_id'], 'values', groups).values as Float64Array
         const ion = listLeaf<Int32Array>(file, 'predicted_ion_type_array', 'codes', groups)
         const ionNames = (ion.dictionary ?? []).map(webIonName)
@@ -1096,7 +1128,7 @@ function psmSpectra(files: SearchFiles, stems: string[], from: number[], rows: R
         }
         // (a row without a prediction has an empty range: its list is null)
         const predicted: PredictedSpectra = { psmOffsets: ion.offsets, ion: ions, mz: predictedMz.values, intensity: predictedIntensity.values }
-        return { psmId, predicted }
+        return { psmId, predicted, rows }
       }),
     )
 
@@ -1216,8 +1248,10 @@ function psmSpectra(files: SearchFiles, stems: string[], from: number[], rows: R
       }
       const [g, at] = groupOf(psmLayout, local)
       touch(predictionCache, `${k}/${g}`)
-      const { psmId, predicted } = await predictionsOf(k, psmLayout, g)
+      const { psmId, predicted, rows: groupRows } = await predictionsOf(k, psmLayout, g)
       if (psmId[at] !== rows.psmId[row]) throw new Error(`${psmName(k)}: its row ${local} is another PSM than the search's (psm_id)`)
+      // its features: the same row, as the PSM rows are read
+      const features = featuresOf(groupRows, at)
 
       // the spectrum: its row in the input's mz view (whose id has to be the PSM's native ID); none without the view
       let mzLayout: Layout | null = null
@@ -1263,7 +1297,7 @@ function psmSpectra(files: SearchFiles, stems: string[], from: number[], rows: R
         peakFilter = filterOf(mzLayout)
       }
       trim()
-      return { spectra, spectrumRow, predicted, row: at, peakFilter }
+      return { spectra, spectrumRow, predicted, row: at, peakFilter, features }
     },
   }
 }

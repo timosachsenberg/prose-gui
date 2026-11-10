@@ -233,7 +233,7 @@
   })
 
   /** PeptDeep's similarity that the search computed (over all ions), whenever the search has it. */
-  const similarity = $derived(similarityText(ps.featureNames, ps.features, row))
+  const similarity = $derived(similarityText(ps.featureNames, spectra?.data?.features ?? null))
 
   /**
    * The observed half's 100 %: against PeptDeep, the strongest matched b or y peak (as PeptDeep scales
@@ -841,7 +841,7 @@
       {/if}
     </div>
     <div class="min-w-[260px] flex-[1_1_420px] pt-1">
-      <PsmFeatures model={m} {row} {fixedMods} matched={summary} />
+      <PsmFeatures model={m} {row} {fixedMods} matched={summary} features={spectra?.data?.features ?? null} />
     </div>
   </div>
 </section>

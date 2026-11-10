@@ -465,9 +465,9 @@ export function modificationList(t: ResultTables['peptides'], k: number, fixedMo
  * The similarity of the PSM's spectrum to PeptDeep's prediction that the search computed (its
  * features `ms2_cosine` and `ms2_spectral_angle`, over all ions), or null without them.
  */
-export function similarityText(names: string[], features: Float64Array, row: number): string | null {
-  const cosine = featureValue(names, features, row, 'ms2_cosine')
-  const angle = featureValue(names, features, row, 'ms2_spectral_angle')
+export function similarityText(names: string[], features: Float64Array | null): string | null {
+  const cosine = featureValue(names, features, 'ms2_cosine')
+  const angle = featureValue(names, features, 'ms2_spectral_angle')
   const parts = [
     Number.isFinite(cosine) ? `cosine ${cosine.toFixed(3)}` : null,
     Number.isFinite(angle) ? `spectral angle ${angle.toFixed(3)}` : null,
@@ -489,10 +489,13 @@ export function matchedByReference(groups: { intensity: number; matches: PeakMat
   return best > 0 ? best : null
 }
 
-/** A feature of PSM `row` by name (`psms.featureNames`), or NaN if the search has none of that name. */
-export function featureValue(names: string[], features: Float64Array, row: number, name: string): number {
+/**
+ * A feature of a PSM by name: `features` are the PSM's, by `names` (`psms.featureNames`; LoadedSpectra.features).
+ * NaN if the search has none of that name, or the PSM's features are not read (yet).
+ */
+export function featureValue(names: string[], features: Float64Array | null, name: string): number {
   const j = names.indexOf(name)
-  return j < 0 ? NaN : features[row * names.length + j]
+  return j < 0 || !features ? NaN : features[j]
 }
 
 /** The file name of an exported spectrum: the peptide and the scan ("AVM_Oxidation_DDFAAFVEK_scan21507.svg"). */

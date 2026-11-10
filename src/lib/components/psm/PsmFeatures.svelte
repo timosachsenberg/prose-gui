@@ -14,9 +14,12 @@
     row,
     fixedMods,
     matched,
+    features,
   }: {
     model: ResultModel
     row: number
+    /** The PSM's features, by the tables' featureNames (read with its spectrum); null: not read (yet). */
+    features: Float64Array | null
     fixedMods: string[]
     /** Of the annotation shown: matched ions of those shown, and the share of the intensity they explain. */
     matched: { matched: number; total: number; intensityFraction: number } | null
@@ -26,7 +29,7 @@
   const pt = $derived(model.tables.peptides)
   const k = $derived(ps.peptide[row])
   const names = $derived(ps.featureNames)
-  const feature = (name: string) => featureValue(names, ps.features, row, name)
+  const feature = (name: string) => featureValue(names, features, name)
   const number = (v: number, digits = 3) => (Number.isFinite(v) ? String(Number(v.toPrecision(digits + 1))) : '–')
 
   const modifications = $derived(modificationList(pt, k, fixedMods))
@@ -124,7 +127,7 @@
         {#each names as name, j (name)}
           <div class="kv-row">
             <dt>{name}</dt>
-            <dd>{number(ps.features[row * names.length + j], 4)}</dd>
+            <dd>{number(features ? features[j] : NaN, 4)}</dd>
           </div>
         {/each}
       </dl>

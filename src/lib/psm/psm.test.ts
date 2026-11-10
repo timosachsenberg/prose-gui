@@ -352,16 +352,19 @@ describe('numbers', () => {
 
   it('reads a feature of a PSM by name; NaN when the search has none', () => {
     const names = ['ln(hyperscore)', 'ms2_cosine']
-    const features = Float64Array.of(1, 0.5, 2, 0.9)
-    expect(featureValue(names, features, 1, 'ms2_cosine')).toBe(0.9)
-    expect(featureValue(names, features, 0, 'ms2_spectral_angle')).toBeNaN()
+    const features = Float64Array.of(2, 0.9)
+    expect(featureValue(names, features, 'ms2_cosine')).toBe(0.9)
+    expect(featureValue(names, features, 'ms2_spectral_angle')).toBeNaN()
+    // the PSM's features not read yet
+    expect(featureValue(names, null, 'ms2_cosine')).toBeNaN()
   })
 
   it("says the search's similarity to PeptDeep's prediction, when the search has it", () => {
     const names = ['ln(hyperscore)', 'ms2_cosine', 'ms2_spectral_angle']
-    expect(similarityText(names, Float64Array.of(1, 0.9312, 0.7624), 0)).toBe('cosine 0.931 · spectral angle 0.762 (search)')
-    expect(similarityText(['ln(hyperscore)'], Float64Array.of(1), 0)).toBeNull()
-    expect(similarityText(names, Float64Array.of(1, NaN, NaN), 0)).toBeNull()
+    expect(similarityText(names, Float64Array.of(1, 0.9312, 0.7624))).toBe('cosine 0.931 · spectral angle 0.762 (search)')
+    expect(similarityText(['ln(hyperscore)'], Float64Array.of(1))).toBeNull()
+    expect(similarityText(names, Float64Array.of(1, NaN, NaN))).toBeNull()
+    expect(similarityText(names, null)).toBeNull()
   })
 
   it('scales the observed half to the strongest matched b or y peak of the types shown', () => {

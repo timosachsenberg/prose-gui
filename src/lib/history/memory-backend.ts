@@ -38,6 +38,9 @@ export class MemoryBackend implements HistoryBackend {
   saved: { name: string; bytes: Uint8Array }[] = []
   cancelSave = false
   imported = 0
+  /** As a backend that opens and writes archives itself (the Rust side) has them: set by a test of that path. */
+  importArchiveFile?: HistoryBackend['importArchiveFile']
+  archiveLimits?: HistoryBackend['archiveLimits']
   failures: Partial<Record<'list' | 'save' | 'proteins' | 'rename' | 'delete', string>> = {}
 
   /** A folder as the shim leaves it. */
