@@ -338,8 +338,11 @@ fn a_chunked_search_of_two_files_reports_progress() {
 fn cancelling_the_real_tool_leaves_no_process_and_no_folder() {
     let Some(real) = real() else { return };
     let work = TempDir::new("real-cancel");
-    // (the example takes a few seconds; in chunks of 20 proteins it runs long enough to be cancelled)
-    let request = example_request_with(&real, &work, false, json!({ "database:chunk_size": 20 }));
+    // The search has to outlast the listing of the processes below, and by a wide margin: on Windows that listing
+    // (PowerShell, CIM) usually takes a second, but took 35 s on a CI runner. The example takes a few seconds, and
+    // about 7 s in chunks of 20 proteins: the listing then found the tool gone. In chunks of one protein (8,504
+    // chunks, 13 ms each on four cores) it runs for more than a minute and a half.
+    let request = example_request_with(&real, &work, false, json!({ "database:chunk_size": 1 }));
     let searches = Arc::new(Searches::default());
     let (sink, rx) = channel_sink();
     let crap = tool::bundled_crap(None).unwrap();
