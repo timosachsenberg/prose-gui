@@ -77,11 +77,15 @@ describe('DataTable keys', () => {
     expect(clicked).toEqual([])
   })
 
-  /** A table with a selected row, the level below (`onRowOpen`) and the way up (`onBack`). */
-  function levels(selected: number | null, rows = [10, 11, 12, 13]) {
+  /**
+   * A table with a selected row, the level below (`onRowOpen`) and the way up (`onBack`); `open`: the detail of the
+   * selected row is open (`followFocus`), as the level tables say it. The rows the table selects become its
+   * selected row, as a level does.
+   */
+  function levels(selected: number | null, rows = [10, 11, 12, 13], open = true) {
     const clicked: number[] = []
     const opened: number[] = []
-    let back = 0
+    const backs: (number | null)[] = []
     const target = document.createElement('div')
     document.body.append(target)
     const props = $state({
@@ -89,10 +93,14 @@ describe('DataTable keys', () => {
       columns,
       sort: { key: 'n', dir: 'asc' as const },
       onSort: () => {},
-      onRowClick: (row: number) => clicked.push(row),
+      onRowClick: (row: number) => {
+        clicked.push(row)
+        props.selected = row
+      },
       onRowOpen: (row: number) => opened.push(row),
-      onBack: () => void back++,
+      onBack: (row: number | null) => void backs.push(row),
       selected,
+      followFocus: open,
       label: 'Test',
     })
     shown = mount(DataTable, { target, props })
@@ -102,30 +110,49 @@ describe('DataTable keys', () => {
       grid.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }))
       flushSync()
     }
-    return { clicked, opened, backs: () => back, grid, press, props, target }
+    const active = () => target.querySelector('tbody tr.active')?.textContent?.trim()
+    return { clicked, opened, backs, grid, press, props, target, active }
   }
 
-  it('Enter selects a row, and on the selected row goes on to the level below; Space only selects', () => {
+  it('Enter on the row whose detail is open goes on to the level below; Space only selects', () => {
     const { clicked, opened, press } = levels(11)
-    press('Enter') // the selected row is the active one: on to its level below
+    press('Enter') // the open row is the active one: on to its level below
     expect([clicked, opened]).toEqual([[], [11]])
-    press('ArrowUp')
-    press('Enter') // row 10, which is not selected: Enter selects it
-    expect([clicked, opened]).toEqual([[10], [11]])
-    press('ArrowDown')
-    press(' ') // Space selects, also the selected row
-    expect([clicked, opened]).toEqual([[10, 11], [11]])
+    press('ArrowUp') // (the detail follows the keys: row 10 is open now)
+    expect(clicked).toEqual([10])
+    press('Enter')
+    expect([clicked, opened]).toEqual([[10], [11, 10]])
+    press(' ') // Space selects, also the open row
+    expect([clicked, opened]).toEqual([[10, 10], [11, 10]])
   })
 
-  it('a double click goes on to the level below; Backspace goes back up', () => {
-    const { clicked, opened, backs, press, target } = levels(null)
+  it('Enter on a selected row whose detail is closed opens it again, and only then goes on', () => {
+    // (the row stays selected when its detail closes: Esc, then Enter, is "open it again", not "its peptides")
+    const { clicked, opened, press, props } = levels(11, undefined, false)
+    press('Enter')
+    expect([clicked, opened]).toEqual([[11], []])
+    props.followFocus = true // its detail is open
+    flushSync()
+    press('Enter')
+    expect([clicked, opened]).toEqual([[11], [11]])
+  })
+
+  it('a double click goes on to the level below; Backspace goes back up from the active row', () => {
+    const { clicked, opened, backs, press, target, props } = levels(null, undefined, false)
     const row = target.querySelectorAll<HTMLElement>('tbody tr[role="row"]')[2]
     row.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
     flushSync()
     expect(opened).toEqual([12])
     expect(clicked).toEqual([])
+    // the row the keys are on, not one selected before
+    press('ArrowDown')
     press('Backspace')
-    expect(backs()).toBe(1)
+    expect(backs).toEqual([11])
+    // a table without rows (a narrowing that leaves none) is left the same way
+    props.rows = new Uint32Array(0)
+    flushSync()
+    press('Backspace')
+    expect(backs).toEqual([11, null])
   })
 
   it('without a level below, Enter always selects and Backspace is not the table\'s', () => {
@@ -138,11 +165,10 @@ describe('DataTable keys', () => {
     expect(event.defaultPrevented).toBe(false)
   })
 
-  it('new rows keep the selected row the active one; without it among them, the first row is', () => {
-    const { clicked, opened, press, props, target } = levels(12, [12])
-    const active = () => target.querySelector('tbody tr.active')?.textContent?.trim()
+  it('new rows keep the open row the active one; without it among them, or with no detail open, the first row is', () => {
+    const { clicked, opened, press, props, active } = levels(12, [12])
     expect(active()).toBe('row 12')
-    // the table shows more rows (a narrowing was taken away): the selected row stays the active one
+    // the table shows more rows (a narrowing was taken away): the open row stays the active one
     props.rows = Uint32Array.from([10, 11, 12, 13])
     flushSync()
     expect(active()).toBe('row 12')
@@ -150,15 +176,21 @@ describe('DataTable keys', () => {
     expect([clicked, opened]).toEqual([[], [12]])
     press('ArrowDown')
     expect(active()).toBe('row 13')
-    // rows without the selected one: back to the first
+    // rows without the open one: back to the first
     props.rows = Uint32Array.from([10, 11])
+    flushSync()
+    expect(active()).toBe('row 10')
+    // no detail open (the row is only selected): new rows start at the top, as a sorted or filtered table does
+    props.followFocus = false
+    props.selected = 12
+    flushSync()
+    props.rows = Uint32Array.from([10, 11, 12, 13])
     flushSync()
     expect(active()).toBe('row 10')
   })
 
   it('a selection made outside the table (Prev and Next of the detail) moves the active row with it', () => {
-    const { clicked, opened, press, props, target } = levels(10)
-    const active = () => target.querySelector('tbody tr.active')?.textContent?.trim()
+    const { clicked, opened, press, props, active } = levels(10)
     expect(active()).toBe('row 10')
     props.selected = 12
     flushSync()
@@ -170,7 +202,7 @@ describe('DataTable keys', () => {
     flushSync()
     expect(active()).toBe('row 11')
     press('Enter')
-    expect([clicked, opened]).toEqual([[], [11]])
+    expect([clicked, opened]).toEqual([[13], [11]])
     // nothing selected, or a row the table does not show: the active row stays
     props.selected = null
     flushSync()

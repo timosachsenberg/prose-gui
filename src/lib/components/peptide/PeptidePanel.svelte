@@ -52,22 +52,22 @@
   const proforma = $derived(pt.proforma[peptide])
   const decoy = $derived(pt.decoy[peptide] === 1)
 
-  /** Its proteins with where the peptide is in each (1-based, inclusive; null: not known). */
+  /**
+   * Its proteins, each once, with where the peptide is in it (1-based, inclusive; null: not known). A peptide that
+   * occurs more than once in a protein (a repeat) has a reference per place: they are one protein with its places.
+   */
   const proteins = $derived.by(() => {
-    const out: { row: number; id: string; name: string; accession: string; where: string | null }[] = []
+    const out = new Map<number, { row: number; id: string; name: string; accession: string; places: string[] }>()
     for (let r = pt.proteinOffsets[peptide]; r < pt.proteinOffsets[peptide + 1]; r++) {
       const p = pt.protein[r]
       const accession = pr.accession[p]
       const [start, end] = [pt.start[r], pt.end[r]]
-      out.push({
-        row: p,
-        id: parseAccession(accession).id,
-        name: parseDescription(pr.description[p]).name,
-        accession,
-        where: end > start ? `${formatCount(start + 1)}–${formatCount(end)}` : null,
-      })
+      let entry = out.get(p)
+      if (!entry) out.set(p, (entry = { row: p, id: parseAccession(accession).id, name: parseDescription(pr.description[p]).name, accession, places: [] }))
+      const place = end > start ? `${formatCount(start + 1)}–${formatCount(end)}` : null
+      if (place !== null && !entry.places.includes(place)) entry.places.push(place)
     }
-    return out
+    return [...out.values()].map((e) => ({ ...e, where: e.places.length > 0 ? e.places.join(', ') : null }))
   })
 
   // its PSMs within the search's PSM FDR (those the tables count), sorted as the user asks (best q-value first)
@@ -125,8 +125,6 @@
       <h2 class="mt-0.5 text-xl leading-snug font-semibold [overflow-wrap:anywhere]" title={proforma} data-testid="peptide-sequence">
         <PeptideSequence view={shown} class="!text-[19px] !whitespace-normal" />
       </h2>
-      <!-- the focus stays in the table: say which peptide the detail shows -->
-      <p class="sr-only" aria-live="polite">Peptide {proforma}</p>
     </div>
     <div class="flex flex-none items-center gap-1.5">
       <StepButtons neighbours={view.neighbours('peptides')} noun="peptide" onStep={(direction) => view.step('peptides', direction)} />

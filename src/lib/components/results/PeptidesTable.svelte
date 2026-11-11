@@ -27,7 +27,7 @@
     onOpen: (peptide: number) => void
     onOpenProtein: (protein: number) => void
     onDrill?: (peptide: number) => void
-    onBack?: () => void
+    onBack?: (row: number | null) => void
   } = $props()
 
   let table = $state<DataTable | null>(null)

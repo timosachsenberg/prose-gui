@@ -27,7 +27,7 @@
   import { Button } from '$lib/components/ui/button'
   import * as Tabs from '$lib/components/ui/tabs'
   import { displaySettings } from '$lib/format/settings.svelte'
-  import { formatCount } from '$lib/results/display'
+  import { formatCount, parseAccession, parseDescription } from '$lib/results/display'
   import { exportCsv } from '$lib/results/exports'
   import { keyFigures, levelTotal } from '$lib/results/figures'
   import { inputNoticeItems, psmFdrAppliedToNone, psmFdrNotice } from '$lib/results/overview'
@@ -95,6 +95,20 @@
   const peptideOpen = $derived(view !== null && view.tab === 'peptides' && view.peptidePanel !== null)
   const psmOpen = $derived(view !== null && view.tab === 'psms' && view.psm !== null)
   const besideOpen = $derived(panelOpen || peptideOpen)
+  /**
+   * What the detail beside the table shows, for screen readers: the focus stays in the table while its arrow keys
+   * go through the rows, and the panes are made anew for each row, so the region that says it is here, where it
+   * stays and only its text changes. (The PSM view, which is not made anew, says its own.)
+   */
+  const announcement = $derived.by(() => {
+    if (!view) return ''
+    if (panelOpen && view.panel !== null) {
+      const pr = view.model.tables.proteins
+      return `Protein ${parseAccession(pr.accession[view.panel]).id}, ${parseDescription(pr.description[view.panel]).name}`
+    }
+    if (peptideOpen && view.peptidePanel !== null) return `Peptide ${view.model.tables.peptides.proforma[view.peptidePanel]}`
+    return ''
+  })
 
   let proteinsTable = $state<ProteinsTable | null>(null)
   let peptidesTable = $state<PeptidesTable | null>(null)
@@ -199,18 +213,18 @@
     }
   }
 
-  /** Backspace in the PSM table: up to the peptide of the open (else the selected) PSM; without one, the Peptides tab. */
-  function upFromPsms() {
+  /** Backspace in the PSM table: up to the peptide of its active row (else of the open or selected PSM); without one, the Peptides tab. */
+  function upFromPsms(row: number | null = null) {
     if (!view) return
-    const psm = view.psm?.row ?? view.psms.selected
+    const psm = row ?? view.psm?.row ?? view.psms.selected
     if (psm === null) view.tab = 'peptides'
     else void showPeptide(view.model.tables.psms.peptide[psm])
   }
 
-  /** Backspace in the Peptides table: up to the protein of the open (else the selected) peptide; without one, the Proteins tab. */
-  function upFromPeptides() {
+  /** Backspace in the Peptides table: up to the protein of its active row (else of the open or selected peptide); without one, the Proteins tab. */
+  function upFromPeptides(row: number | null = null) {
     if (!view) return
-    const peptide = view.peptidePanel ?? view.peptides.selected
+    const peptide = row ?? view.peptidePanel ?? view.peptides.selected
     const protein = peptide === null ? null : view.proteinOf(peptide)
     if (protein === null) view.tab = 'proteins'
     else void showProtein(protein)
@@ -259,6 +273,7 @@
   {@const level = view.level}
   <section data-testid="view-results" class="absolute inset-0 flex flex-col gap-3 px-5 pt-4 pb-3">
     <h1 class="sr-only">Results</h1>
+    <p class="sr-only" aria-live="polite" data-testid="detail-announcement">{announcement}</p>
     {@render notices()}
 
     <Tabs.Root bind:value={view.tab} class="flex min-h-0 flex-1 flex-col gap-3">
@@ -313,6 +328,7 @@
             <div
               class="flex min-h-0 min-w-0 flex-col gap-2 {psmOpen ? 'flex-none' : 'flex-1'} {besideOpen ? '@max-[760px]/split:hidden' : ''}"
               style:height={psmOpen ? `${psmTableHeight}px` : undefined}
+              data-level-table
               data-testid="results-table-area">
               {#if level.level === 'proteins' && noProteins}
                 <ProteinsEmpty {view} peptides={peptideTotal} psms={figures.psms} />

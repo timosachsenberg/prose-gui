@@ -34,7 +34,7 @@
     follow?: boolean
     onOpenProtein?: (protein: number) => void
     /** Backspace: up to the peptide of the PSM. */
-    onBack?: () => void
+    onBack?: (row: number | null) => void
   } = $props()
 
   const m = $derived(view.model)

@@ -77,12 +77,13 @@
      */
     followFocus?: boolean
     /**
-     * The level below the row: a double click, or Enter on the row that is selected already (whose detail shows:
-     * the first Enter selects, the second goes on). Without it Enter always selects.
+     * The level below the row: a double click, or Enter on the row whose detail is open (the selected row while
+     * `followFocus` is on: the first Enter opens the detail, the second goes on). Without it, and on a row whose
+     * detail is closed, Enter selects.
      */
     onRowOpen?: (row: number) => void
-    /** Backspace in the grid: back up a level. */
-    onBack?: () => void
+    /** Backspace in the grid: back up a level, from the active row (null: the table has no rows). */
+    onBack?: (row: number | null) => void
   } = $props()
 
   const overscan = 3
@@ -133,15 +134,15 @@
 
   const minWidth = $derived(columns.reduce((w, c) => w + (c.width === 'auto' ? autoMinWidth : c.width), 0))
 
-  // new rows (filtered or sorted): back to the top, the first row active; unless the selected row is among them
-  // (a narrowing was taken away, the table was sorted): then that row is the active one and comes into sight, once
-  // the table has its new height
+  // new rows (filtered or sorted): back to the top, the first row active; unless the detail of the selected row is
+  // open (`followFocus`) and the row is among them (a narrowing was taken away, the table was sorted): then that row
+  // is the active one and comes into sight, once the table has its new height
   let lastRows: Uint32Array | null = null
   let reveal = -1
   $effect.pre(() => {
     if (rows === lastRows) return
     lastRows = rows
-    const kept = untrack(() => (selected === null || selected === undefined ? -1 : rows.indexOf(selected)))
+    const kept = untrack(() => (!followFocus || selected === null || selected === undefined ? -1 : rows.indexOf(selected)))
     reveal = kept
     active = Math.max(0, kept)
     scrollTop = 0
@@ -215,17 +216,19 @@
       box?.focus({ preventScroll: true }) // onfocus puts the active row in view
       return
     }
-    if (event.target !== box || rows.length === 0) return
+    if (event.target !== box) return
+    // (also from a table without rows: a narrowing that leaves none is left this way)
+    if (event.key === 'Backspace' && onBack) {
+      event.preventDefault()
+      onBack(rows.length > 0 ? rows[active] : null)
+      return
+    }
+    if (rows.length === 0) return
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault()
       activate(active)
-      if (event.key === 'Enter' && onRowOpen && rows[active] === selected) onRowOpen(rows[active])
+      if (event.key === 'Enter' && onRowOpen && followFocus && rows[active] === selected) onRowOpen(rows[active])
       else onRowClick(rows[active])
-      return
-    }
-    if (event.key === 'Backspace' && onBack) {
-      event.preventDefault()
-      onBack()
       return
     }
     const page = Math.max(1, Math.floor((height - headerHeight) / rowHeight) - 1)

@@ -318,6 +318,35 @@ describe('narrowing the tables below a level', () => {
     expect(view.psms.filters.peptideFilter).toBe(2)
   })
 
+  it('a narrowing clears the other filters of the table it goes to, and leaves those of the other table', () => {
+    const view = resultsViewFor(result(1, 1))
+    view.peptides.filters.text = 'zzz'
+    view.psms.filters.text = 'yyy'
+    // to the peptides of a protein: the PSM table is narrowed with them, its own filter stays
+    view.narrowTo({ protein: 0 }, 'peptides')
+    expect(view.peptides.filters).toMatchObject({ proteinFilter: 0, text: '' })
+    expect(view.psms.filters).toMatchObject({ proteinFilter: 0, text: 'yyy' })
+    // to its PSMs: now the PSM table starts afresh, and the Peptides table keeps what was typed since
+    view.peptides.filters.text = 'xxx'
+    view.narrowTo({ protein: 0 }, 'psms')
+    expect(view.psms.filters).toMatchObject({ proteinFilter: 0, text: '' })
+    expect(view.peptides.filters).toMatchObject({ proteinFilter: 0, text: 'xxx' })
+  })
+
+  it('a PSM opened among the PSMs of its peptide stays among them when the curation filter hid it', () => {
+    const view = resultsViewFor(result(1, 1))
+    // (the table at "Not curated", as while curating; the PSM is accepted already)
+    view.curate(3, ACCEPTED)
+    view.psms.filters.curation = 'uncurated'
+    expect(Array.from(view.psms.rows)).not.toContain(3)
+    view.openPsmIn(3, { protein: 0, peptide: 1 })
+    expect(view.psm).toEqual({ row: 3 })
+    // the curation filter gave way, not the narrowing
+    expect(view.psms.filters).toMatchObject({ proteinFilter: 0, peptideFilter: 1, curation: 'any' })
+    expect(Array.from(view.psms.rows)).toEqual([3])
+    expect(view.peptides.filters.proteinFilter).toBe(0)
+  })
+
   it('tables that are not narrowed stay as they are when a protein or a peptide opens', () => {
     const view = resultsViewFor(result(1, 1))
     view.openProtein(0)

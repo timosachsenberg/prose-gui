@@ -395,10 +395,22 @@
           : 'Click a peak to label it'
         : '',
   )
-  function exportSvg() {
-    const svg = mirror?.svgElement()
-    if (!svg) return
-    void saveText(svgFileName(proforma, ps.nativeId[row]), exportSpectrumSvg(svg))
+  /**
+   * While the figure is taken for the export the drawing is as it is by itself, whatever the window: the plot at
+   * its own height, with the mass errors if they are on. The file is then the same from a low window as from a
+   * high one (the drawing on screen fits the room it has: a lower plot, a lower error strip or none).
+   */
+  let exporting = $state(false)
+  async function exportSvg() {
+    if (!mirror) return
+    exporting = true
+    try {
+      await tick()
+      const svg = mirror?.svgElement()
+      if (svg) void saveText(svgFileName(proforma, ps.nativeId[row]), exportSpectrumSvg(svg))
+    } finally {
+      exporting = false
+    }
   }
 
   // the Export menu's "Spectrum (SVG)" does what the button does
@@ -456,13 +468,19 @@
    * Keys that belong to what has the focus: typing, a grid, radio buttons, menus. Not the PSM table above the view:
    * the focus is there while the user goes through the PSMs, its rows are the view's PSMs, and it takes only the
    * keys that move through the rows (↑ ↓, Home, End, the page keys, Enter, Backspace), so the view's own (A, R, M, L,
-   * ← →, Delete) work from it too.
+   * ← →, Delete) work from it too. Results marks that table (`data-level-table`).
    */
   function ownsKeys(target: EventTarget | null): boolean {
     if (!(target instanceof Element)) return false
     if (target.closest('input, textarea, select, [contenteditable="true"]')) return true
-    if (target.closest('[data-testid="results-table-area"] [role="grid"]')) return false
+    if (target.closest('[data-level-table] [role="grid"]')) return false
     return target.closest('[role="grid"], [role="tablist"], [role="menu"], [role="listbox"], [role="dialog"]') !== null
+  }
+
+  /** A grid wider than its box: ← and → scroll it (a narrow window), and are not the view's Prev and Next from there. */
+  function scrollsSideways(target: EventTarget | null): boolean {
+    const grid = target instanceof Element ? target.closest('[role="grid"]') : null
+    return grid !== null && grid.scrollWidth > grid.clientWidth + 1
   }
 
   function onkeydown(event: KeyboardEvent) {
@@ -478,7 +496,7 @@
       if (ownsKeys(event.target)) return
       if (mirror?.deleteSelection()) event.preventDefault()
     } else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
-      if (ownsKeys(event.target)) return
+      if (ownsKeys(event.target) || scrollsSideways(event.target)) return
       event.preventDefault()
       void step(event.key === 'ArrowLeft' ? -1 : 1)
     } else if (event.key === 'a' || event.key === 'A' || event.key === 'r' || event.key === 'R') {
@@ -802,7 +820,7 @@
       <div class="absolute inset-0">
       <SpectrumMirror
         bind:this={mirror}
-        fit={plotRoom > 0 ? plotRoom : null}
+        fit={plotRoom > 0 && !exporting ? plotRoom : null}
         mz={peaks.mz}
         intensity={peaks.intensity}
         {groups}
@@ -811,7 +829,7 @@
         {similarity}
         title={spectrumTitle}
         description={spectrumDescription}
-        errors={displaySettings.massErrors && errorsFit ? { matches: shown, tolerance } : null}
+        errors={displaySettings.massErrors && (errorsFit || exporting) ? { matches: shown, tolerance } : null}
         bind:hover={hoverMz}
         onTheoretical={() => (view.psmOptions.bottom = 'theoretical')}
         {tool}

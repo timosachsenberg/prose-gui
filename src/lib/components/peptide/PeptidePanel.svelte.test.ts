@@ -58,10 +58,11 @@ describe("the peptide's detail", () => {
     document.body.innerHTML = ''
   })
 
-  async function show(sequence: string) {
+  async function show(sequence: string, change?: (view: ReturnType<typeof resultsViewFor>, peptide: number) => void) {
     const view = resultsViewFor(await open())
     const peptide = view.model.tables.peptides.sequence.indexOf(sequence)
     expect(peptide, sequence).toBeGreaterThanOrEqual(0)
+    change?.(view, peptide)
     view.tab = 'peptides'
     view.openPeptide(peptide)
     const calls = { onClose: vi.fn(), onNarrow: vi.fn(), onOpenProtein: vi.fn(), onOpenPsm: vi.fn() }
@@ -99,6 +100,28 @@ describe("the peptide's detail", () => {
     }
     items[1].querySelector('button')!.click()
     expect(calls.onOpenProtein).toHaveBeenCalledWith(proteins[1])
+  })
+
+  it('a peptide that occurs twice in a protein lists the protein once, with both places', async () => {
+    // (a repeat: the result has a reference per place; here the second protein's reference is made a second place
+    // in the first)
+    const { target, calls } = await show(SHARED, (view, peptide) => {
+      const pt = view.model.tables.peptides
+      const first = pt.proteinOffsets[peptide]
+      expect(pt.proteinOffsets[peptide + 1] - first).toBe(2)
+      pt.protein[first + 1] = pt.protein[first]
+      pt.start[first + 1] = pt.start[first] + 100
+      pt.end[first + 1] = pt.end[first] + 100
+    })
+    const items = Array.from(target.querySelectorAll('[data-testid="peptide-proteins"] li'))
+    expect(items.length).toBe(1)
+    expect(target.querySelector('[data-testid="peptide-proteins"] h3')?.textContent).toBe('Protein')
+    const places = [...items[0].textContent!.matchAll(/(\d+)–(\d+)/g)].map((m) => [Number(m[1]), Number(m[2])])
+    expect(places.length).toBe(2)
+    expect(places[1][0] - places[0][0]).toBe(100)
+    for (const [from, to] of places) expect(to - from + 1).toBe(SHARED.length)
+    items[0].querySelector('button')!.click()
+    expect(calls.onOpenProtein).toHaveBeenCalledTimes(1)
   })
 
   it('lists its PSMs, best q-value first; one opens, and the button goes on to the PSM table of the peptide', async () => {

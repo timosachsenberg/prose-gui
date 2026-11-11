@@ -413,30 +413,32 @@ export class ResultsView {
    * The narrowing of the tables below a level: the Peptides and PSM tables show one protein only (`{ protein }`),
    * or the PSM table one peptide (`{ peptide }`, a row of `tables.peptides`). Both tables share the protein: a chip
    * in their filter row ("Protein: <accession>", "Peptide: <ProForma>") says so and takes it away (`widen`). The
-   * contaminants or decoys show if the protein or peptide is one. With `reset` the tables start from the search's
-   * cutoff, without text, charge and range filters (the user asked for these rows); without it only the narrowing
-   * changes (it follows the selection). A peptide keeps the protein if it is one of that protein's. What the
-   * narrowing hides closes: the open PSM, the open peptide.
+   * contaminants or decoys show if the protein or peptide is one. The table named by `reset` (the one the user
+   * goes to) starts from the search's cutoff, without text, charge and range filters (the user asked for these
+   * rows); the other table, and both with null (the narrowing follows the selection), keep their filters and only
+   * change what they are narrowed to. A peptide keeps the protein if it is one of that protein's. What the narrowing
+   * hides closes: the open PSM, the open peptide.
    */
-  #narrow(what: Narrowing, reset: boolean): void {
+  #narrow(what: Narrowing, reset: 'peptides' | 'psms' | null): void {
     const m = this.model
-    const clear = (f: FilterState): FilterState => (reset ? { ...f, text: '', maxQ: m.psmFdr, charges: undefined, ranges: undefined } : { ...f })
+    const clear = (f: FilterState, level: 'peptides' | 'psms'): FilterState =>
+      reset === level ? { ...f, text: '', maxQ: m.psmFdr, charges: undefined, ranges: undefined } : { ...f }
     if ('protein' in what) {
       const p = what.protein
-      const shown = (f: FilterState): FilterState => ({
-        ...clear(f),
+      const shown = (f: FilterState, level: 'peptides' | 'psms'): FilterState => ({
+        ...clear(f, level),
         proteinFilter: p,
         hideContaminants: m.protein.contaminant[p] ? false : f.hideContaminants,
         showDecoys: m.tables.proteins.decoy[p] ? true : f.showDecoys,
       })
-      this.peptides.filters = shown(this.peptides.filters)
-      this.psms.filters = { ...shown(this.psms.filters), peptideFilter: undefined }
+      this.peptides.filters = shown(this.peptides.filters, 'peptides')
+      this.psms.filters = { ...shown(this.psms.filters, 'psms'), peptideFilter: undefined }
     } else {
       const k = what.peptide
       const f = this.psms.filters
       const protein = f.proteinFilter !== undefined && m.peptide.proteins[k].includes(f.proteinFilter) ? f.proteinFilter : undefined
       this.psms.filters = {
-        ...clear(f),
+        ...clear(f, 'psms'),
         proteinFilter: protein,
         peptideFilter: k,
         hideContaminants: m.peptide.contaminant[k] ? false : f.hideContaminants,
@@ -460,18 +462,19 @@ export class ResultsView {
       if (a === undefined && b === undefined) return
       if (a === what.protein && b === what.protein) return
     } else if (this.psms.filters.peptideFilter === undefined || this.psms.filters.peptideFilter === what.peptide) return
-    this.#narrow(what, false)
+    this.#narrow(what, null)
   }
 
   /**
    * The level below, for one row only: the Peptides tab (`tab`) or the PSMs tab with the peptides and PSMs of one
-   * `protein`, or the PSMs tab with the PSMs of one `peptide` (see `#narrow`: from the search's cutoff, without the
-   * tables' other filters). What is no protein or peptide changes nothing.
+   * `protein`, or the PSMs tab with the PSMs of one `peptide` (see `#narrow`: the table of that tab from the search's
+   * cutoff, without its other filters). What is no protein or peptide changes nothing.
    */
   narrowTo(what: Narrowing, tab: 'peptides' | 'psms' = 'psms'): void {
     if ('protein' in what ? !this.#isProtein(what.protein) : !this.#isPeptide(what.peptide)) return
-    this.#narrow(what, true)
-    this.tab = 'peptide' in what ? 'psms' : tab
+    const to = 'peptide' in what ? 'psms' : tab
+    this.#narrow(what, to)
+    this.tab = to
   }
 
   /** "Open in PSM table": the PSMs of one protein or peptide in the PSMs tab (`narrowTo`). */
@@ -540,8 +543,11 @@ export class ResultsView {
     const peptide = scope.peptide ?? null
     if (protein !== null && !this.#isProtein(protein)) return
     if (peptide !== null && !this.#isPeptide(peptide)) return
-    if (protein !== null) this.#narrow({ protein }, true)
-    if (peptide !== null) this.#narrow({ peptide }, protein === null)
+    if (protein !== null) this.#narrow({ protein }, 'psms')
+    if (peptide !== null) this.#narrow({ peptide }, protein === null ? 'psms' : null)
+    // (a curation filter that hides the PSM gives way, so that the narrowing just made stays: `openPsm` lifts every
+    // filter of a PSM its table does not show)
+    if (this.psms.filters.curation !== 'any' && !this.psms.kept.includes(i)) this.psms.filters = { ...this.psms.filters, curation: 'any' }
     this.openPsm(i)
   }
 

@@ -69,8 +69,6 @@
       <h2 class="mt-0.5 text-xl font-semibold tracking-tight">
         {description.name || accession.id}
       </h2>
-      <!-- the focus stays in the table: say which protein the panel shows -->
-      <p class="sr-only" aria-live="polite">Protein {accession.id}, {description.name}</p>
       {#if mates.length > 0}
         <p class="mt-0.5 text-xs text-muted-foreground" data-testid="panel-group" title={mates.map((q) => pr.accession[q]).join('\n')}>
           Indistinguishable from {mateNames.slice(0, 4).join(', ')}{#if mates.length > 4}

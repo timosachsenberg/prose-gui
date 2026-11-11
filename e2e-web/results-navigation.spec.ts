@@ -3,6 +3,7 @@
 // narrows the level below, the chips of the filter row say to what, and Backspace goes up.
 import { expect, openFixture, test } from './fixtures'
 import type { Locator, Page } from '@playwright/test'
+import { readFileSync } from 'node:fs'
 
 test.beforeEach(async ({ page }) => {
   await openFixture(page)
@@ -335,4 +336,54 @@ test('Next and Prev of the PSM view keep the row of the open PSM in sight in the
   await page.keyboard.press('ArrowDown')
   await expect(position(page)).toHaveText('10 of 132')
   await expect(open).toBeInViewport({ ratio: 1 })
+})
+
+test('Enter on a row whose detail was closed opens the detail again; on the open row it goes on to the level below', async ({ page }) => {
+  await tab(page, 'Proteins').click()
+  await clickRow(rows(page).nth(1))
+  const panel = page.getByTestId('protein-panel')
+  await expect(panel).toBeVisible()
+  const accession = await panel.getByTestId('panel-accession').innerText()
+  // closed: its row stays selected, and Enter is "open it again", not "its peptides"
+  await page.keyboard.press('Escape')
+  await expect(panel).toBeHidden()
+  await page.keyboard.press('Enter')
+  await expect(panel.getByTestId('panel-accession')).toHaveText(accession)
+  await expect(tab(page, 'Proteins')).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByTestId('narrowing')).toHaveCount(0)
+  // open: Enter goes on
+  await page.keyboard.press('Enter')
+  await expect(tab(page, 'Peptides')).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByTestId('chip-protein')).toBeVisible()
+})
+
+test('Backspace goes up from the row the keys are on, also when no detail is open', async ({ page }) => {
+  await tab(page, 'Peptides').click()
+  // (the keys in the table, no peptide opened: the second row is the active one)
+  await page.getByTestId('results-table-area').getByRole('grid').focus()
+  await page.keyboard.press('ArrowDown')
+  const second = rows(page).nth(1)
+  const accession = (await second.locator('td[data-column="proteins"]').innerText()).trim().split(/[\s+]/)[0]
+  await page.keyboard.press('Backspace')
+  await expect(tab(page, 'Proteins')).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByTestId('protein-panel').getByTestId('panel-accession')).toHaveText(accession)
+})
+
+test('the exported spectrum does not depend on the window: the same file from a low window, with its mass errors', async ({ page }) => {
+  const exported = async (size: { width: number; height: number }) => {
+    await page.setViewportSize(size)
+    const view = page.getByTestId('psm-view')
+    await expect(view.getByTestId('spectrum')).toBeVisible()
+    const [download] = await Promise.all([page.waitForEvent('download'), view.getByRole('button', { name: 'Export spectrum (SVG)' }).click()])
+    return readFileSync((await download.path())!, 'utf8')
+  }
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await tab(page, 'PSMs').click()
+  await clickRow(rows(page).first())
+  const high = await exported({ width: 1440, height: 900 })
+  expect(high).toContain('Fragment mass error')
+  // a window too low for the error strip: on screen it gives way, in the file it is there
+  const low = await exported({ width: 1440, height: 640 })
+  await expect(page.getByTestId('psm-view').getByTestId('error-dot')).toHaveCount(0)
+  expect(low).toBe(high)
 })
