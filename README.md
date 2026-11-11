@@ -74,13 +74,33 @@ libglvnd-gles` (Fedora).
   nothing is written beside them. Deleting a
   search in History removes its folder; uninstalling leaves the data folder, which can be deleted by hand.
 
+## Going through the results
+
+Results has a tab per level, Proteins, Peptides and PSMs (beside Overview, with the key figures, Samples and QC). The
+tabs and the filter row of a table stay where they are, whatever is open (`src/views/Results.svelte`):
+
+- **A click on a row opens its detail next to the table**: a protein's panel (coverage, peptides, PSMs) and a
+  peptide's detail (its proteins, its PSMs per sample, its PSMs) beside the table, a PSM's spectrum under the PSM
+  table. The arrow keys go through the rows with the detail following; **Prev** and **Next** of the detail do the same
+  and say where the row is ("3 of 132"). The line between the table and the detail can be dragged (or moved with the
+  arrow keys; a double click gives the default); the sizes are kept. Esc closes the detail.
+- **Enter on the open row, or a double click, goes on to the level below**, narrowed to that protein or peptide (as do
+  "Peptides of … ›" and "PSMs of … ›" in the detail). The narrowing stands as a chip at the start of the filter row
+  ("Protein: …", "Peptide: …") and on the tab ("4 of 132"), and is one for the Peptides and the PSMs table. A click on
+  a chip takes it away: the table shows all rows again and what is open stays open, so Prev and Next then go through
+  all PSMs. **Backspace**, or "Up to peptide … · protein …" in the PSM view, goes up a level.
+- **The PSM view fits the height under the PSM table** and never scrolls: the spectrum takes what is left, and in a
+  low window the fragment mass errors give way to it. "Features · Fragments" shows the PSM's features and its ion
+  table beside the spectrum (by itself only in a window wide enough that the spectrum keeps the labels of its ions).
+
 ## Curating PSMs
 
-In the PSM view, **Accept** and **Reject** (keys A and R; pressing again takes the mark away) mark the open PSM, and
+In the PSM view, **Accept** and **Reject** (keys A and R, also while the PSM table has the focus; pressing again takes
+the mark away) mark the open PSM, and
 **Note** keeps an optional line of text on it (saved when the field loses the focus or on Enter). The PSM table shows
 the mark in its Curation column (the note in its Note column, under Columns) and filters by it (Curated, Accepted,
 Rejected, Not curated); with the table at Not curated, marking a PSM goes on to the next one. **Mark shown** accepts,
-rejects or unmarks every PSM the table shows (e.g. all PSMs of a peptide after "All n in the PSM table"), with Undo.
+rejects or unmarks every PSM the table shows (e.g. all PSMs of a peptide after "PSMs of this peptide ›"), with Undo.
 The Peptides table counts the accepted (✓) and rejected (✗) PSMs of each peptide and filters by them (With an
 accepted PSM, ...).
 
@@ -100,7 +120,7 @@ setup files, kept in `recent-setups.json` of the app's data folder), Save Setup 
 Folder…, Import Results Archive (.prose)…, Export ▸ (CSV, Excel, idXML, Methods section, Results archive; only with a result open,
 CSV and Excel only on a table), Close Window ⌘W. **Edit**: the system's Undo, Redo, Cut, Copy, Paste, Select All (Linux's menus have no predefined Undo and Redo: there Edit has none, and Window's Minimize and Maximize are the app's own).
 **View**: New Search, Results, History, Help (⇧⌘1–4), Theme ▸ System/Light/Dark, full screen. **Window**: Minimize,
-Zoom. **Help**: ProSE Help, Troubleshooting, Keyboard Shortcuts (⌘/), ProSE Web App, Report an Issue (links open in
+Zoom. **Help**: ProSE Help, Troubleshooting, Keyboard Shortcuts (⌘/), Report an Issue (the link opens in
 the browser). A click on an item is the event `menu://action` to the page (`src/lib/menu.svelte.ts`), which does what
 its own buttons do; the page's ⇧⌘1–4 handler leaves those keys to the menu in the desktop app and keeps them in the
 browser. Close Window and Exit close as the window's close button does: a running search, or unsaved changes to the opened
@@ -124,7 +144,8 @@ first when the opened setup file has unsaved changes; a file that does not read 
 - `presetId` and `parameters` (every ProSE `Search:` parameter the form sets), `rescore`, `peptdeep`, `threads`
 - `search` (`id`, `name`: the History search it ran as, once it has run)
 - `ui`: the view, the Help page, the settings' toggles, and for Results the tab and per table (proteins, peptides,
-  PSMs) the filters, sort, hidden columns and selected row, the open protein and PSM
+  PSMs) the filters (with what the table is narrowed to), sort, hidden columns and selected row, the open protein,
+  peptide and PSM
 
 Opening one fills New search (`SearchForm.restoreSearch`) and, when History has its search, opens it in Results
 with that state. Files that are gone or have another size, a missing database or preset, and a search History does
@@ -187,14 +208,17 @@ both.
 
 "Try the example" in New search loads OpenMS' example run `Ecoli_MS2_small.mzML` (E. coli, LTQ Orbitrap XL, CID,
 139 MS2 spectra, 1.2 MB) twice, as two replicates of one condition, and the 4,136 E. coli K-12 proteins (targets
-only: ProSE adds the decoys, the app the cRAP contaminants). The settings are the default preset with a fragment
-tolerance of 0.5 Da for the ion-trap fragments, a PSM FDR of 2 % and the protein FDR off: the run is too small for a
-PSM FDR of 1 % (Percolator's q-values are (decoys + 1) / targets, so its ~80 PSMs reach 1.2 % at best, and none would
-pass 1 %) and for a protein FDR, so its proteins are listed without one (Overview says "not applied"). Leaving the
-example (other files or another database, Remove all, Start over) gives these settings back to the preset's, unless you
-changed them. The search takes a few seconds and finds 66 target PSMs at 2 % FDR in each replicate (54 peptides, 53
-proteins), with precursor errors between −9 and +8 ppm (median 4.2 ppm). The run also has too few PSMs for Percolator's
-full model: Percolator falls back to its best single feature (Overview says why).
+only: ProSE adds the decoys, the app the cRAP contaminants). The settings are the default preset (PSM FDR 1 %) with a
+fragment tolerance of 0.5 Da for the ion-trap fragments and the protein FDR off: the run is too small for a
+protein FDR, so its proteins are listed without one (Overview says "not applied"). Leaving the
+example (other files or another database, Remove all, Start over) gives these two settings back to the preset's, unless
+you changed them. The search takes a few seconds and finds 55 target PSMs in each replicate (46 peptides, 47
+proteins), with a median precursor error of 4.1 ppm; their q-value is 0.6 %, and a PSM FDR of 2 % finds the same 55.
+(Until app 0.6 the example searched at 2 %, when its PSMs could not pass 1 %, and found 66 per replicate: since
+OpenMS #10804 the tool also searches a second 13C peak, `precursor:isotope_error_min` −2, and in a run this small the
+candidates that adds leave fewer PSMs within the FDR. With −1, set in "All parameters", it finds 64 at 1 % and the 66
+at 2 %.) The run also has too few PSMs for Percolator's full model: Percolator falls back to its best single feature
+(Overview says why).
 
 ## Licence
 

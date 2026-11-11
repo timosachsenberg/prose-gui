@@ -1,10 +1,12 @@
 <script lang="ts">
-  // The panel of one protein, at the right of the Proteins table: its accession and name, the share of
+  // The panel of one protein, beside the Proteins table: its accession and name, the share of
   // its sequence that peptides cover, the strip of those peptides with the modified sites, and the
   // tabs Coverage (the sequence as a map), Peptides (expanding to their PSMs) and PSMs. A labelled
-  // region, not a dialog: the table beside it stays usable. Escape closes it (Results handles the
-  // key, so that it works from the table as well); focus moves in when it opens and back to the
-  // protein's row when it closes (Results does both).
+  // region, not a dialog: the table beside it stays usable, and keeps the focus, so that its arrow keys go
+  // through the proteins with the panel following ("Prev" and "Next" do the same). Escape closes it (Results
+  // handles the key, so that it works from the table as well). "Peptides ›" and "PSMs ›" go on to the level
+  // below, narrowed to this protein; a PSM of the panel opens in the PSMs tab, among the PSMs of the protein (and
+  // of its peptide).
   import Marker from '$lib/components/results/Marker.svelte'
   import { Button } from '$lib/components/ui/button'
   import * as Tabs from '$lib/components/ui/tabs'
@@ -12,7 +14,8 @@
   import { formatCount, parseAccession, parseDescription } from '$lib/results/display'
   import { openHelp } from '$lib/help-link.svelte'
   import { groupMates, proteinDetail } from '$lib/results/protein'
-  import type { ResultsView } from '$lib/results/view.svelte'
+  import type { Narrowing, ResultsView } from '$lib/results/view.svelte'
+  import StepButtons from '../results/StepButtons.svelte'
   import XIcon from '@lucide/svelte/icons/x'
   import CoverageMap from './CoverageMap.svelte'
   import CoverageStrip from './CoverageStrip.svelte'
@@ -23,15 +26,15 @@
     view,
     protein,
     onClose,
-    onOpenPsmTable,
+    onNarrow,
     onOpenPsm,
   }: {
     view: ResultsView
     /** The protein: a row of `tables.proteins`. */
     protein: number
     onClose: () => void
-    /** "Open in PSM table": the PSMs tab, filtered by this protein, or by one of its peptides. */
-    onOpenPsmTable: (filter: { protein: number } | { peptide: number }) => void
+    /** The level below: the Peptides or the PSMs tab narrowed to this protein, the PSMs tab to one of its peptides. */
+    onNarrow: (what: Narrowing, tab?: 'peptides' | 'psms') => void
     /** A PSM of the panel: of a peptide of the Peptides tab (`peptide`), or of the PSMs tab (null). */
     onOpenPsm: (psm: number, peptide: number | null) => void
   } = $props()
@@ -51,38 +54,19 @@
   // view keeps it, so that it is still open when the user comes back from a PSM
   const selectedSpans = $derived(detail.peptides.find((e) => e.peptide === view.panelPeptide)?.spans ?? [])
 
-  let heading = $state<HTMLElement | null>(null)
-  /** Moves the keyboard focus into the panel (to its heading, which names the protein). */
-  export function focus(): void {
-    heading?.focus()
-  }
-
-  let section = $state<HTMLElement | null>(null)
-  /** Moves the focus to the button of PSM `psm` if the panel lists it, else to the heading. */
-  export function focusPsm(psm: number): void {
-    const button = section?.querySelector<HTMLElement>(`[data-psm="${psm}"]`)
-    if (button) button.focus()
-    else heading?.focus()
-  }
-
   const badge = 'inline-flex h-5 items-center rounded-[5px] border bg-muted px-[7px] text-[11.5px] font-medium whitespace-nowrap'
 </script>
 
 <section
-  bind:this={section}
   aria-label="Protein {accession.id}"
   data-testid="protein-panel"
-  class="flex h-full min-h-0 flex-none flex-col border-l bg-background px-[18px] pt-4 pb-3"
-  style:width="clamp(520px, 45vw, 640px)">
+  class="flex h-full min-h-[26rem] min-w-0 flex-1 flex-col bg-background pl-3 @max-[760px]/split:pl-0">
   <header class="flex items-start justify-between gap-2">
     <div class="min-w-0">
       <div class="truncate font-mono text-xs text-muted-foreground" title={pr.accession[protein]}>
         <span data-testid="panel-accession">{accession.id}</span>{#if accession.entry}{' · '}{accession.entry}{/if}{#if detail.length > 0}{' · '}{formatCount(detail.length)} aa{/if}{#if accession.contaminant}<Marker text="contaminant" />{/if}{#if decoy}<span data-testid="panel-decoy"><Marker text="decoy" /></span>{/if}
       </div>
-      <h2
-        bind:this={heading}
-        tabindex="-1"
-        class="mt-0.5 rounded-sm text-xl font-semibold tracking-tight outline-none focus-visible:ring-2 focus-visible:ring-ring/50">
+      <h2 class="mt-0.5 text-xl font-semibold tracking-tight">
         {description.name || accession.id}
       </h2>
       {#if mates.length > 0}
@@ -93,9 +77,12 @@
         </p>
       {/if}
     </div>
-    <Button variant="ghost" size="icon-sm" aria-label="Close protein panel" onclick={onClose}>
-      <XIcon aria-hidden="true" />
-    </Button>
+    <div class="flex flex-none items-center gap-1.5">
+      <StepButtons neighbours={view.neighbours('proteins')} noun="protein" onStep={(direction) => view.step('proteins', direction)} />
+      <Button variant="ghost" size="icon-sm" aria-label="Close protein panel" title="Close (Esc)" onclick={onClose}>
+        <XIcon aria-hidden="true" />
+      </Button>
+    </div>
   </header>
 
   <div class="mt-2.5 flex flex-wrap gap-1.5">
@@ -113,9 +100,17 @@
 
   <CoverageStrip {detail} selected={selectedSpans} />
 
+  <!-- on to the level below, for this protein only (Enter on its row, or a double click, does the first) -->
+  <div class="mt-2 flex flex-wrap items-center gap-1.5" data-testid="panel-narrow">
+    <Button size="sm" class="h-7 px-2.5 text-xs" title="The Peptides tab with the peptides of this protein only (Enter in the table)" onclick={() => onNarrow({ protein }, 'peptides')}
+      >Peptides of {accession.id} ›</Button>
+    <Button variant="outline" size="sm" class="h-7 px-2.5 text-xs" title="The PSMs tab with the PSMs of this protein only" onclick={() => onNarrow({ protein }, 'psms')}
+      >PSMs of {accession.id} ›</Button>
+  </div>
+
   <Tabs.Root bind:value={view.panelTab} class="mt-2.5 flex min-h-0 flex-1 flex-col gap-2.5">
     <div class="flex flex-wrap items-center justify-between gap-2">
-      <Tabs.List class="w-full justify-start border-b">
+      <Tabs.List class="min-w-0 flex-1 justify-start border-b">
         <Tabs.Trigger value="coverage" class="flex-none px-3 text-[13px]"
           >Coverage{#if detail.length > 0}<span class="ml-1 text-xs font-normal text-muted-foreground tabular-nums">{(detail.coverage * 100).toFixed(0)} %</span>{/if}</Tabs.Trigger
         >
@@ -124,7 +119,6 @@
         <Tabs.Trigger value="psms" class="flex-none px-3 text-[13px]"
           >PSMs<span class="ml-1 text-xs font-normal text-muted-foreground tabular-nums">{formatCount(detail.psms)}</span></Tabs.Trigger>
       </Tabs.List>
-      <Button variant="outline" size="sm" class="h-7 px-2.5 text-xs" onclick={() => onOpenPsmTable({ protein })}>Open in PSM table ›</Button>
     </div>
 
     <!-- only the open tab is rendered: the map of a long protein is thousands of nodes, the PSM list a sort -->
@@ -145,7 +139,7 @@
     </Tabs.Content>
     <Tabs.Content value="peptides" class="min-h-0 flex-1 overflow-auto">
       {#if view.panelTab === 'peptides'}
-        <ProteinPeptides {view} {detail} bind:expanded={view.panelPeptide} onOpenPsm={(psm) => onOpenPsm(psm, view.panelPeptide)} {onOpenPsmTable} />
+        <ProteinPeptides {view} {detail} bind:expanded={view.panelPeptide} onOpenPsm={(psm) => onOpenPsm(psm, view.panelPeptide)} onOpenPsmTable={(what) => onNarrow(what, 'psms')} />
       {/if}
     </Tabs.Content>
     <Tabs.Content value="psms" class="flex min-h-0 flex-1 flex-col">

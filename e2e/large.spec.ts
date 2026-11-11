@@ -81,8 +81,9 @@ describe('large results in the app', () => {
           if (readFileSync(`/proc/${child}/comm`, 'utf8').startsWith('WebKitWebProc')) webKb = Math.max(webKb, peakMemoryKb(child) ?? 0)
         }
         try {
-          if ((await $$('[data-testid="psm-count"]')).length > 0) {
-            outcome = `opened (${(await textOf('[data-testid="psm-count"]')).trim()})`
+          // (the result is open when its tabs are; they carry the counts: "… PSMs 1,000,000 …")
+          if ((await $$('[data-testid="results-tabs"]')).length > 0) {
+            outcome = `opened (${(await textOf('[data-testid="results-tabs"]')).replace(/\s+/g, ' ').trim()})`
           } else if ((await $$('[data-testid="history-problem"]')).length > 0) {
             outcome = `refused: ${(await textOf('[data-testid="history-problem"]')).trim()}`
           }

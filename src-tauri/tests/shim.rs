@@ -191,7 +191,8 @@ fn parameters_are_typed_and_use_the_search_prefix() {
         "modifications:fixed": ["Carbamidomethyl (C)"],
         "modifications:variable": ["Oxidation (M)", "Acetyl (Protein N-term)"],
         "annotate:self_trained_ion_priors": false,
-        "calibration:enabled": true,
+        "calibration:enabled": false,
+        "low_memory": true,
         "ions:add_a_ions": false,
         "database:chunk_size": 100000,
         "peptdeep:instrument": "timsTOF",
@@ -242,8 +243,13 @@ fn parameters_are_typed_and_use_the_search_prefix() {
         vec![OsString::from("timsTOF")]
     );
     // a switch: present when on, absent when off (ProSE's flags take no value)
-    assert!(has(&args, "-Search:calibration:enabled"));
+    assert!(has(&args, "-Search:low_memory"));
     assert!(!has(&args, "-Search:ions:add_a_ions"));
+    // the calibration is on unless it is switched off (the tool's default since OpenMS #10804): a choice, not a switch
+    assert_eq!(
+        one("-Search:calibration:enabled"),
+        vec![OsString::from("false")]
+    );
 }
 
 #[test]
@@ -316,7 +322,7 @@ fn parameter_values_of_the_wrong_type_are_refused() {
         json!({ "modifications:fixed": "Carbamidomethyl (C)" }),
         json!({ "modifications:fixed": ["-database"] }),
         json!({ "modifications:fixed": [1] }),
-        json!({ "calibration:enabled": "yes" }),
+        json!({ "low_memory": "yes" }),
         json!({ "enzyme": "Tryp\nsin" }),
     ] {
         assert!(

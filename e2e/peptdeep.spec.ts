@@ -4,7 +4,7 @@
 // Gated: runs only with PROSE_BIN set (the app inherits it).
 import { readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
-import { appReady, clearSearches, dataHome, EXAMPLE_PSMS, goTo, jsClick, openFirstPsm, runExample, searchFolders, textOf, waitForResults } from './lib.ts'
+import { appReady, clearSearches, dataHome, EXAMPLE_PSMS, goTo, jsClick, openFirstPsm, runExample, searchFolders, showKeyFigures, textOf, waitForResults } from './lib.ts'
 
 const enabled = Boolean(process.env.PROSE_BIN)
 
@@ -30,7 +30,7 @@ describe('the example with PeptDeep', () => {
     rmSync(join(dataHome(), 'chosen.prose'), { force: true })
   })
 
-  it('the example with PeptDeep: 132 PSMs, a PSM shows the PeptDeep mirror', async () => {
+  it('the example with PeptDeep: 110 PSMs, a PSM shows the PeptDeep mirror', async () => {
     await expect($('[data-testid="psm-count"]')).toHaveText(expect.stringContaining(EXAMPLE_PSMS))
 
     await openFirstPsm()
@@ -114,7 +114,7 @@ describe('the example with PeptDeep', () => {
 
     await $('[data-testid="import-archive"]').click()
     await waitForResults(30000)
-    await $('[data-testid="psm-count"]').waitForDisplayed({ timeout: 30000 })
+    await showKeyFigures()
     expect(await textOf('[data-testid="psm-count"]')).toBe(count)
     // the PSM view opens as before: the spectrum and the prediction are in the archive
     await openFirstPsm()

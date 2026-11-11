@@ -131,7 +131,7 @@
   "name": "precursor:recorded_charge_outside_range",
   "value": "skip",
   "type": "string",
-  "description": "A spectrum whose recorded precursor charge lies outside of precursor:min_charge..max_charge: 'skip' (the default, as OpenMS develop since #10713) does not search it; 'search' (the behaviour before #10713) searches it at its recorded charge. Spectra without a recorded charge are searched with every charge of the range.",
+  "description": "A spectrum whose recorded precursor charge lies outside of precursor:min_charge..max_charge: 'skip' (the default, as OpenMS develop since #10713) does not search it; 'search' (the behaviour before #10713) searches it at its recorded charge, up to charge 20. Spectra without a recorded charge are searched with every charge of the range.",
   "tags": [
    "advanced"
   ],
@@ -142,7 +142,7 @@
  },
  {
   "name": "precursor:isotope_error_min",
-  "value": -1,
+  "value": -2,
   "type": "int",
   "description": "Minimum precursor isotope error searched, in 13C spacings (1.00336 Da) added to the observed precursor mass: -1 finds a peptide whose first 13C isotope peak was selected as the precursor. The PSM meta value 'isotope_error' reports the opposite sign by default (see report:isotope_error_convention).",
   "tags": [],
@@ -386,7 +386,7 @@
   "name": "annotate:ion_prior_model",
   "value": "rich",
   "type": "string",
-  "description": "Contexts and outcomes of the ion priors. 'rich': ion series, precursor charge, fragment charge, relative position, the residues at the cleavage site (bond before P, bond after D or E) and whether the complementary singly charged ion matched; outcome: intensity rank x mass error (|error| / tolerance below 0.25, below 0.5, up to 1). 'basic': ion series, precursor charge, fragment charge and relative position; outcome: intensity rank.",
+  "description": "Contexts and outcomes of the ion priors. Both keep the ion series a/b, x/y, c and z apart (c and z ions are scored for electron-activated spectra, see ions:by_activation). 'rich': ion series, precursor charge, fragment charge, relative position, the residues at the cleavage site (bond before P, bond after D or E) and whether the complementary singly charged ion matched; outcome: intensity rank x mass error (|error| / tolerance below 0.25, below 0.5, up to 1). 'basic': ion series, precursor charge, fragment charge and relative position; outcome: intensity rank.",
   "tags": [
    "advanced"
   ],
@@ -672,7 +672,7 @@
   "name": "rescoring:peptide_level",
   "value": "true",
   "type": "string",
-  "description": "Also Percolator's peptide-level q-values (default; 'false' leaves them out), as the percolator executable reports peptides (without -U): after the target-decoy competition of the spectra, the best PSM of each peptide (modified sequence) and label competes, and q-values and PEPs are estimated on these peptides. Every rescored hit gets the values of its peptide as meta values 'percolator_peptide_q_value' and 'percolator_peptide_pep'; a list of peptides at an FDR is the target peptides with percolator_peptide_q_value at most that FDR (the distinct peptides of the PSMs at an FDR are not FDR-controlled at the peptide level). The main score stays the PSM-level q-value. Default Percolator rescoring only (not with rescore_method 'reset', which reports RESET:peptide_q_value, nor with rescore_reuse models).",
+  "description": "Also Percolator's peptide-level q-values (default; 'false' leaves them out), as the percolator executable reports peptides (without -U): after the target-decoy competition of the spectra, the best PSM of each peptide (modified sequence) and label competes, and q-values and PEPs are estimated on these peptides. Every rescored hit gets the values of its peptide as meta values 'percolator_peptide_q_value' and 'percolator_peptide_pep'; a list of peptides at an FDR is the target peptides with percolator_peptide_q_value at most that FDR (the distinct peptides of the PSMs at an FDR are not FDR-controlled at the peptide level). The main score stays the PSM-level q-value. Default Percolator rescoring only (not with rescore_method 'reset', which reports RESET:peptide_q_value, nor with rescore_reuse models). Independent of this parameter, every rescored hit gets ProSE's peptide-level q-value 'peptide q-value' (the name FalseDiscoveryRate writes and EntrapmentEvaluator reads), with one peptide definition for each run and for the pooled runs of a multi-file search (the ProSE tool's -out_merged): FalseDiscoveryRate::applyBasicPeptideLevel() (a peptide is an unmodified sequence, whose best PSM competes with its label) on the PSMs' Percolator PEPs, also with rescore_reuse models; not with rescore_method 'reset'.",
   "tags": [
    "advanced"
   ],
@@ -839,10 +839,14 @@
  },
  {
   "name": "calibration:enabled",
-  "value": false,
-  "type": "bool",
-  "description": "If enabled, run a fast calibration pass on a subset of spectra before the main search. Estimates tighter precursor and fragment tolerances from confident PSMs. The fragment index is NOT rebuilt — only query-time tolerances are tightened. Inspired by MSFragger's calibrate_mass and OpenNuXL's autotune.",
-  "tags": []
+  "value": "true",
+  "type": "string",
+  "description": "Measure the mass error of the run and search with windows derived from it: a fast calibration pass on the most intense spectra (calibration:subset_ratio), searched with at least 20 ppm (in Da: twice the configured window, up to 0.5 Da) precursor and fragment windows (the configured ones if wider) so the error is measured and not censored, takes the offset (median) and the spread (robust standard deviation, 1.4826 * MAD) of the signed mass errors of its confident PSMs; the main search then uses the fragment tolerance |median| + k sigma (calibration:sigma_factor k) within [calibration:min_fragment_tolerance, the configured tolerance], and the precursor window [median - k sigma, median + k sigma] only with calibration:precursor_sigma_factor k > 0 (by default the precursor errors are measured and reported, the configured window kept): the configured tolerances are the widest windows searched. The pass takes its spectra per tenth of the run; a window that covers less than 98 % of the calibration PSMs (precursor; heavy tails or a mass offset that changes over the run) or 95 % of their matched fragment peaks (fragment) is not trusted, and the configured tolerance is kept with a warning. The fragment index is not rebuilt, only the query-time tolerances change. With too few PSMs (calibration:min_psms) the configured tolerances are used. 'false' searches with the configured tolerances as given.",
+  "tags": [],
+  "validStrings": [
+   "true",
+   "false"
+  ]
  },
  {
   "name": "calibration:subset_ratio",
@@ -858,6 +862,58 @@
   "value": 50,
   "type": "int",
   "description": "Minimum number of confident PSMs required for calibration. If fewer are found, calibration is skipped and the user-configured tolerances are used.",
+  "tags": [],
+  "min": 1
+ },
+ {
+  "name": "calibration:sigma_factor",
+  "value": 4,
+  "type": "double",
+  "description": "Half-width of the calibrated fragment tolerance in robust standard deviations (1.4826 * MAD) of the signed errors of the matched fragment peaks of the calibration PSMs: |median| + k sigma. 4 covers practically all correct matches of a normal error distribution.",
+  "tags": [],
+  "min": 1
+ },
+ {
+  "name": "calibration:precursor_sigma_factor",
+  "value": 0,
+  "type": "double",
+  "description": "Half-width of the calibrated precursor window in robust standard deviations of the precursor errors of the calibration PSMs, around their median (asymmetric about zero when the run has an offset). 0 keeps the configured precursor window and only measures and reports the errors: precursor yields are flat from 5 to 50 ppm, and a tightened precursor window cost identifications on every Orbitrap HCD set of the benchmark (heavy tails), while the fragment window gains. A value such as 4 tightens it, within calibration:min_precursor_tolerance and the configured window, when the window covers 98 % of the calibration PSMs.",
+  "tags": [],
+  "min": 0
+ },
+ {
+  "name": "calibration:min_precursor_tolerance",
+  "value": 0,
+  "type": "double",
+  "description": "Smallest calibrated precursor tolerance per side, in precursor:mass_tolerance_unit (0: 2.5 ppm or 0.005 Da). The calibrated window never exceeds the configured one.",
+  "tags": [],
+  "min": 0
+ },
+ {
+  "name": "calibration:min_fragment_tolerance",
+  "value": 0,
+  "type": "double",
+  "description": "Smallest calibrated fragment tolerance, in fragment:mass_tolerance_unit (0: 10 ppm or 0.02 Da; 5 ppm or 0.01 Da with calibration:recalibrate). The calibrated tolerance never exceeds the configured one.",
+  "tags": [],
+  "min": 0
+ },
+ {
+  "name": "calibration:recalibrate",
+  "value": "offset",
+  "type": "string",
+  "description": "Correct the m/z of the spectra by the mass errors the calibration pass measures, before the main search: 'offset' subtracts the median error, 'linear' a line in m/z fitted to the errors (precursor errors against the precursor m/z, fragment errors against the fragment m/z), each per retention-time chunk (calibration:recalibrate_rt_chunks) and interpolated between the chunks. The precursor m/z and the fragment peaks of the searched MS2 spectra are corrected in place (the candidate retrieval, the scoring and the PSMs' mass errors use the corrected values; a PeakMap passed to the library is corrected too); the PSMs report the observed precursor m/z and their fragment annotations the observed peak m/z. The windows are then derived from the residual errors, with a fragment floor of 5 ppm (0.01 Da) unless calibration:min_fragment_tolerance is set. The co-isolated precursors of a chimeric search, from the same survey scans, are corrected by the precursor model. 'none' measures only.",
+  "tags": [],
+  "validStrings": [
+   "none",
+   "offset",
+   "linear"
+  ]
+ },
+ {
+  "name": "calibration:recalibrate_rt_chunks",
+  "value": 10,
+  "type": "int",
+  "description": "Retention-time chunks of the recalibration models (calibration:recalibrate): the calibration PSMs are split in acquisition order into this many groups of equal size (fewer when a group would hold less than calibration:min_psms PSMs), one model each, interpolated between the groups' median retention times. 1: one model for the run; 10 follows an offset that changes over the run (the pass samples each tenth of it).",
   "tags": [],
   "min": 1
  },

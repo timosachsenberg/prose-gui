@@ -117,7 +117,7 @@
     <li>the spectrum files by their full paths, with their names and sizes, and the design table's fields;</li>
     <li>the database (its path, or the UniProt proteome a downloaded one is), contaminants and decoys;</li>
     <li>the preset and every setting, the Percolator and PeptDeep switches, and the threads;</li>
-    <li>the views: the view shown, the Results tab, the filters, sort and columns of each table, the open protein and PSM, the Help page;</li>
+    <li>the views: the view shown, the Results tab, the filters, sort and columns of each table, the open protein, peptide and PSM, the Help page;</li>
     <li>the ProSE and app versions, and the History search it ran as, if it has run.</li>
   </ul>
   <p>

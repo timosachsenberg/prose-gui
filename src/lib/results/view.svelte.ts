@@ -23,17 +23,14 @@ export type PanelTab = 'coverage' | 'peptides' | 'psms'
 export type SortDir = 'asc' | 'desc'
 export type SortState = { key: string; dir: SortDir }
 
-/**
- * Where the open PSM came from: the PSM table, or the protein panel (a PSM of one of its peptides, or
- * of its PSMs tab). From the panel the PSM table shows the PSMs of that protein (and peptide) while
- * the PSM is open; `restore` is the table's filter state before, which it gets back when the PSM closes.
- */
-export type PsmOrigin =
-  | { kind: 'psms' }
-  | { kind: 'panel'; protein: number; peptide: number | null; restore: FilterState }
+/** The PSM open in the PSM view: a row of `tables.psms`. */
+export type OpenPsm = { row: number }
 
-/** The PSM open in the PSM view (a row of `tables.psms`) and where it came from. */
-export type OpenPsm = { row: number; origin: PsmOrigin }
+/** What the Peptides and PSM tables can be narrowed to: one protein, or (the PSM table) one peptide. */
+export type Narrowing = { protein: number } | { peptide: number }
+
+/** The row open in a level's detail pane and its neighbours in the level's table, as sorted and filtered. */
+export type Neighbours = { prev: number | null; next: number | null; position: number; count: number }
 
 /** How a level is sorted at first: proteins and peptides by PSMs, PSMs by q-value. */
 const defaultSort: Record<Level, SortState> = {
@@ -166,10 +163,12 @@ export class ResultsView {
   panelTab = $state<PanelTab>('peptides')
   /** The peptide expanded in the panel's Peptides tab (a row of `tables.peptides`), or null. */
   panelPeptide = $state<number | null>(null)
+  /** The peptide open in the detail pane beside the Peptides table (a row of `tables.peptides`), or null. */
+  peptidePanel = $state<number | null>(null)
 
   /**
-   * The PSM view: the PSM open beside the PSM table (which narrows to a list), or null. "Previous" and
-   * "Next" go through the rows of the PSM table as it is sorted and filtered.
+   * The PSM view: the PSM open under the PSM table, or null. "Previous" and "Next" go through the rows of the PSM
+   * table as it is sorted and filtered. The PSM stays open while another tab shows.
    */
   psm = $state.raw<OpenPsm | null>(null)
   /** The toggles of the PSM view's spectrum, kept from one PSM to the next. */
@@ -291,7 +290,7 @@ export class ResultsView {
       const target = open.next ?? open.prev
       if (target !== null) {
         this.psms.selected = target
-        this.psm = { row: target, origin: this.psm.origin }
+        this.psm = { row: target }
       }
     }
   }
@@ -378,14 +377,15 @@ export class ResultsView {
 
   /**
    * Opens the panel of protein `p` (a row of the Proteins table) and selects its row. What is no
-   * protein (a peptide below the protein FDR has none, an index out of range) opens nothing.
+   * protein (a peptide below the protein FDR has none, an index out of range) opens nothing. Tables that are
+   * narrowed to a protein follow to this one (`#follow`).
    */
   openProtein(p: number): void {
-    if (!Number.isInteger(p) || p < 0 || p >= this.model.tables.proteins.count) return
-    this.psm = null
+    if (!this.#isProtein(p)) return
     if (p !== this.panel) this.panelPeptide = null
     this.proteins.selected = p
     this.panel = p
+    this.#follow({ protein: p })
   }
 
   /** Closes the panel; the protein's row stays selected. */
@@ -394,38 +394,117 @@ export class ResultsView {
   }
 
   /**
-   * "Open in PSM table": the PSM table shows the PSMs of one `protein`, or of one `peptide` (a row of
-   * `tables.peptides`: "All n in the PSM table"), and only those. A chip ("Protein: <accession>",
-   * "Peptide: <ProForma>") says so and removes the filter. The table is at the search's cutoff, without
-   * text filter or the other restriction, and shows contaminants or decoys if the protein or peptide is one.
+   * Opens the detail of peptide `k` (a row of the Peptides table) beside the table and selects its row. A PSM table
+   * that is narrowed to a peptide follows to this one (`#follow`).
    */
-  filterBy(what: { protein: number } | { peptide: number }): void {
+  openPeptide(k: number): void {
+    if (!this.#isPeptide(k)) return
+    this.peptides.selected = k
+    this.peptidePanel = k
+    this.#follow({ peptide: k })
+  }
+
+  /** Closes the peptide's detail; its row stays selected. */
+  closePeptide(): void {
+    this.peptidePanel = null
+  }
+
+  /**
+   * The narrowing of the tables below a level: the Peptides and PSM tables show one protein only (`{ protein }`),
+   * or the PSM table one peptide (`{ peptide }`, a row of `tables.peptides`). Both tables share the protein: a chip
+   * in their filter row ("Protein: <accession>", "Peptide: <ProForma>") says so and takes it away (`widen`). The
+   * contaminants or decoys show if the protein or peptide is one. The table named by `reset` (the one the user
+   * goes to) starts from the search's cutoff, without text, charge and range filters (the user asked for these
+   * rows); the other table, and both with null (the narrowing follows the selection), keep their filters and only
+   * change what they are narrowed to. A peptide keeps the protein if it is one of that protein's. What the narrowing
+   * hides closes: the open PSM, the open peptide.
+   */
+  #narrow(what: Narrowing, reset: 'peptides' | 'psms' | null): void {
     const m = this.model
-    const f = this.psms.filters
-    const index = 'protein' in what ? what.protein : what.peptide
-    const count = 'protein' in what ? m.tables.proteins.count : m.tables.peptides.count
-    if (!Number.isInteger(index) || index < 0 || index >= count) return
-    this.psm = null
-    const contaminant = 'protein' in what ? m.protein.contaminant[index] : m.peptide.contaminant[index]
-    const decoy = 'protein' in what ? m.tables.proteins.decoy[index] : m.tables.peptides.decoy[index]
-    this.psms.filters = {
-      ...f,
-      text: '',
-      maxQ: m.psmFdr,
-      proteinFilter: 'protein' in what ? index : undefined,
-      charges: undefined,
-      ranges: undefined,
-      peptideFilter: 'peptide' in what ? index : undefined,
-      hideContaminants: contaminant ? false : f.hideContaminants,
-      showDecoys: decoy ? true : f.showDecoys,
+    const clear = (f: FilterState, level: 'peptides' | 'psms'): FilterState =>
+      reset === level ? { ...f, text: '', maxQ: m.psmFdr, charges: undefined, ranges: undefined } : { ...f }
+    if ('protein' in what) {
+      const p = what.protein
+      const shown = (f: FilterState, level: 'peptides' | 'psms'): FilterState => ({
+        ...clear(f, level),
+        proteinFilter: p,
+        hideContaminants: m.protein.contaminant[p] ? false : f.hideContaminants,
+        showDecoys: m.tables.proteins.decoy[p] ? true : f.showDecoys,
+      })
+      this.peptides.filters = shown(this.peptides.filters, 'peptides')
+      this.psms.filters = { ...shown(this.psms.filters, 'psms'), peptideFilter: undefined }
+    } else {
+      const k = what.peptide
+      const f = this.psms.filters
+      const protein = f.proteinFilter !== undefined && m.peptide.proteins[k].includes(f.proteinFilter) ? f.proteinFilter : undefined
+      this.psms.filters = {
+        ...clear(f, 'psms'),
+        proteinFilter: protein,
+        peptideFilter: k,
+        hideContaminants: m.peptide.contaminant[k] ? false : f.hideContaminants,
+        showDecoys: m.tables.peptides.decoy[k] ? true : f.showDecoys,
+      }
+      // (the two tables share the protein)
+      if (protein === undefined && this.peptides.filters.proteinFilter !== undefined) this.peptides.filters = { ...this.peptides.filters, proteinFilter: undefined }
     }
-    this.tab = 'psms'
+    if (this.psm && !this.psms.kept.includes(this.psm.row)) this.psm = null
+    if (this.peptidePanel !== null && !this.peptides.kept.includes(this.peptidePanel)) this.peptidePanel = null
+  }
+
+  /**
+   * Tables that are narrowed follow the row that opens above them: to another protein once they are narrowed to one
+   * (the peptide of the old protein goes), the PSM table to another peptide once it is narrowed to one. Tables that
+   * are not narrowed stay as they are: narrowing is asked for (`narrowTo`).
+   */
+  #follow(what: Narrowing): void {
+    if ('protein' in what) {
+      const [a, b] = [this.peptides.filters.proteinFilter, this.psms.filters.proteinFilter]
+      if (a === undefined && b === undefined) return
+      if (a === what.protein && b === what.protein) return
+    } else if (this.psms.filters.peptideFilter === undefined || this.psms.filters.peptideFilter === what.peptide) return
+    this.#narrow(what, null)
+  }
+
+  /**
+   * The level below, for one row only: the Peptides tab (`tab`) or the PSMs tab with the peptides and PSMs of one
+   * `protein`, or the PSMs tab with the PSMs of one `peptide` (see `#narrow`: the table of that tab from the search's
+   * cutoff, without its other filters). What is no protein or peptide changes nothing.
+   */
+  narrowTo(what: Narrowing, tab: 'peptides' | 'psms' = 'psms'): void {
+    if ('protein' in what ? !this.#isProtein(what.protein) : !this.#isPeptide(what.peptide)) return
+    const to = 'peptide' in what ? 'psms' : tab
+    this.#narrow(what, to)
+    this.tab = to
+  }
+
+  /** "Open in PSM table": the PSMs of one protein or peptide in the PSMs tab (`narrowTo`). */
+  filterBy(what: Narrowing): void {
+    this.narrowTo(what, 'psms')
+  }
+
+  /** Takes a narrowing away (its chip): the protein from the Peptides and PSM tables, or the peptide from the PSM table. */
+  widen(which: 'protein' | 'peptide'): void {
+    if (which === 'peptide') {
+      if (this.psms.filters.peptideFilter !== undefined) this.psms.filters = { ...this.psms.filters, peptideFilter: undefined }
+      return
+    }
+    for (const level of [this.peptides, this.psms]) {
+      if (level.filters.proteinFilter !== undefined) level.filters = { ...level.filters, proteinFilter: undefined }
+    }
+  }
+
+  /** The protein a peptide is shown with: the one the tables are narrowed to if it is its, else its first; null: none. */
+  proteinOf(k: number): number | null {
+    const refs = this.model.peptide.proteins[k]
+    if (!refs || refs.length === 0) return null
+    const narrowed = this.psms.filters.proteinFilter ?? this.peptides.filters.proteinFilter
+    return narrowed !== undefined && refs.includes(narrowed) ? narrowed : refs[0]
   }
 
   /**
    * Opens PSM `i` (a row of `tables.psms`) in the PSM view, from the PSM table: the PSMs tab with the
    * PSM selected. A filter that hides it is lifted (text, protein and peptide filters, the cutoff,
-   * contaminants or decoys as far as it is one), so that it is a row of the list beside the view.
+   * contaminants or decoys as far as it is one), so that it is a row of the table above the view.
    */
   openPsm(i: number): void {
     if (!this.#isPsm(i)) return
@@ -434,6 +513,8 @@ export class ResultsView {
     const level = this.psms
     if (!level.kept.includes(i)) {
       const f = level.filters
+      // (the two tables share the protein)
+      if (f.proteinFilter !== undefined) this.widen('protein')
       level.filters = {
         ...f,
         text: '',
@@ -448,58 +529,96 @@ export class ResultsView {
     }
     level.selected = i
     this.tab = 'psms'
-    // from the PSM view itself (the list beside it), the PSM keeps where it came from
-    this.psm = { row: i, origin: this.psm?.origin ?? { kind: 'psms' } }
+    this.psm = { row: i }
   }
 
   /**
-   * Opens PSM `i` from the protein panel: a PSM of the open protein's peptide `peptide` (the Peptides
-   * tab), or of the protein (`peptide` null: the PSMs tab). The list beside the view is the PSM table
-   * with the protein and the peptide as filters (as "Open in PSM table" makes it), at the search's
-   * cutoff; the table gets its filters back when the PSM closes.
+   * Opens PSM `i` among the PSMs of a protein, a peptide, or both (from their detail panes): the PSM table is
+   * narrowed to them (`#narrow`, from the search's cutoff) and stays so when the PSM closes; their chips in the
+   * filter row widen it again, with the PSM still open.
    */
+  openPsmIn(i: number, scope: { protein?: number | null; peptide?: number | null }): void {
+    if (!this.#isPsm(i)) return
+    const protein = scope.protein ?? null
+    const peptide = scope.peptide ?? null
+    if (protein !== null && !this.#isProtein(protein)) return
+    if (peptide !== null && !this.#isPeptide(peptide)) return
+    if (protein !== null) this.#narrow({ protein }, 'psms')
+    if (peptide !== null) this.#narrow({ peptide }, protein === null ? 'psms' : null)
+    // (a curation filter that hides the PSM gives way, so that the narrowing just made stays: `openPsm` lifts every
+    // filter of a PSM its table does not show)
+    if (this.psms.filters.curation !== 'any' && !this.psms.kept.includes(i)) this.psms.filters = { ...this.psms.filters, curation: 'any' }
+    this.openPsm(i)
+  }
+
+  /** Opens PSM `i` from the protein panel: among the PSMs of the open protein, and of its peptide `peptide` if given. */
   openPsmFromPanel(i: number, peptide: number | null): void {
-    const protein = this.panel
-    if (!this.#isPsm(i) || protein === null) return
-    const m = this.model
-    const ps = m.tables.psms
-    const level = this.psms
-    const restore = this.psm?.origin.kind === 'panel' ? this.psm.origin.restore : { ...level.filters }
-    level.filters = {
-      ...restore,
-      text: '',
-      maxQ: m.psmFdr,
-      proteinFilter: protein,
-      peptideFilter: peptide ?? undefined,
-      charges: undefined,
-      ranges: undefined,
-      hideContaminants: m.peptide.contaminant[ps.peptide[i]] ? false : restore.hideContaminants,
-      showDecoys: ps.decoy[i] ? true : restore.showDecoys,
-    }
-    level.selected = i
-    this.tab = 'psms'
-    this.psm = { row: i, origin: { kind: 'panel', protein, peptide, restore } }
+    if (this.panel === null) return
+    this.openPsmIn(i, { protein: this.panel, peptide })
+  }
+
+  /** Closes the PSM view; the PSM stays selected in the PSM table, which keeps its filters. */
+  closePsm(): void {
+    this.psm = null
   }
 
   /**
-   * Closes the PSM view and says where it came from. Back to the PSM table, the PSM stays selected;
-   * back to the protein panel, the PSM table gets its filters back and the Proteins tab shows.
+   * The Peptides tab at peptide `k`, its detail open: from a PSM up to its peptide. Filters of the Peptides table
+   * that hide the peptide are lifted (as `openPsm` does for a PSM).
    */
-  closePsm(): PsmOrigin | null {
-    const open = this.psm
-    if (!open) return null
-    this.psm = null
-    if (open.origin.kind === 'panel') {
-      this.psms.filters = open.origin.restore
-      this.tab = 'proteins'
+  showPeptide(k: number): void {
+    if (!this.#isPeptide(k)) return
+    const m = this.model
+    if (!this.peptides.kept.includes(k)) {
+      if (this.peptides.filters.proteinFilter !== undefined) this.widen('protein')
+      const f = this.peptides.filters
+      this.peptides.filters = {
+        ...f,
+        text: '',
+        maxQ: m.psmFdr,
+        proteinFilter: undefined,
+        curation: 'any',
+        hideContaminants: m.peptide.contaminant[k] ? false : f.hideContaminants,
+        showDecoys: m.tables.peptides.decoy[k] ? true : f.showDecoys,
+      }
     }
-    return open.origin
+    this.tab = 'peptides'
+    this.openPeptide(k)
   }
 
-  /** The PSMs before and after the open one in the PSM table as sorted and filtered (null: none). */
-  get psmNeighbours(): { prev: number | null; next: number | null; position: number; count: number } {
-    const rows = this.psms.rows
-    const position = this.psm ? rows.indexOf(this.psm.row) : -1
+  /**
+   * The Proteins tab at protein `p`, its panel open: from a peptide or a PSM up to its protein. Filters of the
+   * Proteins table that hide the protein are lifted.
+   */
+  showProtein(p: number): void {
+    if (!this.#isProtein(p)) return
+    const m = this.model
+    if (!this.proteins.kept.includes(p)) {
+      const f = this.proteins.filters
+      this.proteins.filters = {
+        ...f,
+        text: '',
+        maxQ: m.proteinFdr,
+        minPeptides: 0,
+        minReplicatesInCondition: 0,
+        hideContaminants: m.protein.contaminant[p] ? false : f.hideContaminants,
+        showDecoys: m.tables.proteins.decoy[p] ? true : f.showDecoys,
+      }
+    }
+    this.tab = 'proteins'
+    this.openProtein(p)
+  }
+
+  /** The row open in the detail pane of `level`: the protein of the panel, the open peptide, the open PSM; null: none. */
+  openRow(level: Level): number | null {
+    return level === 'proteins' ? this.panel : level === 'peptides' ? this.peptidePanel : (this.psm?.row ?? null)
+  }
+
+  /** The rows before and after the open one in its table as sorted and filtered (null: none). */
+  neighbours(level: Level): Neighbours {
+    const rows = this[level].rows
+    const open = this.openRow(level)
+    const position = open === null ? -1 : rows.indexOf(open)
     return {
       prev: position > 0 ? rows[position - 1] : null,
       next: position >= 0 && position + 1 < rows.length ? rows[position + 1] : null,
@@ -508,13 +627,35 @@ export class ResultsView {
     }
   }
 
+  /** Opens the row before (-1) or after (1) the open one of `level`, if there is one. */
+  step(level: Level, direction: 1 | -1): void {
+    const { prev, next } = this.neighbours(level)
+    const target = direction < 0 ? prev : next
+    if (target === null) return
+    if (level === 'proteins') this.openProtein(target)
+    else if (level === 'peptides') this.openPeptide(target)
+    else {
+      this.psms.selected = target
+      this.psm = { row: target }
+    }
+  }
+
+  /** The PSMs before and after the open one in the PSM table as sorted and filtered (null: none). */
+  get psmNeighbours(): Neighbours {
+    return this.neighbours('psms')
+  }
+
   /** Opens the PSM before (-1) or after (1) the open one, if there is one. */
   stepPsm(direction: 1 | -1): void {
-    const { prev, next } = this.psmNeighbours
-    const target = direction < 0 ? prev : next
-    if (target === null || !this.psm) return
-    this.psms.selected = target
-    this.psm = { row: target, origin: this.psm.origin }
+    this.step('psms', direction)
+  }
+
+  #isProtein(p: number): boolean {
+    return Number.isInteger(p) && p >= 0 && p < this.model.tables.proteins.count
+  }
+
+  #isPeptide(k: number): boolean {
+    return Number.isInteger(k) && k >= 0 && k < this.model.tables.peptides.count
   }
 
   #isPsm(i: number): boolean {

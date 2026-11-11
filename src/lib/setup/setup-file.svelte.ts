@@ -120,6 +120,7 @@ function resultsUiOf(view: ResultsView): ResultsUi {
     panel: view.panel,
     panelTab: view.panelTab,
     panelPeptide: view.panelPeptide,
+    peptidePanel: view.peptidePanel,
     psm: view.psm?.row ?? null,
     levels: { proteins: level('proteins'), peptides: level('peptides'), psms: level('psms') },
   }
@@ -347,8 +348,11 @@ export function applyResultsUi(view: ResultsView, ui: ResultsUi): void {
     view.panelTab = ui.panelTab
     view.panelPeptide = inRange(ui.panelPeptide, 'peptides')
   } else view.panel = null
+  const peptide = inRange(ui.peptidePanel, 'peptides')
+  view.peptidePanel = peptide
+  if (peptide !== null) view.peptides.selected = peptide
   const psm = inRange(ui.psm, 'psms')
-  view.psm = psm !== null ? { row: psm, origin: { kind: 'psms' } } : null
+  view.psm = psm !== null ? { row: psm } : null
   if (psm !== null) view.psms.selected = psm
   view.tab = ui.tab
 }

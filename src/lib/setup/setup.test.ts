@@ -34,6 +34,7 @@ const setup = (): SearchSetup => ({
       panel: 3,
       panelTab: 'coverage',
       panelPeptide: null,
+      peptidePanel: 4,
       psm: 7,
       levels: {
         proteins: { filters: { text: 'ALB', maxQ: 0.01, minPeptides: 2, minReplicatesInCondition: 0, hideContaminants: true, showDecoys: false, curation: 'any' }, sort: { key: 'psms', dir: 'desc' }, hidden: [], selected: 3 },

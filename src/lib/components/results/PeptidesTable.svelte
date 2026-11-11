@@ -11,13 +11,30 @@
   import Marker from './Marker.svelte'
   import ProteinRefs from './ProteinRefs.svelte'
 
-  // a row opens its PSMs in the PSM table (`onOpen`); a protein accession opens the protein's panel
+  // a row opens the peptide's detail beside the table (`onOpen`); while it is open the arrow keys go through the
+  // peptides, the detail following; Enter on the open peptide (or a double click) goes on to its PSMs (`onDrill`),
+  // Backspace up to its protein (`onBack`); a protein accession opens the protein's panel
   let {
     view,
     level,
     onOpen,
     onOpenProtein,
-  }: { view: ResultsView; level: LevelState; onOpen: (peptide: number) => void; onOpenProtein: (protein: number) => void } = $props()
+    onDrill,
+    onBack,
+  }: {
+    view: ResultsView
+    level: LevelState
+    onOpen: (peptide: number) => void
+    onOpenProtein: (protein: number) => void
+    onDrill?: (peptide: number) => void
+    onBack?: (row: number | null) => void
+  } = $props()
+
+  let table = $state<DataTable | null>(null)
+  /** Makes the peptide's row the grid's active one and gives the grid the focus. */
+  export function focusRow(peptide: number | null): void {
+    table?.focusRow(peptide)
+  }
 
   const m = $derived(view.model)
   const pt = $derived(m.tables.peptides)
@@ -86,14 +103,15 @@
 {/snippet}
 
 <DataTable
+  bind:this={table}
   label="Peptides"
   rows={level.rows}
   {columns}
   sort={level.effectiveSort}
   onSort={(key) => level.sortBy(key)}
-  onRowClick={(k) => {
-    level.selected = k
-    onOpen(k)
-  }}
+  onRowClick={onOpen}
+  onRowOpen={onDrill}
+  {onBack}
+  followFocus={view.peptidePanel !== null}
   selected={level.selected}
   empty={level.emptyText} />

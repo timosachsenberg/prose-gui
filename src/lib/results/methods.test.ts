@@ -77,7 +77,11 @@ describe('the example search of the pinned ProSE', async () => {
   test('gives the settings ProSE recorded', () => {
     expect(search).toContain('Trypsin/P was set as the enzyme with full specificity and up to 2 missed cleavages; peptides of 7 to 40 residues were considered.')
     expect(search).toContain('Protein N-terminal peptides were also searched without their initial methionine.')
-    expect(search).toContain('The precursor mass tolerance was ±10 ppm, with precursor isotope errors from −1 to +1 (¹³C spacings) considered, and the fragment mass tolerance 0.5 Da.')
+    // (the tool's defaults since OpenMS #10804 and #10805: isotope errors from −2, the calibration pass, the m/z correction)
+    expect(search).toContain('The precursor mass tolerance was ±10 ppm, with precursor isotope errors from −2 to +1 (¹³C spacings) considered, and the fragment mass tolerance 0.5 Da.')
+    expect(search).toContain(
+      'Before the main search, a calibration pass on a subset of the spectra measured the mass errors: within the tolerances set, the fragment tolerance was narrowed to them where enough confident matches were found and the m/z values were corrected for the median error measured.',
+    )
     expect(search).toContain('Precursor charges 2 to 5 were searched, and fragment ions up to charge 2 were scored.')
     expect(search).toContain(
       'Carbamidomethyl (C) was set as a fixed modification, and Oxidation (M) and Acetyl (Protein N-term) were searched as variable modifications (at most 2 per peptide).',
@@ -91,7 +95,7 @@ describe('the example search of the pinned ProSE', async () => {
     )
     // (the fixture's runs are too small for Percolator's learned model)
     expect(filtering).toContain("For both runs, Percolator's check of the learned model on held-out data rejected it")
-    expect(filtering).toContain('PSMs were filtered at 2% PSM-level FDR (Percolator q-values, estimated for each run separately).')
+    expect(filtering).toContain('PSMs were filtered at 1% PSM-level FDR (Percolator q-values, estimated for each run separately).')
     expect(filtering).toContain('No peptide-level FDR was applied')
     expect(filtering).toContain('No protein-level FDR was applied; the reported proteins and protein groups are not FDR-controlled.')
     expect(filtering).toContain('The results were inspected with the ProSE desktop app 0.2.1')

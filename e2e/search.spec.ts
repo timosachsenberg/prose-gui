@@ -6,7 +6,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { zstdDecompressSync } from 'node:zlib'
 import { parquetReadObjects } from 'hyparquet'
-import { clearSearches, clickSpectrum, EXAMPLE_PSMS, freshForm, jsClick, labelledMzs, openAdvanced, openFirstPsm, residuePair, runExample, searchesDir, textOf, waitForResults } from './lib.ts'
+import { clearSearches, clickSpectrum, EXAMPLE_PSMS, freshForm, jsClick, labelledMzs, openAdvanced, openFirstPsm, residuePair, runExample, searchesDir, showKeyFigures, textOf, waitForResults } from './lib.ts'
 
 const enabled = Boolean(process.env.PROSE_BIN)
 
@@ -76,17 +76,17 @@ describe('the example search', () => {
     expect(widths.sequence).toBeLessThan(widths.dejavu - 10)
   })
 
-  it('the example search shows 132 PSMs', async () => {
+  it('the example search shows 110 PSMs', async () => {
     await $('header').waitForDisplayed({ timeout: 20000 })
     await $('button=Try the example').click()
     // the two files in the design table, the database counted
     await expect($('[data-testid="design-summary"]')).toHaveText('2 files → 2 samples · 1 condition')
     await expect($('[data-testid="fasta-proteins"]')).toHaveText('4,136 proteins')
     await openAdvanced()
-    // the example's fragment tolerance for its ion-trap spectra, its PSM FDR of 2 % and its protein FDR off (the run is
-    // too small for 1 % and for a protein FDR)
+    // the example's fragment tolerance for its ion-trap spectra and its protein FDR off (the run is too small for a
+    // protein FDR), with the preset's PSM FDR of 1 %
     await expect($('#fragment-tolerance')).toHaveValue('0.5')
-    await expect($('#psm-fdr')).toHaveValue('2')
+    await expect($('#psm-fdr')).toHaveValue('1')
     await expect($('#protein-fdr')).toHaveValue('off')
     await expect($('button=Off')).toHaveAttribute('aria-pressed', 'true')
     // (textContent: the footer line is cut to the window's width)
@@ -94,7 +94,7 @@ describe('the example search', () => {
     // the example's note, on a line of its own that wraps (not cut)
     // (textContent: WebKitWebDriver reads no visible text of a line-clamped box)
     expect(await $('[data-testid="search-note"]').getProperty('textContent')).toBe(
-      "Ion-trap example with a 0.5 Da fragment tolerance, a 2 % PSM FDR and no protein FDR: the run is too small for 1 % and for a protein FDR. It has too few PSMs for Percolator's full model.",
+      "Ion-trap example with a 0.5 Da fragment tolerance, a 1 % PSM FDR and no protein FDR: the run is too small for a protein FDR. It has too few PSMs for Percolator's full model.",
     )
     const clipped = await browser.execute(() => {
       const note = document.querySelector('[data-testid="search-note"]') as HTMLElement
@@ -108,8 +108,8 @@ describe('the example search', () => {
       interval: 500,
       timeoutMsg: 'the search did not open its result',
     })
+    await showKeyFigures()
     const count = $('[data-testid="psm-count"]')
-    await count.waitForDisplayed({ timeout: 20000 })
     await expect(count).toHaveText(expect.stringContaining(EXAMPLE_PSMS))
     expect(await $('[data-testid="result-chip"]').getProperty('textContent')).toContain('Ecoli · 2 files')
     // real data: the first PSM's precursor error is not 0 ppm, its peaks have intensities of their own
@@ -132,9 +132,17 @@ describe('the example search', () => {
     expect(strip.dots).toBeGreaterThan(5)
     expect(strip.unaligned).toEqual([])
 
-    // the PSM table stands under the spectrum, with the keyboard focus: the arrow keys go through the PSMs
-    await expect($('[data-testid="psm-list"] [role="grid"][aria-label="PSMs"]')).toBeDisplayed()
-    expect(await browser.execute(() => document.activeElement?.closest('[data-testid="psm-list"]') !== null)).toBe(true)
+    // the PSM table stays above the PSM view, with the tabs and the keyboard focus: its arrow keys go through the PSMs
+    await expect($('[data-testid="results-tabs"]')).toBeDisplayed()
+    await expect($('[data-testid="results-table-area"] [role="grid"][aria-label="PSMs"]')).toBeDisplayed()
+    expect(await browser.execute(() => document.activeElement?.closest('[data-testid="results-table-area"]') !== null)).toBe(true)
+    // the view fits under the table: nothing in it scrolls, and neither does the page
+    const scrolling = await browser.execute(() => {
+      const view = document.querySelector('[data-testid="psm-view"]')!
+      const scrolls = (el: Element) => el.scrollHeight > el.clientHeight + 2 && /auto|scroll/.test(getComputedStyle(el).overflowY)
+      return { view: [view, ...view.querySelectorAll('*')].filter(scrolls).length, page: document.documentElement.scrollHeight > window.innerHeight }
+    })
+    expect(scrolling).toEqual({ view: 0, page: false })
     const first = await textOf('[data-testid="psm-header"]')
     await browser.keys('ArrowDown')
     await browser.waitUntil(async () => (await textOf('[data-testid="psm-header"]')) !== first, {
@@ -185,7 +193,7 @@ describe('the example search', () => {
     await expect($('#protein-fdr')).toHaveValue('off')
     await expect($('button=Start over')).toHaveAttribute(
       'title',
-      "Removes the spectra and the database. Your settings stay, but the example's fragment tolerance, PSM FDR and protein FDR go back to the preset's.",
+      "Removes the spectra and the database. Your settings stay, but the example's fragment tolerance and protein FDR go back to the preset's.",
     )
     await $('button=Remove all').click()
     await expect($('button=Try the example')).toBeDisplayed()
@@ -250,7 +258,14 @@ describe('the example search', () => {
     expect(await $('input[type="radio"][value="peptdeep"]').isSelected()).toBe(true)
     expect(await $('input[type="radio"][value="peptdeep"]').isEnabled()).toBe(true)
     // the stored spectra are filtered (the footer of the QPX files says how): the view says so
-    await expect($('[data-testid="peak-filter-note"]')).toHaveText(expect.stringContaining('Showing the top 100 peaks per 100 m/z'))
+    // (textContent: WebKit's visible text is empty for an element that cuts its text where it does not fit, also
+    // while it fits, as here: the note is in the toolbar, on one line)
+    await expect($('[data-testid="peak-filter-note"]')).toBeDisplayed()
+    expect(await textOf('[data-testid="peak-filter-note"]')).toContain('Showing the top 100 peaks per 100 m/z')
+    expect(await browser.execute(() => {
+      const note = document.querySelector('[data-testid="peak-filter-note"]')!
+      return note.scrollWidth <= note.clientWidth
+    })).toBe(true)
   })
 
   it('History survives a restart: the search is listed, can be renamed, and opens again with its results', async () => {
@@ -283,8 +298,7 @@ describe('the example search', () => {
     expect(await row().getProperty('textContent')).toContain('Renamed_search')
     await row().$('button=Open').click()
     await browser.waitUntil(async () => (await browser.getUrl()).endsWith(`#/results/${searchId}`), { timeout: 30000 })
-    const count = $('[data-testid="psm-count"]')
-    await count.waitForDisplayed({ timeout: 30000 })
-    await expect(count).toHaveText(expect.stringContaining(EXAMPLE_PSMS))
+    await showKeyFigures()
+    await expect($('[data-testid="psm-count"]')).toHaveText(expect.stringContaining(EXAMPLE_PSMS))
   })
 })

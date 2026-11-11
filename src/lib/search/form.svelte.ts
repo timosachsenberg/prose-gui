@@ -61,10 +61,11 @@ export const CRAP_PROTEINS = 116
  * twice as two replicates of condition "example", against the E. coli K-12 proteins (targets only: ProSE makes
  * the decoys). The shim gives the bundled run under the two names. Its own settings (`settings`), each group of
  * which goes back to the preset's on its own when the example is left (`#leaveExample`): its fragments are measured
- * in the ion trap, so the fragment tolerance is 0.5 Da; the run is too small for a PSM FDR of 1 %: Percolator's
- * q-values are (decoys + 1) / targets, so its ~80 PSMs reach 1.2 % at best (and none passes 1 %), and the PSM FDR is
- * 2 %; it is too small for a protein FDR as well (about 60 proteins: none would pass 1 %), so the protein FDR is off
- * (0) and its proteins are listed without one. Everything else is the preset's.
+ * in the ion trap, so the fragment tolerance is 0.5 Da; it is too small for a protein FDR (about 47 proteins: none
+ * would pass 1 %), so the protein FDR is off (0) and its proteins are listed without one. Everything else is the
+ * preset's, the PSM FDR of 1 % too: until app 0.6 the example had 2 %, when its PSMs could not pass 1 % (Percolator's
+ * q-values as (decoys + 1) / targets left its ~80 PSMs at 1.2 % at best); with the ProSE of the pin since OpenMS
+ * d80de8d557 the 55 PSMs of a replicate have a q-value of 0.6 %, and 1 % finds the same PSMs as 2 %.
  */
 export const EXAMPLE = {
   names: ['Ecoli_1.mzML', 'Ecoli_2.mzML'],
@@ -72,7 +73,6 @@ export const EXAMPLE = {
   condition: 'example',
   settings: [
     { label: 'fragment tolerance', parameters: { 'fragment:mass_tolerance': 0.5, 'fragment:mass_tolerance_unit': 'Da' } },
-    { label: 'PSM FDR', parameters: { 'FDR:PSM': 0.02 } },
     { label: 'protein FDR', parameters: { 'FDR:protein': 0 } },
   ],
 } as const

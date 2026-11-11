@@ -1,14 +1,27 @@
 <script lang="ts">
   // The proteins of the open result: accession, gene, description, coverage, counts (at the search
   // PSM FDR), counts per sample grouped by condition, "found in". A row opens the protein panel at the
-  // right of the table (`onOpen`), which takes room: the Description is hidden while it is open.
+  // right of the table (`onOpen`), which takes room: the Description is hidden while it is open. While the panel
+  // is open the arrow keys go through the proteins, the panel following; Enter on the open protein (or a double
+  // click) goes on to its peptides (`onDrill`).
   import { formatCount, formatQValue, formatScore, parseAccession, parseDescription } from '$lib/results/display'
   import type { LevelState, ResultsView } from '$lib/results/view.svelte'
   import { tableColumns, sampleIndex, type CellDef } from './cells'
   import DataTable from './DataTable.svelte'
   import Marker from './Marker.svelte'
 
-  let { view, level, onOpen }: { view: ResultsView; level: LevelState; onOpen: (protein: number) => void } = $props()
+  let {
+    view,
+    level,
+    onOpen,
+    onDrill,
+  }: {
+    view: ResultsView
+    level: LevelState
+    onOpen: (protein: number) => void
+    /** The level below (a double click, Enter on the open protein): the protein's peptides. */
+    onDrill?: (protein: number) => void
+  } = $props()
 
   const m = $derived(view.model)
   const pr = $derived(m.tables.proteins)
@@ -92,5 +105,7 @@
   sort={level.effectiveSort}
   onSort={(key) => level.sortBy(key)}
   onRowClick={onOpen}
+  onRowOpen={onDrill}
+  followFocus={view.panel !== null}
   selected={level.selected}
   empty={level.emptyText} />

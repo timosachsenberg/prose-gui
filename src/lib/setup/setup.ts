@@ -24,7 +24,7 @@
 //   threads       the search's threads (null: all cores)
 //   search        the History search this setup ran as: { id, name } (null: none yet)
 //   ui            the views: { view ("search", "results", "history", "help"), helpPage?, showSettings, advanced,
-//                 results: null or { tab, showTechReplicates, panel, panelTab, panelPeptide, psm, levels:
+//                 results: null or { tab, showTechReplicates, panel, panelTab, panelPeptide, peptidePanel, psm, levels:
 //                 { proteins, peptides, psms: { filters, sort, hidden, selected } } } } (rows by their index in the
 //                 search's tables; filters as results/filters.ts `FilterState`, NaN written as null)
 
@@ -56,6 +56,8 @@ export type ResultsUi = {
   panel: number | null
   panelTab: PanelTab
   panelPeptide: number | null
+  /** The peptide open beside the Peptides table (absent in setups saved before app 0.7: none). */
+  peptidePanel: number | null
   psm: number | null
   levels: Record<Level, SetupLevel>
 }
@@ -155,6 +157,7 @@ function resultsUiOf(v: unknown): ResultsUi | null {
     panel: num(v.panel) ?? null,
     panelTab: panelTabs.includes(v.panelTab as PanelTab) ? (v.panelTab as PanelTab) : 'peptides',
     panelPeptide: num(v.panelPeptide) ?? null,
+    peptidePanel: num(v.peptidePanel) ?? null,
     psm: num(v.psm) ?? null,
     levels: levels as Record<Level, SetupLevel>,
   }

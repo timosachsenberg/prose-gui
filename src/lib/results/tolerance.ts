@@ -2,7 +2,8 @@
 // errors of the passing PSMs say the window was off-centre, too narrow (PSMs pile up at its edge) or wider than
 // needed. Built so that it cannot make things worse: ProSE's recommendation is estimated from passing PSMs inside
 // the searched window, so it can only ever narrow it; while an offset or a pile-up at the edge is suspected, the
-// only re-runs offered are a wider window or (for an offset) calibration, never a narrower one. Calibration sets
+// only re-runs offered are a wider window or (for an offset, where the search switched it off: it is on by default
+// since OpenMS #10804) calibration, never a narrower one. Calibration sets
 // an asymmetric window from a first pass, at most as wide as the one set (ProSEAlgorithm, calibration pass), so it
 // follows an offset but cannot bring back PSMs a window cut off: it is not offered for a pile-up at the edge.
 
@@ -115,7 +116,9 @@ const CALIBRATE = { label: 'Re-run with calibration', changes: { 'calibration:en
 export function toleranceFindings(summary: ProSEMultiSummary, parameters: Record<string, unknown>, sample: PrecursorSample): ToleranceFinding[] {
   if (summary.openSearch) return []
   const w = searchedWindows(parameters)
-  const calibrated = parameters['calibration:enabled'] === true
+  // (on unless switched off: ProSE's default since OpenMS #10804; a choice "true"/"false", a switch before)
+  const enabled = { ...defaultsOf(PROSE_PARAMETERS), ...parameters }['calibration:enabled']
+  const calibrated = enabled === true || enabled === 'true'
   const out: ToleranceFinding[] = []
   const wider: ToleranceFinding['reruns'] = []
   const widest = Math.max(w.precursor.lower, w.precursor.upper)
@@ -141,8 +144,9 @@ export function toleranceFindings(summary: ProSEMultiSummary, parameters: Record
         target: 'precursor',
         message:
           `The precursor errors are off-centre: their median is ${mid > 0 ? '+' : ''}${ppmLabel(mid)}, more than a third of the ` +
-          'window on that side. PSMs with larger errors may have fallen outside it. Search again with a wider window (calibration can then narrow it ' +
-          'around the offset); a narrower window would lose more.',
+          'window on that side. PSMs with larger errors may have fallen outside it. Search again with a wider window' +
+          (calibrated ? '' : ' (calibration can then narrow it around the offset)') +
+          '; a narrower window would lose more.',
         reruns: clipped || calibrated ? wider : [...wider, CALIBRATE],
       })
     }
@@ -195,7 +199,7 @@ export function toleranceFindings(summary: ProSEMultiSummary, parameters: Record
         message:
           `The fragment errors are off-centre in ${off.length === files.length ? 'every file' : `${off.length} of ${files.length} files`} ` +
           `(median up to ${ppmLabel(Math.max(...off.map((f) => Math.abs(f.fragmentError!.median))))} of a ${tol} ppm window). ` +
-          'Search again with calibration or a wider fragment window.',
+          (calibrated ? 'Search again with a wider fragment window.' : 'Search again with calibration or a wider fragment window.'),
         reruns: full.length > 0 ? fragmentWider.filter((r) => r !== CALIBRATE) : fragmentWider,
       })
     }
@@ -209,8 +213,10 @@ export function toleranceFindings(summary: ProSEMultiSummary, parameters: Record
         reruns: fragmentWider.filter((r) => r !== CALIBRATE),
       })
     }
+    // (not for a calibrated search: ProSE searched with the fragment tolerance its calibration pass measured, within
+    // the one set, so a narrower setting would change nothing)
     const fragmentRecommended = recommended('fragmentError')
-    if (off.length === 0 && full.length === 0 && fragmentRecommended !== null && fragmentRecommended < TOO_WIDE_RATIO * tol) {
+    if (!calibrated && off.length === 0 && full.length === 0 && fragmentRecommended !== null && fragmentRecommended < TOO_WIDE_RATIO * tol) {
       const ppm = Math.ceil(fragmentRecommended)
       out.push({
         id: 'tolerance-too-wide',

@@ -102,7 +102,8 @@ test.describe('example', () => {
     expect(text).toContain(`Precursor charges ${S('min_charge')} to ${S('max_charge')} were searched`)
     expect(text).toContain(`${S('fixed_modifications')} was set as a fixed modification`)
     expect(text.includes('PSMs were rescored with Percolator')).toBe(f.runs.some((r) => r.rescored))
-    expect(text).toContain(`PSMs were filtered at ${FIXTURE_PSM_FDR * 100}% PSM-level FDR`)
+    // (the FDR the search recorded, not the cutoff the dev hook opens the fixture with)
+    expect(text).toContain(`PSMs were filtered at ${Number(f.fdr.get('psm_fdr')) * 100}% PSM-level FDR`)
     expect(text).toContain('No peptide-level FDR was applied')
     expect(text).toContain(f.fdr.get('protein_fdr_applied') === 'true' ? 'protein-level FDR with the picked-protein approach' : 'No protein-level FDR was applied')
     // the references, numbered as cited; Copy and Export › Methods section have the same text
@@ -261,9 +262,9 @@ test.describe('example', () => {
   })
 })
 
-/** The PSMs of the example whose ions the tests recompute: plain, carbamidomethylated, 3+ and 4+ (its PSMs at the
- * current pin have no variable modification). */
-const IONS: { sequence: string; charge?: number }[] = [{ sequence: 'RFYDAVSTFK' }, { sequence: 'CTQELLFGK' }, { sequence: 'AREALGLPHSDVFR', charge: 3 }, { sequence: 'AREALGLPHSDVFR', charge: 4 }]
+/** The PSMs of the example whose ions the tests recompute: plain, carbamidomethylated and 3+ (its PSMs at the
+ * current pin have no variable modification and no charge above 3). */
+const IONS: { sequence: string; charge?: number }[] = [{ sequence: 'RFYDAVSTFK' }, { sequence: 'CTQELLFGK' }, { sequence: 'GYRPQFYFR', charge: 3 }, { sequence: 'FMHVPELSR', charge: 3 }]
 
 function modsOf(p: OraclePsm): Map<number, number> {
   const out = new Map<number, number>()
@@ -301,8 +302,11 @@ for (const { sequence, charge } of IONS) {
     expect(peaks, 'the spectrum is stored').toBeTruthy()
     const matched = matchIons(ions, peaks.mz, tolerance)
     expect(singly.filter((c) => c.matched).map((c) => c.ion).sort(), 'matched ions').toEqual([...matched.keys()].sort())
-    // the spectrum labels the same ions
-    const labels = await view.getByTestId('peak-label').evaluateAll((ts) => ts.flatMap((t) => (t.textContent ?? '').split(/[\s,/]+/).filter(Boolean)))
-    expect(labels.filter((l) => /^[by]\d+$/.test(l)).sort(), 'spectrum labels').toEqual([...matched.keys()].sort())
+    // the spectrum labels the same ions, at the width it has by itself (the column of the ion table takes a third
+    // of it, and a narrower plot leaves out labels that have no room)
+    await view.getByTestId('psm-side-toggle').click()
+    await expect(view.getByTestId('psm-side')).toBeHidden()
+    const labels = () => view.getByTestId('peak-label').evaluateAll((ts) => ts.flatMap((t) => (t.textContent ?? '').split(/[\s,/]+/).filter((l) => /^[by]\d+$/.test(l))).sort())
+    await expect.poll(labels, { message: 'spectrum labels' }).toEqual([...matched.keys()].sort())
   })
 }

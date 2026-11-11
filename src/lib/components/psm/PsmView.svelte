@@ -1,7 +1,13 @@
 <script lang="ts">
-  // The PSM view (mockup 3), over the PSM table (`list`, right under the spectrum and its mass errors, so that the
-  // arrow keys in the table go through the PSMs while the spectrum stays in sight): breadcrumb, Prev/Next and
-  // "Export spectrum (SVG)";
+  // The PSM view (mockup 3), under the PSM table, whose arrow keys go through the PSMs while the spectrum stays in
+  // sight: the tabs and the table's filter row stay above both. It takes the height it is given and never scrolls
+  // as a whole: the spectrum is as high as fits (SpectrumMirror's `fit`), the fragment mass errors under it give
+  // way when the view is too low for both, and the PSM's features and the ion table stand beside the spectrum in a
+  // column with two tabs ("Features · Fragments" shows and hides it; it shows by itself only in a view wide enough
+  // for it and a spectrum of full width; only a long ion table or the list of all features scrolls, in that
+  // column; in a narrow view it lies over the spectrum). Its header: the peptide with its fragment ladder,
+  // "Accept"/"Reject", its place in the table ("3 of 132") with Prev/Next, and "Export spectrum (SVG)"; under it
+  // what the PSM is, the ways up (the PSM's peptide in the Peptides tab, its protein in the Proteins tab), and the note;
   // the peptide with its fragment ladder; the spectrum annotated (psm/annotate.ts, the web module's
   // annotatePeaks in TypeScript), mirrored against PeptDeep's prediction, which ProSE wrote for every
   // PSM (its input's QPX psm file, read when the PSM is opened), or the theoretical spectrum, with ion,
@@ -61,7 +67,7 @@
   import { COISOLATED_TITLE, chimericRank, isCoisolated, sameSpectrum } from '$lib/results/coisolated'
   import { ACCEPTED, MAX_NOTE, NONE, REJECTED } from '$lib/results/curation'
   import { baseName } from '$lib/results/model'
-  import { formatQValue, parseAccession, parseDescription, scanNumber } from '$lib/results/display'
+  import { formatCount, formatQValue, parseAccession, parseDescription, scanNumber } from '$lib/results/display'
   import type { LoadedSpectra, PsmSpectra } from '$lib/results/read'
   import type { PeakAnnotationResult } from '$lib/results/types'
   import type { ResultsView } from '$lib/results/view.svelte'
@@ -74,7 +80,7 @@
   import { deltaCandidates, NO_MARKS, type PsmMarks, type SpectrumTool } from '$lib/psm/measure'
   import { cn } from '$lib/utils'
   import { displaySettings } from '$lib/format/settings.svelte'
-  import { tick, type Snippet } from 'svelte'
+  import { tick } from 'svelte'
   import FragmentLadder from './FragmentLadder.svelte'
   import IonTable from './IonTable.svelte'
   import PsmFeatures from './PsmFeatures.svelte'
@@ -83,16 +89,13 @@
   let {
     view,
     onClose,
-    onBreadcrumb,
-    list,
+    onUp,
   }: {
     view: ResultsView
-    /** Back to where the PSM came from (Esc, ✕). */
+    /** Closes the view (Esc, ✕): the PSM table gets the room back, the PSM stays selected. */
     onClose: () => void
-    /** A breadcrumb: the Proteins or Peptides tab, the protein's panel, the PSM table of the peptide. */
-    onBreadcrumb: (to: { tab: 'proteins' | 'peptides' } | { protein: number } | { peptide: number }) => void
-    /** The PSM table (with its filter row), shown right under the spectrum and its mass errors. */
-    list?: Snippet
+    /** Up a level: the PSM's peptide in the Peptides tab, or its protein in the Proteins tab. */
+    onUp: (to: { peptide: number } | { protein: number }) => void
   } = $props()
 
   const uid = $props.id()
@@ -250,15 +253,8 @@
   const pending = $derived(bottom.kind === 'status' && !bottom.failed)
 
 
-  // breadcrumb and header
-  const proteinRow = $derived.by(() => {
-    const origin = view.psm?.origin
-    if (origin?.kind === 'panel') return origin.protein
-    const filter = view.psms.filters.proteinFilter
-    const refs = m.peptide.proteins[k]
-    if (filter !== undefined && refs.includes(filter)) return filter
-    return refs.length > 0 ? refs[0] : null
-  })
+  // the ways up and the header: the protein is the one the tables are narrowed to if the peptide is its, else its first
+  const proteinRow = $derived(view.proteinOf(k))
   const proteinCrumb = $derived.by(() => {
     if (proteinRow === null) return null
     const accession = m.tables.proteins.accession[proteinRow]
@@ -266,7 +262,7 @@
     const more = m.peptide.proteins[k].length - 1
     return { text: `${gene ?? parseAccession(accession).id}${more > 0 ? ` +${more}` : ''}`, title: accession }
   })
-  /** The peptide as the breadcrumb writes it: "AVM(ox)DDFAAFVEK", after its shift. */
+  /** The peptide in one line of text: "AVM(ox)DDFAAFVEK", after its shift. */
   const peptideCrumb = $derived.by(() => {
     const label = (mod: { label: string } | undefined) => (mod ? `(${mod.label})` : '')
     const core = peptide.residues.map((r) => `${r.residue}${label(r.mod)}`).join('')
@@ -399,10 +395,22 @@
           : 'Click a peak to label it'
         : '',
   )
-  function exportSvg() {
-    const svg = mirror?.svgElement()
-    if (!svg) return
-    void saveText(svgFileName(proforma, ps.nativeId[row]), exportSpectrumSvg(svg))
+  /**
+   * While the figure is taken for the export the drawing is as it is by itself, whatever the window: the plot at
+   * its own height, with the mass errors if they are on. The file is then the same from a low window as from a
+   * high one (the drawing on screen fits the room it has: a lower plot, a lower error strip or none).
+   */
+  let exporting = $state(false)
+  async function exportSvg() {
+    if (!mirror) return
+    exporting = true
+    try {
+      await tick()
+      const svg = mirror?.svgElement()
+      if (svg) void saveText(svgFileName(proforma, ps.nativeId[row]), exportSpectrumSvg(svg))
+    } finally {
+      exporting = false
+    }
   }
 
   // the Export menu's "Spectrum (SVG)" does what the button does
@@ -412,6 +420,29 @@
   })
 
   let ladderRow = $state(0)
+  /** The height the spectrum's drawing may take: what the view leaves between the toolbar and its lower edge. */
+  let plotRoom = $state(0)
+  /**
+   * With less room than this the fragment mass errors give way to the spectrum (the toggle says so): the halves of
+   * the mirror would get lower than some 60 px, and the labels of a crowded spectrum have no room above the peaks.
+   * The default window (1440 × 900, its page some 875 px high under the menu bar, four PSMs in the table above)
+   * leaves about 350 px: the errors show (as a lower strip), with nearly as many ions labelled as in a plot of the
+   * height it has by itself, and stay when a line more of the header takes some of the room.
+   */
+  const ROOM_FOR_ERRORS = 300
+  const errorsFit = $derived(plotRoom === 0 || plotRoom >= ROOM_FOR_ERRORS)
+  /** The column beside the spectrum: the PSM's features, or the ion table. */
+  let side = $state<'features' | 'fragments'>('features')
+  /**
+   * The column shows where the user asked for it, and unasked only in a view wide enough for it and a spectrum as
+   * wide as the labels of a crowded spectrum need (in a narrower plot some would be left out). In a narrow view
+   * it lies over the spectrum.
+   */
+  let viewWidth = $state(0)
+  const SIDE_BY_ITSELF = 1560
+  const SIDE_BESIDE = 900
+  const sideShown = $derived(displaySettings.psmSide ?? viewWidth >= SIDE_BY_ITSELF)
+  const sideOver = $derived(viewWidth < SIDE_BESIDE)
   let heading = $state<HTMLElement | null>(null)
   let prevButton = $state<HTMLElement | null>(null)
   let nextButton = $state<HTMLElement | null>(null)
@@ -433,13 +464,23 @@
     }
   }
 
-  /** Keys that belong to what has the focus: typing, a grid, radio buttons, menus. */
+  /**
+   * Keys that belong to what has the focus: typing, a grid, radio buttons, menus. Not the PSM table above the view:
+   * the focus is there while the user goes through the PSMs, its rows are the view's PSMs, and it takes only the
+   * keys that move through the rows (↑ ↓, Home, End, the page keys, Enter, Backspace), so the view's own (A, R, M, L,
+   * ← →, Delete) work from it too. Results marks that table (`data-level-table`).
+   */
   function ownsKeys(target: EventTarget | null): boolean {
     if (!(target instanceof Element)) return false
-    if (target.closest('input, textarea, select, [contenteditable="true"], [role="grid"], [role="tablist"], [role="menu"], [role="listbox"], [role="dialog"]')) {
-      return true
-    }
-    return false
+    if (target.closest('input, textarea, select, [contenteditable="true"]')) return true
+    if (target.closest('[data-level-table] [role="grid"]')) return false
+    return target.closest('[role="grid"], [role="tablist"], [role="menu"], [role="listbox"], [role="dialog"]') !== null
+  }
+
+  /** A grid wider than its box: ← and → scroll it (a narrow window), and are not the view's Prev and Next from there. */
+  function scrollsSideways(target: EventTarget | null): boolean {
+    const grid = target instanceof Element ? target.closest('[role="grid"]') : null
+    return grid !== null && grid.scrollWidth > grid.clientWidth + 1
   }
 
   function onkeydown(event: KeyboardEvent) {
@@ -455,7 +496,7 @@
       if (ownsKeys(event.target)) return
       if (mirror?.deleteSelection()) event.preventDefault()
     } else if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
-      if (ownsKeys(event.target)) return
+      if (ownsKeys(event.target) || scrollsSideways(event.target)) return
       event.preventDefault()
       void step(event.key === 'ArrowLeft' ? -1 : 1)
     } else if (event.key === 'a' || event.key === 'A' || event.key === 'r' || event.key === 'R') {
@@ -479,48 +520,14 @@
 
 <svelte:window {onkeydown} />
 
-<section
-  class="@container flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto px-5 pt-3.5 pb-6"
-  aria-labelledby="{uid}-heading"
-  data-testid="psm-view">
-  <!-- The breadcrumb and the PSM's name take what the buttons leave them, at least 16rem: in a narrow view the
-       buttons go to a row of their own. The crumbs stay on one line, the protein and the peptide truncated (their
-       whole text is their tooltip). -->
-  <header class="flex flex-wrap items-start justify-between gap-x-3 gap-y-1.5">
-    <div class="flex min-w-0 flex-[1_1_16rem] flex-wrap items-baseline gap-x-1 text-xs text-muted-foreground" data-testid="psm-breadcrumb">
-      <nav aria-label="Breadcrumb" class="max-w-full min-w-0">
-        <ol class="flex min-w-0 items-baseline gap-x-1 whitespace-nowrap">
-          <li class="shrink-0"><button type="button" class={crumb} onclick={() => onBreadcrumb({ tab: 'proteins' })}>Proteins</button> ›</li>
-          <li class="flex min-w-0 items-baseline gap-x-1">
-            {#if proteinCrumb && proteinRow !== null}
-              <button type="button" class="{crumb} min-w-0 truncate font-medium text-foreground" title={proteinCrumb.title} onclick={() => onBreadcrumb({ protein: proteinRow! })}
-                >{proteinCrumb.text}</button>
-              <span class="sr-only">({proteinCrumb.title})</span>
-            {:else}
-              <span class="min-w-0 truncate">below protein FDR</span>
-            {/if}
-            <span>›</span>
-          </li>
-          <li class="shrink-0"><button type="button" class={crumb} onclick={() => onBreadcrumb({ tab: 'peptides' })}>Peptides</button> ›</li>
-          <li class="flex min-w-0 items-baseline gap-x-1">
-            <button type="button" class="{crumb} max-w-[22rem] min-w-0 truncate font-medium text-foreground" title="Show the PSMs of {proforma} in the PSM table" onclick={() => onBreadcrumb({ peptide: k })}
-              >{peptideCrumb}</button>
-            <span>›</span>
-          </li>
-        </ol>
-      </nav>
-      <h2
-        bind:this={heading}
-        id="{uid}-heading"
-        tabindex="-1"
-        class="max-w-full min-w-0 truncate rounded-sm font-normal outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-        title="PSM in {fileName}, {spectrumName}">
-        PSM in {fileName}, {spectrumName}
-      </h2>
-      <!-- the focus can stay in the PSM table under the spectrum: say which PSM opened -->
-      <p class="sr-only" aria-live="polite">PSM {peptideCrumb}, {charge}+, {spectrumName} ({fileName})</p>
+<section class="@container/psm flex min-h-0 min-w-0 flex-1 flex-col gap-1.5 pt-0.5" aria-labelledby="{uid}-heading" data-testid="psm-view" bind:clientWidth={viewWidth}>
+  <!-- The peptide with its ladder and what the PSM is take what the buttons leave them: in a narrow view the buttons
+       go to a row of their own. -->
+  <header class="flex flex-none flex-wrap items-center justify-between gap-x-3 gap-y-1">
+    <div class="flex min-w-0 flex-[1_1_18rem] items-end" bind:clientWidth={ladderRow}>
+      <FragmentLadder {peptide} {cuts} {shift} available={ladderRow} />
     </div>
-    <div class="ml-auto flex flex-none items-center gap-1.5">
+    <div class="ml-auto flex flex-none flex-wrap items-center justify-end gap-1.5">
       {#if view.curationError}
         <span class="max-w-60 truncate text-xs text-destructive" role="alert" title={view.curationError}>{view.curationError}</span>
       {/if}
@@ -542,13 +549,19 @@
           title={mark === REJECTED ? 'Rejected. Take the mark away (R)' : 'Reject the PSM (R)'}
           onclick={() => curate(REJECTED)}>✗ Reject</Button>
       </div>
+      <!-- its place among the rows the PSM table shows, which Prev and Next (and the table's arrow keys) go through -->
+      <span
+        class="pl-1 text-xs whitespace-nowrap text-muted-foreground tabular-nums"
+        data-testid="detail-position"
+        title={neighbours.position < 0 ? "The table's filters hide this PSM" : `Row ${formatCount(neighbours.position + 1)} of the ${formatCount(neighbours.count)} the PSM table shows`}
+        >{neighbours.position < 0 ? 'not in the table' : `${formatCount(neighbours.position + 1)} of ${formatCount(neighbours.count)}`}</span>
       <Button
         bind:ref={prevButton}
         variant="outline"
         size="sm"
         class="h-7 px-2.5 text-xs"
         aria-label="Previous PSM"
-        title={neighbours.position < 0 ? "The list's filters hide this PSM" : 'Previous PSM in the list (←)'}
+        title={neighbours.position < 0 ? "The table's filters hide this PSM" : 'Previous PSM in the table (←)'}
         aria-keyshortcuts="ArrowLeft"
         disabled={neighbours.prev === null}
         onclick={() => step(-1)}>‹ Prev</Button>
@@ -558,7 +571,7 @@
         size="sm"
         class="h-7 px-2.5 text-xs"
         aria-label="Next PSM"
-        title={neighbours.position < 0 ? "The list's filters hide this PSM" : 'Next PSM in the list (→)'}
+        title={neighbours.position < 0 ? "The table's filters hide this PSM" : 'Next PSM in the table (→)'}
         aria-keyshortcuts="ArrowRight"
         disabled={neighbours.next === null}
         onclick={() => step(1)}>Next ›</Button>
@@ -569,56 +582,96 @@
         disabled={!peaks || pending}
         title={spectra === null ? 'Reading the spectrum' : !peaks ? 'The spectrum was not stored' : pending ? 'Wait for the annotation and the prediction' : undefined}
         onclick={exportSvg}>Export spectrum (SVG)</Button>
-      <Button variant="ghost" size="icon-sm" aria-label="Close the PSM view" title="Back (Esc)" onclick={onClose}>
+      <!-- the column of the features and the ion table, beside the spectrum (which gets narrower) -->
+      <Button
+        variant="outline"
+        size="sm"
+        class={cn('h-7 px-2.5 text-xs', sideShown && 'border-primary/50 bg-primary/10 text-primary hover:text-primary')}
+        aria-expanded={sideShown}
+        aria-controls="{uid}-side"
+        data-testid="psm-side-toggle"
+        title={sideShown ? "Hide the PSM's features and its ion table: the spectrum gets the width" : "Show the PSM's features and its ion table beside the spectrum"}
+        onclick={() => (displaySettings.psmSide = !sideShown)}>Features · Fragments</Button>
+      <Button variant="ghost" size="icon-sm" aria-label="Close the PSM view" title="Close (Esc)" onclick={onClose}>
         <XIcon aria-hidden="true" />
       </Button>
     </div>
   </header>
 
-  <div class="mt-1 flex flex-wrap items-end gap-x-5" bind:clientWidth={ladderRow}>
-    <FragmentLadder {peptide} {cuts} {shift} available={ladderRow} />
-    <p class="pb-3 text-xs text-muted-foreground tabular-nums" data-testid="psm-header">
-      {#if shift}<span class="font-mono">[{shift}]?</span>{' · '}{/if}{headerLine}{#if ps.decoy[row]}<Marker text="decoy" />{/if}{#if isCoisolated(ps, row)}<Marker
-          text="co-isolated"
-          title={COISOLATED_TITLE} />{/if}
-    </p>
+  <!-- what the PSM is, the ways up (Backspace in the PSM table goes to the peptide), the note, the other PSMs of
+       the spectrum: one row where the view is wide enough -->
+  <div class="flex flex-none flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+    <div class="flex min-w-0 max-w-full flex-wrap items-baseline gap-x-2 text-muted-foreground">
+      <h2
+        bind:this={heading}
+        id="{uid}-heading"
+        tabindex="-1"
+        class="max-w-full min-w-0 truncate rounded-sm font-normal text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+        title="PSM in {fileName}, {spectrumName}">
+        PSM in {fileName}, {spectrumName}
+      </h2>
+      <p class="tabular-nums" data-testid="psm-header">
+        {#if shift}<span class="font-mono">[{shift}]?</span>{' · '}{/if}{headerLine}{#if ps.decoy[row]}<Marker text="decoy" />{/if}{#if isCoisolated(ps, row)}<Marker
+            text="co-isolated"
+            title={COISOLATED_TITLE} />{/if}
+      </p>
+      <!-- the focus stays in the PSM table above: say which PSM opened -->
+      <p class="sr-only" aria-live="polite">PSM {peptideCrumb}, {charge}+, {spectrumName} ({fileName})</p>
+    </div>
+    <nav aria-label="Up a level" class="flex min-w-0 items-baseline gap-x-1.5 whitespace-nowrap text-muted-foreground" data-testid="psm-up">
+      <span>Up to</span>
+      <button type="button" class="{crumb} max-w-[20rem] min-w-0 truncate font-medium text-primary" title="The Peptides tab at {proforma} (Backspace in the table)" onclick={() => onUp({ peptide: k })}
+        >peptide {peptideCrumb} ↑</button>
+      <span aria-hidden="true">·</span>
+      {#if proteinCrumb && proteinRow !== null}
+        <button type="button" class="{crumb} min-w-0 truncate font-medium text-primary" title="The Proteins tab at {proteinCrumb.title}" onclick={() => onUp({ protein: proteinRow! })}
+          >protein {proteinCrumb.text} ↑</button>
+        <span class="sr-only">({proteinCrumb.title})</span>
+      {:else}
+        <span class="min-w-0 truncate italic" title="None of this peptide's proteins pass the protein FDR">below protein FDR</span>
+      {/if}
+    </nav>
+    {#key row}
+      <label class="flex min-w-[12rem] flex-[1_1_14rem] items-center gap-2" data-testid="psm-note">
+        <span class="text-muted-foreground">Note</span>
+        <input
+          type="text"
+          class="h-7 min-w-0 flex-1 rounded-md border bg-background px-2 text-xs outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
+          placeholder="Optional, e.g. why you accepted or rejected the PSM"
+          maxlength={MAX_NOTE}
+          spellcheck="false"
+          value={note}
+          onchange={(e) => view.setNote(row, e.currentTarget.value)}
+          onkeydown={(e) => e.key === 'Enter' && e.currentTarget.blur()} />
+      </label>
+    {/key}
+    {#if mates.length > 0}
+      <!-- the PSMs of the other precursors of this spectrum: each opens here (the table above keeps its place) -->
+      <p class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-muted-foreground" data-testid="same-spectrum">
+        <span>Same spectrum:</span>
+        {#each mates as mate (mate.row)}
+          <span class="whitespace-nowrap">
+            <button type="button" class="{crumb} font-mono text-foreground" title={mate.title} onclick={() => view.openPsm(mate.row)}
+              >{mate.sequence}</button>
+            {mate.charge}+{#if mate.decoy}{' '}decoy{/if}{#if mate.coisolated}{' '}co-isolated{/if}
+          </span>
+        {/each}
+      </p>
+    {/if}
   </div>
-  {#key row}
-    <label class="mb-2 flex max-w-xl items-center gap-2 text-xs" data-testid="psm-note">
-      <span class="text-muted-foreground">Note</span>
-      <input
-        type="text"
-        class="h-7 min-w-0 flex-1 rounded-md border bg-background px-2 text-xs outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/50"
-        placeholder="Optional, e.g. why you accepted or rejected the PSM"
-        maxlength={MAX_NOTE}
-        spellcheck="false"
-        value={note}
-        onchange={(e) => view.setNote(row, e.currentTarget.value)}
-        onkeydown={(e) => e.key === 'Enter' && e.currentTarget.blur()} />
-    </label>
-  {/key}
-  {#if mates.length > 0}
-    <!-- the PSMs of the other precursors of this spectrum: each opens here (the table below keeps its place) -->
-    <p class="-mt-1 mb-2 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs text-muted-foreground" data-testid="same-spectrum">
-      <span>Same spectrum:</span>
-      {#each mates as mate (mate.row)}
-        <span class="whitespace-nowrap">
-          <button type="button" class="{crumb} font-mono text-foreground" title={mate.title} onclick={() => view.openPsm(mate.row)}
-            >{mate.sequence}</button>
-          {mate.charge}+{#if mate.decoy}{' '}decoy{/if}{#if mate.coisolated}{' '}co-isolated{/if}
-        </span>
-      {/each}
-    </p>
-  {/if}
   {#if shift}
-    <p class="-mt-1 mb-2 text-xs text-muted-foreground" data-testid="open-search-note">
+    <p class="flex-none truncate text-xs text-muted-foreground" data-testid="open-search-note" title="This PSM from the open search has a mass shift of {shiftText} Da at an unknown position. The annotation shows the peptide without the shift, so fragments that carry it are not annotated.">
       This PSM from the open search has a mass shift of {shiftText} Da at an unknown position. The annotation shows the peptide
       without the shift, so fragments that carry it are not annotated.
     </p>
   {/if}
 
-  <div class="rounded-lg border px-3.5 pt-3 pb-2">
-    <div class="mb-1 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+  <!-- the spectrum (it takes the height that is left) and, beside it, the column of the features and the ion table.
+       The row never gets lower than its toolbar and the least plot: in a window too low for that, the pane the view
+       is in scrolls (what fills the row is out of the flow, so that only those two count) -->
+  <div class="relative flex flex-1 gap-3">
+  <div class="flex min-w-0 flex-1 flex-col rounded-lg border px-3.5 pt-2.5 pb-1.5">
+    <div class="mb-1 flex flex-none flex-wrap items-center gap-x-4 gap-y-1.5 text-xs">
       <div class="flex items-center gap-1" role="group" aria-labelledby="{uid}-ions">
         <span id="{uid}-ions" class="mr-1 text-muted-foreground">Ions</span>
         {#each ION_TYPES as t (t)}
@@ -648,7 +701,7 @@
           </label>
         {/each}
       </div>
-      <label class="relative" title="The fragment mass errors under the spectrum">
+      <label class="relative" title={errorsFit ? 'The fragment mass errors under the spectrum' : 'The fragment mass errors under the spectrum. The view is too low for them now: drag the line above it up.'}>
         <input
           type="checkbox"
           class="peer absolute inset-0 z-10 m-0 cursor-pointer opacity-0"
@@ -656,7 +709,8 @@
           data-testid="mass-errors-toggle"
           checked={displaySettings.massErrors}
           onchange={(e) => (displaySettings.massErrors = e.currentTarget.checked)} />
-        <span class={toggle}>mass errors</span>
+        <!-- (on, with no room for them: the toggle is dimmed, its tooltip says how to get them) -->
+        <span class={cn(toggle, displaySettings.massErrors && !errorsFit && 'opacity-55')} data-testid="mass-errors-label">mass errors</span>
       </label>
       <label class="relative" title="The precursor peaks, with their losses of water and ammonia (the precursor's m/z is marked in the spectrum always)">
         <input
@@ -726,6 +780,13 @@
           </DropdownMenu.Content>
         </DropdownMenu.Root>
       </div>
+      {#if peaks && peakFilter}
+        <!-- which peaks the search kept: in the toolbar's free room (beside "Bottom", where the tools fill the first
+             line), so that it takes no line of the spectrum's height; cut only where a whole line is too short for it -->
+        <p class="min-w-0 flex-[0_1_auto] truncate text-muted-foreground" data-testid="peak-filter-note" title="Showing the top {peakFilter.top} peaks per {peakFilter.window} m/z, plus every peak ProSE annotated.">
+          Showing the top {peakFilter.top} peaks per {peakFilter.window} m/z, plus every peak ProSE annotated.
+        </p>
+      {/if}
       <div class="ml-auto flex items-center gap-1" role="radiogroup" aria-labelledby="{uid}-bottom">
         <span id="{uid}-bottom" class="mr-1 text-muted-foreground">Bottom</span>
         <label class="relative" title={onnx ? undefined : 'This search has no PeptDeep predictions, because ProSE ran without ONNX Runtime'}>
@@ -752,9 +813,14 @@
       </div>
     </div>
 
+    <!-- what is left of the height: the drawing fits it (and never scrolls); the texts that stand in for a spectrum
+         scroll if they have to -->
+    <div class="relative min-h-[170px] flex-1 {peaks ? 'overflow-hidden' : 'overflow-y-auto'}" bind:clientHeight={plotRoom} data-testid="spectrum-room">
     {#if peaks}
+      <div class="absolute inset-0">
       <SpectrumMirror
         bind:this={mirror}
+        fit={plotRoom > 0 && !exporting ? plotRoom : null}
         mz={peaks.mz}
         intensity={peaks.intensity}
         {groups}
@@ -763,7 +829,7 @@
         {similarity}
         title={spectrumTitle}
         description={spectrumDescription}
-        errors={displaySettings.massErrors ? { matches: shown, tolerance } : null}
+        errors={displaySettings.massErrors && (errorsFit || exporting) ? { matches: shown, tolerance } : null}
         bind:hover={hoverMz}
         onTheoretical={() => (view.psmOptions.bottom = 'theoretical')}
         {tool}
@@ -772,25 +838,7 @@
         {measure}
         precursor={precursorMark}
         bind:pending={toolBusy} />
-      {#if hiddenOnePlus}
-        <p class="flex flex-wrap items-center gap-2 pb-1 text-xs text-muted-foreground" role="status" data-testid="oneplus-hint">
-          No fragment peaks match. 1+ fragments are hidden.
-          <Button variant="outline" size="sm" class="h-6 px-2 text-xs" onclick={() => setCharge(1, true)}>Show 1+</Button>
-        </p>
-      {/if}
-      {#if peakFilter}
-        <p class="pb-1 text-xs text-muted-foreground" data-testid="peak-filter-note">
-          Showing the top {peakFilter.top} peaks per {peakFilter.window} m/z, plus every peak ProSE annotated.
-        </p>
-      {/if}
-      {#if annotationError}
-        <p class="pb-1 text-xs text-destructive" role="alert">The spectrum could not be annotated: {annotationError}</p>
-      {:else if precursorError}
-        <p class="pb-1 text-xs text-muted-foreground" role="status" data-testid="precursor-note">
-          The precursor peaks could not be annotated ({precursorError.length > 90 ? `${precursorError.slice(0, 89)}…` : precursorError}), so the
-          fragments are shown without them. To try again, switch Precursor peaks off and on.
-        </p>
-      {/if}
+      </div>
     {:else if spectra === null}
       <div class="my-2 rounded-md border border-dashed px-4 py-8 text-center text-xs text-muted-foreground" data-testid="spectrum-loading">
         Reading the spectrum…
@@ -814,25 +862,57 @@
         <p class="mx-auto mt-1 max-w-[44rem] text-xs text-muted-foreground">
           The result has no peaks for this PSM, so its spectrum cannot be shown, annotated or exported. A search saves the spectra of
           its PSMs within its PSM FDR. Results opened without them, such as the debug results, have none. The fragment ladder
-          needs the peaks too, but the table below lists the theoretical ions.
+          needs the peaks too, but the ion table (Fragments) lists the theoretical ions.
         </p>
       </div>
     {/if}
+    </div>
+    {#if peaks}
+      {#if hiddenOnePlus}
+        <p class="flex flex-wrap items-center gap-2 pb-1 text-xs text-muted-foreground" role="status" data-testid="oneplus-hint">
+          No fragment peaks match. 1+ fragments are hidden.
+          <Button variant="outline" size="sm" class="h-6 px-2 text-xs" onclick={() => setCharge(1, true)}>Show 1+</Button>
+        </p>
+      {/if}
+      {#if annotationError}
+        <p class="pb-1 text-xs text-destructive" role="alert">The spectrum could not be annotated: {annotationError}</p>
+      {:else if precursorError}
+        <p class="pb-1 text-xs text-muted-foreground" role="status" data-testid="precursor-note">
+          The precursor peaks could not be annotated ({precursorError.length > 90 ? `${precursorError.slice(0, 89)}…` : precursorError}), so the
+          fragments are shown without them. To try again, switch Precursor peaks off and on.
+        </p>
+      {/if}
+    {/if}
   </div>
 
-  {#if list}
-    <!-- the PSM table right under the spectrum: its height fixed, so that the spectrum stays in sight while the keys go
-         through the PSMs -->
-    <div class="mt-3 flex h-[clamp(220px,36vh,420px)] flex-none flex-col gap-2" data-testid="psm-list">
-      {@render list()}
+  <!-- beside the spectrum: the PSM's features and the ion table, one at a time (see `sideShown`) -->
+  <aside
+    id="{uid}-side"
+    aria-label="Features and fragments of the PSM"
+    data-testid="psm-side"
+    class={cn(
+      'relative w-[330px] max-w-full flex-none',
+      !sideShown ? 'hidden' : sideOver ? 'absolute inset-y-0 right-0 z-10 rounded-lg border bg-background shadow-lg' : '',
+    )}>
+    <!-- (out of the flow: the column is as high as the spectrum beside it, and its list scrolls) -->
+    <div class={cn('absolute inset-0 flex min-h-0 flex-col', sideOver && 'p-3')}>
+    <div class="mb-2 flex flex-none items-center gap-1 border-b" role="tablist" aria-label="Features or fragments">
+      {#each [['features', 'Features'], ['fragments', 'Fragments']] as const as [value, label] (value)}
+        <button
+          type="button"
+          role="tab"
+          id="{uid}-side-{value}"
+          aria-selected={side === value}
+          aria-controls="{uid}-side-panel"
+          class="-mb-px border-b-2 px-2.5 pb-1.5 text-[13px] focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none {side === value ? 'border-primary font-medium text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}"
+          data-testid="psm-side-{value}"
+          onclick={() => (side = value)}>{label}</button>
+      {/each}
     </div>
-  {/if}
-
-  <!-- below the spectrum (and its mass errors, and the table): the ion table and the features side by side; what does not
-       fit wraps (flat: the spectrum is the one box; the table and the features stand on the page) -->
-  <div class="mt-4 flex flex-wrap items-start gap-x-8 gap-y-4">
-    <div class="max-w-full min-w-0 flex-none">
-      {#if table}
+    <div id="{uid}-side-panel" role="tabpanel" aria-labelledby="{uid}-side-{side}" class="min-h-0 flex-1 overflow-auto pr-1">
+      {#if side === 'features'}
+        <PsmFeatures model={m} {row} {fixedMods} matched={summary} features={spectra?.data?.features ?? null} heading={false} />
+      {:else if table}
         <IonTable {table} {peptide} label={sequence} bind:hover={hoverMz} />
       {:else}
         <p class="px-2 py-6 text-center text-xs text-muted-foreground">
@@ -840,8 +920,7 @@
         </p>
       {/if}
     </div>
-    <div class="min-w-[260px] flex-[1_1_420px] pt-1">
-      <PsmFeatures model={m} {row} {fixedMods} matched={summary} features={spectra?.data?.features ?? null} />
     </div>
+  </aside>
   </div>
 </section>

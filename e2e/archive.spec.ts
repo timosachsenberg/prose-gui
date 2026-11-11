@@ -8,7 +8,7 @@ import { cpSync, existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs
 import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { resolveDesign } from '../src/lib/design/model.ts'
-import { appReady, clearSearches, dataHome, goTo, openFirstPsm, searchFolders, searchesDir, textOf } from './lib.ts'
+import { appReady, clearSearches, dataHome, goTo, jsClick, openFirstPsm, searchFolders, searchesDir, showKeyFigures, textOf } from './lib.ts'
 
 const FIXTURE = resolve(fileURLToPath(new URL('../src/lib/results/fixtures/example', import.meta.url)))
 const ID = '8000-0'
@@ -35,8 +35,8 @@ describe('a results archive, written and opened by the app', () => {
       database: 'Ecoli_K12_proteome.fasta',
       design: resolveDesign(files.map((fileName, i) => ({ id: `f${i + 1}`, fileName, fileSize: 1_200_000 }))),
       settings: { parameters: {}, fixedMods: [], rescore: true, peptdeep: true, contaminants: true },
-      psms: 132,
-      psmFdr: 0.02,
+      psms: 110,
+      psmFdr: 0.01,
       proteinFdr: 0.01,
       seconds: 3,
     }
@@ -53,7 +53,7 @@ describe('a results archive, written and opened by the app', () => {
     const row = $(`[data-testid="history-row"][data-id="${ID}"]`)
     await row.waitForDisplayed({ timeout: 30000 })
     await row.$('button=Open').click()
-    await $('[data-testid="psm-count"]').waitForDisplayed({ timeout: 30000 })
+    await showKeyFigures()
     count = await textOf('[data-testid="psm-count"]')
     expect(count).toMatch(/[1-9]/)
 
@@ -75,7 +75,7 @@ describe('a results archive, written and opened by the app', () => {
     expect(searchFolders().finished).toEqual([])
 
     await $('[data-testid="import-archive"]').click()
-    await $('[data-testid="psm-count"]').waitForDisplayed({ timeout: 30000 })
+    await showKeyFigures()
     expect(await textOf('[data-testid="psm-count"]')).toBe(count)
     // one folder, of a new id, with the record marked as imported and nothing left beside it
     const { finished, partial } = searchFolders()
@@ -92,6 +92,9 @@ describe('a results archive, written and opened by the app', () => {
     // a PSM: its spectrum and prediction, and its features, which are read with them
     await openFirstPsm()
     await expect($('[data-testid="bottom-label"]')).toHaveText(expect.stringContaining('PeptDeep'))
+    // (the column of the features shows by itself only in a wide window)
+    if (!(await $('[data-testid="psm-side"]').isDisplayed())) await jsClick(await $('[data-testid="psm-side-toggle"]'))
+    await $('[data-testid="psm-side"]').waitForDisplayed({ timeout: 5000 })
     const features = $('[data-testid="psm-features"]')
     await browser.waitUntil(async () => (await textOf('[data-testid="psm-features"]')).includes('ln(hyperscore)'), {
       timeoutMsg: 'the PSM view shows no ln(hyperscore): the features of the PSM were not read',

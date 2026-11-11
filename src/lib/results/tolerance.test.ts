@@ -23,10 +23,19 @@ describe('tolerance feedback', () => {
   })
 
   test('an offset of 5 ppm in a 10 ppm window: wider window or calibration, never narrower', () => {
-    const f = toleranceFindings(summary([file(3)]), {}, sample(5, 3))
+    // (a search that switched the calibration off: it is on by default since OpenMS #10804)
+    const f = toleranceFindings(summary([file(3)]), { 'calibration:enabled': 'false' }, sample(5, 3))
     expect(ids(f)).toContain('precursor:tolerance-offset')
     expect(narrower(f)).toBe(false)
     expect(f[0].reruns.map((r) => r.label)).toEqual([`Re-run with ±${WIDE_PROBE_PPM} ppm`, 'Re-run with calibration'])
+    expect(f[0].message).toContain('calibration can then narrow it')
+    // a calibrated search (the default, or set: as a choice, or as the switch it was) is not offered calibration again
+    for (const parameters of [{}, { 'calibration:enabled': 'true' }, { 'calibration:enabled': true }]) {
+      const calibrated = toleranceFindings(summary([file(3)]), parameters, sample(5, 3))
+      expect(ids(calibrated)).toContain('precursor:tolerance-offset')
+      expect(calibrated[0].reruns.map((r) => r.label)).toEqual([`Re-run with ±${WIDE_PROBE_PPM} ppm`])
+      expect(calibrated[0].message).not.toContain('calibration')
+    }
     // (the recommendation of 3 ppm would say "too wide": it is not offered while the offset holds)
     expect(ids(f)).not.toContain('precursor:tolerance-too-wide')
   })
@@ -64,9 +73,13 @@ describe('tolerance feedback', () => {
     expect(off[0].reruns[0].changes).toEqual({ 'fragment:mass_tolerance': 40 })
     const full = toleranceFindings(summary([file(9, { median: 1, mad: 6, recommended: 19 })]), {}, sample(0, 2))
     expect(ids(full)).toEqual(['fragment:tolerance-edge'])
-    const wide = toleranceFindings(summary([file(9, { median: 1, mad: 1, recommended: 4.2 })]), {}, sample(0, 2))
+    // "wider than needed" only for a search without calibration: a calibrated one searched with the fragment
+    // tolerance its calibration pass measured, so a narrower setting would change nothing
+    const errors = summary([file(9, { median: 1, mad: 1, recommended: 4.2 })])
+    const wide = toleranceFindings(errors, { 'calibration:enabled': 'false' }, sample(0, 2))
     expect(ids(wide)).toEqual(['fragment:tolerance-too-wide'])
     expect(wide[0].reruns[0].changes).toEqual({ 'fragment:mass_tolerance': 5 })
+    expect(toleranceFindings(errors, {}, sample(0, 2))).toEqual([])
     expect(toleranceFindings(summary([file(9, { median: 9, mad: 2, recommended: 15 })]), { 'fragment:mass_tolerance': 0.5, 'fragment:mass_tolerance_unit': 'Da' }, sample(0, 2))).toEqual([])
   })
 

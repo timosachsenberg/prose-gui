@@ -104,7 +104,7 @@ describe('the AppImage', () => {
     expect(result.version).not.toBe('')
   })
 
-  it('searches the example with PeptDeep: 132 PSMs, the PeptDeep mirror, ProSE with its own libraries', async () => {
+  it('searches the example with PeptDeep: 110 PSMs, the PeptDeep mirror, ProSE with its own libraries', async () => {
     expect(appRoot).toMatch(/appimage_extracted_/)
     // ProSE's mapped files, read while it runs
     const proseMaps = new Set<string>()

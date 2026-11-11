@@ -50,6 +50,11 @@ const WEB_APP_ALGORITHM = {
   decoy_method: 'reverse',
   'rescoring:terminal_features': false,
   'rescoring:stratum_q_values': false,
+  // (the tool's defaults since OpenMS #10804 and #10805: mass tolerances measured by a calibration pass, the m/z
+  // recalibrated from it, and a second 13C peak as a precursor isotope error)
+  'calibration:enabled': false,
+  'calibration:recalibrate': 'none',
+  'precursor:isotope_error_min': -1,
 }
 
 /**
@@ -68,7 +73,7 @@ export const CASES = {
     names: ['Ecoli_1.mzML', 'Ecoli_2.mzML'],
     fasta: resolve(RESOURCES, 'example/Ecoli_K12_proteome.fasta'),
     contaminants: true,
-    parameters: { ...ORBITRAP, 'fragment:mass_tolerance': 0.5, 'fragment:mass_tolerance_unit': 'Da', 'FDR:PSM': 0.02, 'FDR:protein': 0 },
+    parameters: { ...ORBITRAP, 'fragment:mass_tolerance': 0.5, 'fragment:mass_tolerance_unit': 'Da', 'FDR:protein': 0 },
     rescore: true,
     peptdeep: true,
   },
