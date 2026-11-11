@@ -193,7 +193,7 @@ describe('the example search', () => {
     await expect($('#protein-fdr')).toHaveValue('off')
     await expect($('button=Start over')).toHaveAttribute(
       'title',
-      "Removes the spectra and the database. Your settings stay, but the example's fragment tolerance, PSM FDR and protein FDR go back to the preset's.",
+      "Removes the spectra and the database. Your settings stay, but the example's fragment tolerance and protein FDR go back to the preset's.",
     )
     await $('button=Remove all').click()
     await expect($('button=Try the example')).toBeDisplayed()
