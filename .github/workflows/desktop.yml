@@ -235,15 +235,29 @@ jobs:
           path: vcpkg-bincache
           key: ${{ steps.vcpkg.outputs.cache-primary-key }}-${{ hashFiles('vcpkg-bincache/**') }}
 
-      # (with what this run downloaded; not saved again when nothing was)
+      # (with what this run downloaded; not saved again when nothing was.) What the cache holds is told by the names
+      # of its files, which are their SHA-512: hashFiles() reads every file, and after a build that downloaded all
+      # sources (some GB: a pin whose dependencies are not in the binary cache) it does not finish within its
+      # 120 s, which failed the job after the dependencies were built and before OpenMS was.
+      - name: What vcpkg's asset cache holds
+        id: assets-now
+        if: always() && steps.bundle.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          [ -d vcpkg-assets ] || exit 0
+          names=$(cd vcpkg-assets && find . -type f | LC_ALL=C sort)
+          [ -n "$names" ] || exit 0
+          if command -v sha256sum >/dev/null; then sum=$(printf '%s\n' "$names" | sha256sum); else sum=$(printf '%s\n' "$names" | shasum -a 256); fi
+          echo "hash=${sum%% *}" >> "$GITHUB_OUTPUT"
+          echo "$(printf '%s\n' "$names" | wc -l) files, $(du -sh vcpkg-assets | cut -f1)"
       - name: Save vcpkg's asset cache
         if: >-
-          always() && steps.bundle.outputs.cache-hit != 'true' && hashFiles('vcpkg-assets/**') != '' &&
-          steps.assets.outputs.cache-matched-key != format('{0}-{1}', steps.assets.outputs.cache-primary-key, hashFiles('vcpkg-assets/**'))
+          always() && steps.bundle.outputs.cache-hit != 'true' && steps.assets-now.outputs.hash != '' &&
+          steps.assets.outputs.cache-matched-key != format('{0}-{1}', steps.assets.outputs.cache-primary-key, steps.assets-now.outputs.hash)
         uses: actions/cache/save@v6
         with:
           path: vcpkg-assets
-          key: ${{ steps.assets.outputs.cache-primary-key }}-${{ hashFiles('vcpkg-assets/**') }}
+          key: ${{ steps.assets.outputs.cache-primary-key }}-${{ steps.assets-now.outputs.hash }}
 
       - name: Build OpenMS (libOpenMS and ProSE)
         if: steps.bundle.outputs.cache-hit != 'true' && steps.configure.outcome == 'success'
@@ -558,15 +572,29 @@ jobs:
           path: vcpkg-bincache
           key: ${{ steps.vcpkg.outputs.cache-primary-key }}-${{ hashFiles('vcpkg-bincache/**') }}
 
-      # (with what this run downloaded; not saved again when nothing was)
+      # (with what this run downloaded; not saved again when nothing was.) What the cache holds is told by the names
+      # of its files, which are their SHA-512: hashFiles() reads every file, and after a build that downloaded all
+      # sources (some GB: a pin whose dependencies are not in the binary cache) it does not finish within its
+      # 120 s, which failed the job after the dependencies were built and before OpenMS was.
+      - name: What vcpkg's asset cache holds
+        id: assets-now
+        if: always() && steps.bundle.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          [ -d vcpkg-assets ] || exit 0
+          names=$(cd vcpkg-assets && find . -type f | LC_ALL=C sort)
+          [ -n "$names" ] || exit 0
+          if command -v sha256sum >/dev/null; then sum=$(printf '%s\n' "$names" | sha256sum); else sum=$(printf '%s\n' "$names" | shasum -a 256); fi
+          echo "hash=${sum%% *}" >> "$GITHUB_OUTPUT"
+          echo "$(printf '%s\n' "$names" | wc -l) files, $(du -sh vcpkg-assets | cut -f1)"
       - name: Save vcpkg's asset cache
         if: >-
-          always() && steps.bundle.outputs.cache-hit != 'true' && hashFiles('vcpkg-assets/**') != '' &&
-          steps.assets.outputs.cache-matched-key != format('{0}-{1}', steps.assets.outputs.cache-primary-key, hashFiles('vcpkg-assets/**'))
+          always() && steps.bundle.outputs.cache-hit != 'true' && steps.assets-now.outputs.hash != '' &&
+          steps.assets.outputs.cache-matched-key != format('{0}-{1}', steps.assets.outputs.cache-primary-key, steps.assets-now.outputs.hash)
         uses: actions/cache/save@v6
         with:
           path: vcpkg-assets
-          key: ${{ steps.assets.outputs.cache-primary-key }}-${{ hashFiles('vcpkg-assets/**') }}
+          key: ${{ steps.assets.outputs.cache-primary-key }}-${{ steps.assets-now.outputs.hash }}
 
       - name: Build OpenMS (libOpenMS and ProSE)
         if: steps.bundle.outputs.cache-hit != 'true' && steps.configure.outcome == 'success'
@@ -836,15 +864,29 @@ jobs:
           path: vcpkg-bincache
           key: ${{ steps.vcpkg.outputs.cache-primary-key }}-${{ hashFiles('vcpkg-bincache/**') }}
 
-      # (with what this run downloaded; not saved again when nothing was)
+      # (with what this run downloaded; not saved again when nothing was.) What the cache holds is told by the names
+      # of its files, which are their SHA-512: hashFiles() reads every file, and after a build that downloaded all
+      # sources (some GB: a pin whose dependencies are not in the binary cache) it does not finish within its
+      # 120 s, which failed the job after the dependencies were built and before OpenMS was.
+      - name: What vcpkg's asset cache holds
+        id: assets-now
+        if: always() && steps.bundle.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          [ -d vcpkg-assets ] || exit 0
+          names=$(cd vcpkg-assets && find . -type f | LC_ALL=C sort)
+          [ -n "$names" ] || exit 0
+          if command -v sha256sum >/dev/null; then sum=$(printf '%s\n' "$names" | sha256sum); else sum=$(printf '%s\n' "$names" | shasum -a 256); fi
+          echo "hash=${sum%% *}" >> "$GITHUB_OUTPUT"
+          echo "$(printf '%s\n' "$names" | wc -l) files, $(du -sh vcpkg-assets | cut -f1)"
       - name: Save vcpkg's asset cache
         if: >-
-          always() && steps.bundle.outputs.cache-hit != 'true' && hashFiles('vcpkg-assets/**') != '' &&
-          steps.assets.outputs.cache-matched-key != format('{0}-{1}', steps.assets.outputs.cache-primary-key, hashFiles('vcpkg-assets/**'))
+          always() && steps.bundle.outputs.cache-hit != 'true' && steps.assets-now.outputs.hash != '' &&
+          steps.assets.outputs.cache-matched-key != format('{0}-{1}', steps.assets.outputs.cache-primary-key, steps.assets-now.outputs.hash)
         uses: actions/cache/save@v6
         with:
           path: vcpkg-assets
-          key: ${{ steps.assets.outputs.cache-primary-key }}-${{ hashFiles('vcpkg-assets/**') }}
+          key: ${{ steps.assets.outputs.cache-primary-key }}-${{ steps.assets-now.outputs.hash }}
 
       - name: Build OpenMS (libOpenMS and ProSE)
         if: steps.bundle.outputs.cache-hit != 'true' && steps.configure.outcome == 'success'
