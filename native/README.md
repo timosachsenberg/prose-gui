@@ -292,7 +292,7 @@ Windows OpenMS does not probe its install prefix at all (`File.cpp`: CMake's def
 2. The bundled ProSE prints its version from an empty environment (Windows: only Windows' folders on `PATH`).
 3. It searches the example (`Ecoli_MS2_small.mzML`, `Ecoli_K12_proteome.fasta`) from the command line, in a folder
    with a space in its name, with the example's settings, Percolator and PeptDeep: exit 0, the outputs the app
-   reads, the `[PeptDeepRescoring] Predicted features added` line, and more than 40 target PSMs at the example's 2 %
+   reads, the `[PeptDeepRescoring] Predicted features added` line, and more than 40 target PSMs at a PSM FDR of 2 %
    FDR (the README's "The example" has the number at the current pin). The same in a folder named `Größe ü` has to give the same number.
 4. The app starts with `--smoke-test` (`src-tauri/src/lib.rs`): when its page has loaded it prints
    `{"page", "tool"}` (`tool_info`) and exits. The tool has to be the package's own, with ONNX, and of the

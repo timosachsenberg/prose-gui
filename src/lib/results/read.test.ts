@@ -339,17 +339,17 @@ describe('readSearch', () => {
 
     // one run of 139 spectra searched as two replicates with the ProSE tool's defaults (since OpenMS #10740: decoys
     // generate with decoy_method keep_termini, the terminal rescoring features; since #10804: the second 13C peak as
-    // a precursor isotope error, precursor:isotope_error_min -2), at the example's PSM FDR of 2 % (Percolator's
-    // q-values are (decoys + 1) / targets since #10721): 55 target PSMs of each and no decoy (the fixture keeps the
-    // decoys that pass, -keep_decoys). With isotope errors from -1, as before #10804, the same ProSE gives the 66 of
-    // each and one decoy that the pin before had: in a run this small, the more candidates of the wider isotope
-    // range put a decoy above the PSMs that 2 % then cuts off (the calibration, on by default since #10804 as well,
-    // changes nothing here).
+    // a precursor isotope error, precursor:isotope_error_min -2), at the preset's PSM FDR of 1 %: 55 target PSMs of
+    // each and no decoy (the fixture keeps the decoys that pass, -keep_decoys), all with one q-value, 0.6 %. The
+    // same ProSE finds the same 55 at 2 % (the example's FDR until app 0.6), and with isotope errors from -1, as
+    // before #10804, 64 of each at 1 % and at 2 % the 66 and one decoy that the pin before had: the cause of the
+    // lower count is the wider isotope range (the calibration, on by default since #10804 as well, changes nothing
+    // here).
     expect(tables.psms.count).toBe(110)
-    const targets = Array.from(tables.psms.qValue).filter((q, i) => q <= 0.02 && tables.psms.decoy[i] === 0)
+    const targets = Array.from(tables.psms.qValue).filter((q, i) => q <= 0.01 && tables.psms.decoy[i] === 0)
     expect(targets.length).toBe(110)
     expect(Array.from(tables.psms.decoy).filter((d) => d === 1).length).toBe(0)
-    expect(Array.from(tables.psms.qValue).every((q) => q > 0 && q <= 0.02)).toBe(true)
+    expect(Array.from(tables.psms.qValue).every((q) => q > 0 && q <= 0.01)).toBe(true)
     expect(tables.files).toEqual(['/data/Ecoli_1.mzML', '/data/Ecoli_2.mzML'])
     // real data: precursor errors of a few ppm (never all 0, as the web app's simulated example)
     const ppm = Array.from(tables.psms.precursorErrorPpm)
@@ -405,7 +405,7 @@ describe('readSearch', () => {
     // Neither applied a protein FDR (the fixture asked for none, as the app's example; the web app's for 1 %, which it
     // skipped).
     expect(summary.proteinFdrApplied).toBe(false)
-    expect(summary.psmFdr).toBe(0.02)
+    expect(summary.psmFdr).toBe(0.01)
     expect(summary.files.map((f) => [f.psmFdrApplied, f.targetPSMs, f.decoyPSMs])).toEqual([
       [true, 55, 0],
       [true, 55, 0],

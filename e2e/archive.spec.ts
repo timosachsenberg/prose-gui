@@ -36,7 +36,7 @@ describe('a results archive, written and opened by the app', () => {
       design: resolveDesign(files.map((fileName, i) => ({ id: `f${i + 1}`, fileName, fileSize: 1_200_000 }))),
       settings: { parameters: {}, fixedMods: [], rescore: true, peptdeep: true, contaminants: true },
       psms: 110,
-      psmFdr: 0.02,
+      psmFdr: 0.01,
       proteinFdr: 0.01,
       seconds: 3,
     }

@@ -73,7 +73,7 @@ export const CASES = {
     names: ['Ecoli_1.mzML', 'Ecoli_2.mzML'],
     fasta: resolve(RESOURCES, 'example/Ecoli_K12_proteome.fasta'),
     contaminants: true,
-    parameters: { ...ORBITRAP, 'fragment:mass_tolerance': 0.5, 'fragment:mass_tolerance_unit': 'Da', 'FDR:PSM': 0.02, 'FDR:protein': 0 },
+    parameters: { ...ORBITRAP, 'fragment:mass_tolerance': 0.5, 'fragment:mass_tolerance_unit': 'Da', 'FDR:protein': 0 },
     rescore: true,
     peptdeep: true,
   },

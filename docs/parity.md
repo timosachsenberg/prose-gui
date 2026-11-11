@@ -27,9 +27,9 @@ defaults of its own (decoys generate with decoy_method keep_termini, the termina
 met_clipped, stratum q-values, Acetyl (Protein N-term)): the fixtures compared with the web app (its example, the TOPP
 test data) are searched with the web app's settings (decoys auto, decoy_method reverse, no terminal features or stratum
 q-values, no calibration or recalibration, isotope errors from −1; `scripts/results-example.mjs`), the app's example with
-the tool's defaults. The app's example is searched at a
-PSM FDR of 2 %: 84 of the web app's 120 PSMs (at 1 %) are among its 110 target PSMs (one spectrum of each replicate
-with another peptide; 132 and 88 before the tool's isotope errors from −2, OpenMS #10804), equal but for Percolator's values
+the tool's defaults. The app's example is searched at the preset's
+PSM FDR of 1 % (2 % until app 0.6): 84 of the web app's 120 PSMs (at 1 %) are among its 110 target PSMs (one spectrum of
+each replicate with another peptide; 132 and 88 at 2 % before the tool's isotope errors from −2, OpenMS #10804), equal but for Percolator's values
 and the features of each spectrum's candidates (hyperscore_zscore, ln_num_candidates, delta_score: other decoys).
 
 **The app reads only QPX** (the user's decision, 2026-10-21): the QPX psm, mz, pg, run and provenance views ProSE writes

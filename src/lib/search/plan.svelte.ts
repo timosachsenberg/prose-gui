@@ -90,9 +90,9 @@ class SearchPlan {
   })
 
   /**
-   * The example's note, a line of its own under the plan (it wraps): its tolerance, its PSM FDR (2 %: Percolator's
-   * (decoys + 1) / targets keeps a run this small above 1 %) and its protein FDR (off unless the user set one), and why
-   * its results list the proteins without a protein FDR and say that Percolator fell back.
+   * The example's note, a line of its own under the plan (it wraps): its tolerance, its PSM FDR (the preset's 1 %
+   * unless the user set another) and its protein FDR (off unless the user set one), and why its results list the
+   * proteins without a protein FDR and say that Percolator fell back.
    */
   note = $derived.by(() => {
     if (!form.isExample) return null

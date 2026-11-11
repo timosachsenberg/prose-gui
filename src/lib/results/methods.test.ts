@@ -95,7 +95,7 @@ describe('the example search of the pinned ProSE', async () => {
     )
     // (the fixture's runs are too small for Percolator's learned model)
     expect(filtering).toContain("For both runs, Percolator's check of the learned model on held-out data rejected it")
-    expect(filtering).toContain('PSMs were filtered at 2% PSM-level FDR (Percolator q-values, estimated for each run separately).')
+    expect(filtering).toContain('PSMs were filtered at 1% PSM-level FDR (Percolator q-values, estimated for each run separately).')
     expect(filtering).toContain('No peptide-level FDR was applied')
     expect(filtering).toContain('No protein-level FDR was applied; the reported proteins and protein groups are not FDR-controlled.')
     expect(filtering).toContain('The results were inspected with the ProSE desktop app 0.2.1')

@@ -208,16 +208,17 @@ both.
 
 "Try the example" in New search loads OpenMS' example run `Ecoli_MS2_small.mzML` (E. coli, LTQ Orbitrap XL, CID,
 139 MS2 spectra, 1.2 MB) twice, as two replicates of one condition, and the 4,136 E. coli K-12 proteins (targets
-only: ProSE adds the decoys, the app the cRAP contaminants). The settings are the default preset with a fragment
-tolerance of 0.5 Da for the ion-trap fragments, a PSM FDR of 2 % and the protein FDR off: the run is too small for a
+only: ProSE adds the decoys, the app the cRAP contaminants). The settings are the default preset (PSM FDR 1 %) with a
+fragment tolerance of 0.5 Da for the ion-trap fragments and the protein FDR off: the run is too small for a
 protein FDR, so its proteins are listed without one (Overview says "not applied"). Leaving the
-example (other files or another database, Remove all, Start over) gives these settings back to the preset's, unless you
-changed them. The search takes a few seconds and finds 55 target PSMs at 2 % FDR in each replicate (46 peptides, 47
-proteins), with a median precursor error of 4.1 ppm. (With ProSE's defaults before OpenMS #10804 it was 66 per
-replicate: the tool now also searches a second 13C peak, `precursor:isotope_error_min` −2, and in a run this small
-the candidates that adds leave fewer PSMs within 2 %; set it to −1 in "All parameters" to see the 66. The 2 % dates
-from when the run's PSMs could not pass 1 %; with the current ProSE their q-value is 0.6 %.) The run also has too few
-PSMs for Percolator's full model: Percolator falls back to its best single feature (Overview says why).
+example (other files or another database, Remove all, Start over) gives these two settings back to the preset's, unless
+you changed them. The search takes a few seconds and finds 55 target PSMs in each replicate (46 peptides, 47
+proteins), with a median precursor error of 4.1 ppm; their q-value is 0.6 %, and a PSM FDR of 2 % finds the same 55.
+(Until app 0.6 the example searched at 2 %, when its PSMs could not pass 1 %, and found 66 per replicate: since
+OpenMS #10804 the tool also searches a second 13C peak, `precursor:isotope_error_min` −2, and in a run this small the
+candidates that adds leave fewer PSMs within the FDR. With −1, set in "All parameters", it finds 64 at 1 % and the 66
+at 2 %.) The run also has too few PSMs for Percolator's full model: Percolator falls back to its best single feature
+(Overview says why).
 
 ## Licence
 

@@ -7,10 +7,10 @@ import { fileURLToPath } from 'node:url'
 
 /** The example's run and FASTA, as the app bundles them (src-tauri/resources/example). */
 /**
- * The PSMs ProSE finds in one copy of the example's run at its settings (2 % PSM FDR), and in the example (two copies):
+ * The PSMs ProSE finds in one copy of the example's run at its settings (1 % PSM FDR), and in the example (two copies):
  * a property of the engine at native/OPENMS_COMMIT (d80de8d557), to update with the pin. (66 at the pin before:
  * since OpenMS #10804 the tool also searches a second 13C peak, precursor:isotope_error_min -2, and in a run this
- * small the candidates it adds leave 55 at 2 %; with -1 the same ProSE finds the 66.)
+ * small the candidates it adds leave 55, at 1 % as at 2 %; with -1 the same ProSE finds 64 at 1 % and the 66 at 2 %.)
  */
 export const EXAMPLE_RUN_PSMS = 55
 export const EXAMPLE_PSMS = String(2 * EXAMPLE_RUN_PSMS)
@@ -207,8 +207,7 @@ export async function showKeyFigures(timeout = 30000) {
 
 /**
  * New search with nothing chosen and the example's own settings set by hand (they end with its files: Start over gives
- * back the preset's): its fragment tolerance, 0.5 Da, its PSM FDR, 2 %, and no protein
- * FDR.
+ * back the preset's): its fragment tolerance, 0.5 Da, and no protein FDR (its PSM FDR is the preset's 1 %).
  */
 export async function exampleSettings() {
   await freshForm()
@@ -217,10 +216,10 @@ export async function exampleSettings() {
   await $('#fragment-tolerance').setValue('0.5')
   await expect($('button[aria-label^="Fragment tolerance unit: Da"]')).toBeExisting()
   await expect($('#fragment-tolerance')).toHaveValue('0.5')
-  await $('#psm-fdr').setValue('2')
   await $('#protein-fdr').setValue('off')
   await $('#fragment-tolerance').click()
-  await expect($('#psm-fdr')).toHaveValue('2')
+  // (the PSM FDR is the preset's)
+  await expect($('#psm-fdr')).toHaveValue('1')
   await expect($('#protein-fdr')).toHaveValue('off')
 }
 

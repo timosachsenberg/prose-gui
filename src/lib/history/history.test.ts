@@ -166,7 +166,7 @@ describe('a saved search', () => {
     expect(opened.result.stored).toEqual({ name: 'Example', appVersion: recordOf(result, '', '').appVersion, moduleVersion: '3.6.0' })
     expect(opened.result.settings).toEqual(result.settings)
     expect(opened.result.design).toEqual(JSON.parse(JSON.stringify(result.design)))
-    expect([opened.result.psmFdr, opened.result.proteinFdr]).toEqual([0.02, 0.01])
+    expect([opened.result.psmFdr, opened.result.proteinFdr]).toEqual([0.01, 0.01])
   })
 
   test('a search of the earlier layout (summary.yaml, no QPX columns) does not open, with a message that says why', async () => {

@@ -83,10 +83,10 @@ describe('the example search', () => {
     await expect($('[data-testid="design-summary"]')).toHaveText('2 files → 2 samples · 1 condition')
     await expect($('[data-testid="fasta-proteins"]')).toHaveText('4,136 proteins')
     await openAdvanced()
-    // the example's fragment tolerance for its ion-trap spectra, its PSM FDR of 2 % and its protein FDR off (the run is
-    // too small for a protein FDR)
+    // the example's fragment tolerance for its ion-trap spectra and its protein FDR off (the run is too small for a
+    // protein FDR), with the preset's PSM FDR of 1 %
     await expect($('#fragment-tolerance')).toHaveValue('0.5')
-    await expect($('#psm-fdr')).toHaveValue('2')
+    await expect($('#psm-fdr')).toHaveValue('1')
     await expect($('#protein-fdr')).toHaveValue('off')
     await expect($('button=Off')).toHaveAttribute('aria-pressed', 'true')
     // (textContent: the footer line is cut to the window's width)
@@ -94,7 +94,7 @@ describe('the example search', () => {
     // the example's note, on a line of its own that wraps (not cut)
     // (textContent: WebKitWebDriver reads no visible text of a line-clamped box)
     expect(await $('[data-testid="search-note"]').getProperty('textContent')).toBe(
-      "Ion-trap example with a 0.5 Da fragment tolerance, a 2 % PSM FDR and no protein FDR: the run is too small for a protein FDR. It has too few PSMs for Percolator's full model.",
+      "Ion-trap example with a 0.5 Da fragment tolerance, a 1 % PSM FDR and no protein FDR: the run is too small for a protein FDR. It has too few PSMs for Percolator's full model.",
     )
     const clipped = await browser.execute(() => {
       const note = document.querySelector('[data-testid="search-note"]') as HTMLElement
