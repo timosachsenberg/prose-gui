@@ -39,21 +39,29 @@ export async function filterText(page: Page, text: string): Promise<void> {
     .catch(() => {})
 }
 
-/** Opens the PSM view of the first PSM of `sequence` (PSMs tab, its text filter): the view. */
+/**
+ * Opens the PSM view of the first PSM of `sequence` (PSMs tab, its text filter), with the ion table in the column
+ * beside the spectrum (its Fragments tab): the view.
+ */
 export async function openPsm(page: Page, sequence: string, charge?: number) {
   await openTab(page, 'PSMs')
   await filterText(page, sequence)
-  const rows = page.getByTestId('results-table').locator('tbody tr')
+  const rows = page.getByTestId('results-table-area').locator('tbody tr')
   const row = charge === undefined ? rows.first() : rows.filter({ has: page.locator('td', { hasText: new RegExp(`^${charge}$`) }) }).first()
-  await row.click()
+  // (the first cell: the accession in the middle of the row is a link to the protein)
+  await row.locator('td').first().click()
   const view = page.getByTestId('psm-view')
-  await expect(view.getByTestId('ion-table')).toBeVisible()
   await expect(view.getByTestId('spectrum')).toBeVisible()
+  // (the column shows by itself only in a wide window)
+  if (!(await view.getByTestId('psm-side').isVisible())) await view.getByTestId('psm-side-toggle').click()
+  await view.getByTestId('psm-side-fragments').click()
+  await expect(view.getByTestId('ion-table')).toBeVisible()
   return view
 }
 
-/** The numbers of the key figures above the tabs, and the notes and tooltips under them. */
+/** The numbers of the key figures (the Overview tab opens with them), and the notes and tooltips under them. */
 export async function keyFigureTiles(page: Page) {
+  await openTab(page, 'Overview')
   const tile = async (id: string) => {
     const value = page.getByTestId(id)
     const box = value.locator('xpath=..')

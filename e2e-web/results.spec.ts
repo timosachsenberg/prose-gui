@@ -5,7 +5,8 @@ test.beforeEach(async ({ page }) => {
   await openFixture(page)
 })
 
-test('the key figures say which FDR controls each count', async ({ page }) => {
+test('the key figures (in Overview) say which FDR controls each count', async ({ page }) => {
+  await page.getByRole('tab', { name: 'Overview' }).click()
   const header = page.locator('main')
   await expect(header.getByText('protein groups · 53 proteins · no protein FDR')).toBeVisible()
   await expect(header.getByText('peptides · at 2 % PSM FDR · no peptide FDR')).toBeVisible()

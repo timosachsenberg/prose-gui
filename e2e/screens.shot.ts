@@ -75,13 +75,14 @@ describe('screens', () => {
     await shot('03-search-running')
 
     await browser.waitUntil(async () => /#\/results\/[^/]+$/.test(await browser.getUrl()), { timeout: 180000, interval: 500 })
-    await $('[data-testid="psm-count"]').waitForDisplayed({ timeout: 20000 })
+    await $('[role="grid"][aria-label="Proteins"]').waitForDisplayed({ timeout: 20000 })
     await shot('04-results-proteins')
 
     // the first protein's panel, its peptides
     await jsClick((await $$('[role="grid"][aria-label="Proteins"] tbody tr[aria-rowindex]'))[0])
     await $('[data-testid="protein-panel"]').waitForDisplayed({ timeout: 10000 })
-    const peptidesTab = await $('[data-testid="protein-panel"]').$('button*=Peptides')
+    // (its tab, not the button "Peptides of … ›" that goes on to the Peptides tab)
+    const peptidesTab = await $('[data-testid="protein-panel"]').$('button[role="tab"]*=Peptides')
     if (await peptidesTab.isExisting()) await jsClick(peptidesTab)
     await shot('05-protein-panel')
     await browser.keys('Escape')

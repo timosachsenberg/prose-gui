@@ -10,7 +10,7 @@
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { appReady, clearSearches, dropFiles, freshForm, peakMemoryKb, proseProcesses, resultsId, startReady, textOf } from './lib.ts'
+import { appReady, clearSearches, dropFiles, freshForm, peakMemoryKb, proseProcesses, resultsId, showKeyFigures, startReady, textOf } from './lib.ts'
 
 const data = process.env.PROSE_BIG_DIR ?? '/scratch/sachsenb/prose-bench/data'
 const spectra = join(data, 'erwinia_tmt.mzML')
@@ -91,8 +91,7 @@ describe('a large search', () => {
     const seconds = (Date.now() - started) / 1000
     console.log(`BIG RESULT: ${seconds.toFixed(0)} s, ProSE peak memory (VmHWM) ${(peakKb / 1024 / 1024).toFixed(2)} GB`)
 
-    const count = $('[data-testid="psm-count"]')
-    await count.waitForDisplayed({ timeout: 120000 })
+    await showKeyFigures(120000)
     console.log(`BIG PSMs: ${await textOf('[data-testid="psm-count"]')}`)
     expect(await textOf('[data-testid="psm-count"]')).toMatch(/[1-9]/)
     expect(peakKb).toBeGreaterThan(0)

@@ -174,7 +174,8 @@ export function closeWindowLikeAUser(appPid: number) {
 
 /**
  * A finished search of the example, through the screens, for a test that needs a result: a fresh New
- * search form, "Try the example", Start, and the results open. Returns the search's id.
+ * search form, "Try the example", Start, and the results open (left on Overview, with the key figures). Returns the
+ * search's id.
  */
 export async function runExample(options: { peptdeep?: boolean } = {}): Promise<string> {
   await freshForm()
@@ -187,8 +188,19 @@ export async function runExample(options: { peptdeep?: boolean } = {}): Promise<
   await startReady()
   await $('button*=Start search').click()
   const id = await waitForResults()
-  await $('[data-testid="psm-count"]').waitForDisplayed({ timeout: 30000 })
+  await showKeyFigures()
   return id
+}
+
+/**
+ * The key figures of the result that is open (its PSM count, `psm-count`, among them): a result opens on its
+ * Proteins tab, the key figures are in Overview. Waits for the result, opens Overview and waits for them.
+ */
+export async function showKeyFigures(timeout = 30000) {
+  const overview = $('[data-testid="results-tabs"]').$('button=Overview')
+  await overview.waitForDisplayed({ timeout })
+  await jsClick(await overview)
+  await $('[data-testid="psm-count"]').waitForDisplayed({ timeout: 10000 })
 }
 
 /**

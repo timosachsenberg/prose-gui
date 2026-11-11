@@ -6,7 +6,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { zstdDecompressSync } from 'node:zlib'
 import { parquetReadObjects } from 'hyparquet'
-import { clearSearches, clickSpectrum, EXAMPLE_PSMS, freshForm, jsClick, labelledMzs, openAdvanced, openFirstPsm, residuePair, runExample, searchesDir, textOf, waitForResults } from './lib.ts'
+import { clearSearches, clickSpectrum, EXAMPLE_PSMS, freshForm, jsClick, labelledMzs, openAdvanced, openFirstPsm, residuePair, runExample, searchesDir, showKeyFigures, textOf, waitForResults } from './lib.ts'
 
 const enabled = Boolean(process.env.PROSE_BIN)
 
@@ -108,8 +108,8 @@ describe('the example search', () => {
       interval: 500,
       timeoutMsg: 'the search did not open its result',
     })
+    await showKeyFigures()
     const count = $('[data-testid="psm-count"]')
-    await count.waitForDisplayed({ timeout: 20000 })
     await expect(count).toHaveText(expect.stringContaining(EXAMPLE_PSMS))
     expect(await $('[data-testid="result-chip"]').getProperty('textContent')).toContain('Ecoli · 2 files')
     // real data: the first PSM's precursor error is not 0 ppm, its peaks have intensities of their own
@@ -132,9 +132,17 @@ describe('the example search', () => {
     expect(strip.dots).toBeGreaterThan(5)
     expect(strip.unaligned).toEqual([])
 
-    // the PSM table stands under the spectrum, with the keyboard focus: the arrow keys go through the PSMs
-    await expect($('[data-testid="psm-list"] [role="grid"][aria-label="PSMs"]')).toBeDisplayed()
-    expect(await browser.execute(() => document.activeElement?.closest('[data-testid="psm-list"]') !== null)).toBe(true)
+    // the PSM table stays above the PSM view, with the tabs and the keyboard focus: its arrow keys go through the PSMs
+    await expect($('[data-testid="results-tabs"]')).toBeDisplayed()
+    await expect($('[data-testid="results-table-area"] [role="grid"][aria-label="PSMs"]')).toBeDisplayed()
+    expect(await browser.execute(() => document.activeElement?.closest('[data-testid="results-table-area"]') !== null)).toBe(true)
+    // the view fits under the table: nothing in it scrolls, and neither does the page
+    const scrolling = await browser.execute(() => {
+      const view = document.querySelector('[data-testid="psm-view"]')!
+      const scrolls = (el: Element) => el.scrollHeight > el.clientHeight + 2 && /auto|scroll/.test(getComputedStyle(el).overflowY)
+      return { view: [view, ...view.querySelectorAll('*')].filter(scrolls).length, page: document.documentElement.scrollHeight > window.innerHeight }
+    })
+    expect(scrolling).toEqual({ view: 0, page: false })
     const first = await textOf('[data-testid="psm-header"]')
     await browser.keys('ArrowDown')
     await browser.waitUntil(async () => (await textOf('[data-testid="psm-header"]')) !== first, {
@@ -250,7 +258,14 @@ describe('the example search', () => {
     expect(await $('input[type="radio"][value="peptdeep"]').isSelected()).toBe(true)
     expect(await $('input[type="radio"][value="peptdeep"]').isEnabled()).toBe(true)
     // the stored spectra are filtered (the footer of the QPX files says how): the view says so
-    await expect($('[data-testid="peak-filter-note"]')).toHaveText(expect.stringContaining('Showing the top 100 peaks per 100 m/z'))
+    // (textContent: WebKit's visible text is empty for an element that cuts its text where it does not fit, also
+    // while it fits, as here: the note is in the toolbar, on one line)
+    await expect($('[data-testid="peak-filter-note"]')).toBeDisplayed()
+    expect(await textOf('[data-testid="peak-filter-note"]')).toContain('Showing the top 100 peaks per 100 m/z')
+    expect(await browser.execute(() => {
+      const note = document.querySelector('[data-testid="peak-filter-note"]')!
+      return note.scrollWidth <= note.clientWidth
+    })).toBe(true)
   })
 
   it('History survives a restart: the search is listed, can be renamed, and opens again with its results', async () => {
@@ -283,8 +298,7 @@ describe('the example search', () => {
     expect(await row().getProperty('textContent')).toContain('Renamed_search')
     await row().$('button=Open').click()
     await browser.waitUntil(async () => (await browser.getUrl()).endsWith(`#/results/${searchId}`), { timeout: 30000 })
-    const count = $('[data-testid="psm-count"]')
-    await count.waitForDisplayed({ timeout: 30000 })
-    await expect(count).toHaveText(expect.stringContaining(EXAMPLE_PSMS))
+    await showKeyFigures()
+    await expect($('[data-testid="psm-count"]')).toHaveText(expect.stringContaining(EXAMPLE_PSMS))
   })
 })

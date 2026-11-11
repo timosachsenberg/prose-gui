@@ -301,8 +301,11 @@ for (const { sequence, charge } of IONS) {
     expect(peaks, 'the spectrum is stored').toBeTruthy()
     const matched = matchIons(ions, peaks.mz, tolerance)
     expect(singly.filter((c) => c.matched).map((c) => c.ion).sort(), 'matched ions').toEqual([...matched.keys()].sort())
-    // the spectrum labels the same ions
-    const labels = await view.getByTestId('peak-label').evaluateAll((ts) => ts.flatMap((t) => (t.textContent ?? '').split(/[\s,/]+/).filter(Boolean)))
-    expect(labels.filter((l) => /^[by]\d+$/.test(l)).sort(), 'spectrum labels').toEqual([...matched.keys()].sort())
+    // the spectrum labels the same ions, at the width it has by itself (the column of the ion table takes a third
+    // of it, and a narrower plot leaves out labels that have no room)
+    await view.getByTestId('psm-side-toggle').click()
+    await expect(view.getByTestId('psm-side')).toBeHidden()
+    const labels = () => view.getByTestId('peak-label').evaluateAll((ts) => ts.flatMap((t) => (t.textContent ?? '').split(/[\s,/]+/).filter((l) => /^[by]\d+$/.test(l))).sort())
+    await expect.poll(labels, { message: 'spectrum labels' }).toEqual([...matched.keys()].sort())
   })
 }

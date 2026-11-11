@@ -13,6 +13,7 @@ import {
   resultsId,
   searchesDir,
   searchFolders,
+  showKeyFigures,
   startLongSearch,
   startReady,
   textOf,
@@ -46,6 +47,7 @@ async function nextSearchRuns() {
   await startReady(20000)
   await $('button*=Start search').click()
   await waitForResults()
+  await showKeyFigures()
   // each copy of the example's run has its PSMs (EXAMPLE_RUN_PSMS)
   await expect($('[data-testid="psm-count"]')).toHaveText(expect.stringContaining((EXAMPLE_RUN_PSMS * LONG_SEARCH_FILES).toLocaleString('en-US')))
   expect(searchFolders().finished).toHaveLength(1)

@@ -18,6 +18,7 @@ import {
   exampleSettings,
   goTo,
   searchFolders,
+  showKeyFigures,
   startReady,
   textOf,
   waitForResults,
@@ -63,8 +64,7 @@ describe('inputs by path', () => {
     await startReady()
     await $('button*=Start search').click()
     await waitForResults()
-    const count = $('[data-testid="psm-count"]')
-    await count.waitForDisplayed({ timeout: 20000 })
+    await showKeyFigures()
     return textOf('[data-testid="psm-count"]')
   }
 
@@ -132,8 +132,8 @@ describe('inputs by path', () => {
     await startReady()
     await $('button*=Start search').click()
     await waitForResults()
+    await showKeyFigures()
     const count = $('[data-testid="psm-count"]')
-    await count.waitForDisplayed({ timeout: 20000 })
     // two copies of the run give what the example's two names give
     await expect(count).toHaveText(expect.stringContaining(EXAMPLE_PSMS))
     expect(await textOf('[data-testid="result-chip"]')).toContain('2 files')
