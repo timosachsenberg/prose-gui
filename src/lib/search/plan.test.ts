@@ -94,7 +94,7 @@ describe('the search request', () => {
     // defaults since OpenMS #10740, so they are not sent)
     expect(r.settings.parameters).toEqual({
       enzyme: 'Trypsin/P',
-      // the example's PSM FDR (the run is too small for 1 %)
+      // the example's PSM FDR
       'FDR:PSM': 0.02,
       'peptide:missed_cleavages': 2,
       // the example's ion-trap fragments
@@ -110,12 +110,12 @@ describe('the search request', () => {
       '2 files in 2 samples · 4,136 proteins + 116 cRAP + decoys',
     )
     expect(searchPlan.note).toBe(
-      "Ion-trap example with a 0.5 Da fragment tolerance, a 2 % PSM FDR and no protein FDR: the run is too small for 1 % and for a protein FDR. It has too few PSMs for Percolator's full model.",
+      "Ion-trap example with a 0.5 Da fragment tolerance, a 2 % PSM FDR and no protein FDR: the run is too small for a protein FDR. It has too few PSMs for Percolator's full model.",
     )
     // a protein FDR the user sets on the example is sent, and the note no longer says there is none
     form.setParam('FDR:protein', 0.05)
     expect(searchPlan.note).toBe(
-      "Ion-trap example with a 0.5 Da fragment tolerance and a 2 % PSM FDR. The run is too small for 1 %, for a protein FDR and for Percolator's full model.",
+      "Ion-trap example with a 0.5 Da fragment tolerance and a 2 % PSM FDR. The run is too small for a protein FDR and for Percolator's full model.",
     )
     expect((await request()).settings.parameters['FDR:protein']).toBe(0.05)
     expect(vi.mocked(runSearch).mock.calls.at(-1)![1]).toMatchObject({ proteinFdr: 0.05 })

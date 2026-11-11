@@ -100,9 +100,9 @@ class SearchPlan {
     const psmFdr = `${Number((Number(form.value('FDR:PSM')) * 100).toPrecision(6))} %`
     return Number(form.value('FDR:protein')) > 0
       ? `Ion-trap example with a ${tolerance} fragment tolerance and a ${psmFdr} PSM FDR. ` +
-          "The run is too small for 1 %, for a protein FDR and for Percolator's full model."
+          "The run is too small for a protein FDR and for Percolator's full model."
       : `Ion-trap example with a ${tolerance} fragment tolerance, a ${psmFdr} PSM FDR and no protein FDR: ` +
-          "the run is too small for 1 % and for a protein FDR. It has too few PSMs for Percolator's full model."
+          "the run is too small for a protein FDR. It has too few PSMs for Percolator's full model."
   })
 
   /** Modification names ProSE does not know. */

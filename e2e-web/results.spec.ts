@@ -8,7 +8,7 @@ test.beforeEach(async ({ page }) => {
 test('the key figures (in Overview) say which FDR controls each count', async ({ page }) => {
   await page.getByRole('tab', { name: 'Overview' }).click()
   const header = page.locator('main')
-  await expect(header.getByText('protein groups · 53 proteins · no protein FDR')).toBeVisible()
+  await expect(header.getByText('protein groups · 47 proteins · no protein FDR')).toBeVisible()
   await expect(header.getByText('peptides · at 2 % PSM FDR · no peptide FDR')).toBeVisible()
   await expect(header.getByText(/^PSMs · at 2 % PSM FDR · \d+ % of MS2$/)).toBeVisible()
   await expect(header.getByText('median |precursor error|')).toBeVisible()
@@ -16,7 +16,7 @@ test('the key figures (in Overview) say which FDR controls each count', async ({
 
 test('the tabs: Overview, Proteins, Peptides, PSMs, Samples, QC (by click and by ⌘/Ctrl 1–6)', async ({ page }) => {
   const tabs = page.getByTestId('results-tabs').getByRole('tab')
-  await expect(tabs).toHaveText([/^Overview/, /^Proteins\s*53/, /^Peptides\s*54/, /^PSMs\s*132/, /^Samples/, /^QC/])
+  await expect(tabs).toHaveText([/^Overview/, /^Proteins\s*47/, /^Peptides\s*46/, /^PSMs\s*110/, /^Samples/, /^QC/])
   const content: [string, string][] = [
     ['Overview', 'search-facts'],
     ['Proteins', 'results-table'],
@@ -68,20 +68,20 @@ test('the PSM charge and range filters, with the targets and decoys they keep', 
   await page.getByRole('tab', { name: /^PSMs/ }).click()
   const bar = page.getByTestId('filter-bar')
   const count = bar.getByTestId('row-count')
-  await expect(count).toHaveText('132 of 132')
+  await expect(count).toHaveText('110 of 110')
   await expect(bar.getByTestId('subset-fdr')).toBeHidden()
 
   // the charge: 2+ only
   const charges = bar.getByRole('group', { name: 'Precursor charges' })
   await charges.getByRole('button', { name: '2+' }).click()
   await expect(charges.getByRole('button', { name: '2+' })).toHaveAttribute('aria-pressed', 'true')
-  await expect(count).not.toHaveText(/^132 of 132/)
+  await expect(count).not.toHaveText(/^110 of 110/)
   const twoPlus = Number((await count.textContent())!.split(' of ')[0])
   expect(twoPlus).toBeGreaterThan(0)
-  expect(twoPlus).toBeLessThan(132)
+  expect(twoPlus).toBeLessThan(110)
   await expect(bar.getByTestId('subset-fdr')).toHaveText(/targets \d+ · decoys \d+ · est\. FDR ≈ [\d.]+ % \(within the passing set\)/)
   await charges.getByRole('button', { name: '2+' }).click()
-  await expect(count).toHaveText('132 of 132')
+  await expect(count).toHaveText('110 of 110')
 
   // a range: the score, narrowed from its lower end
   await bar.getByRole('button', { name: '+ Filter' }).click()
@@ -96,7 +96,7 @@ test('the PSM charge and range filters, with the targets and decoys they keep', 
   await from.press('Enter')
   await from.dispatchEvent('change')
   await page.keyboard.press('Escape')
-  await expect(count).not.toHaveText(/^132 of 132/)
+  await expect(count).not.toHaveText(/^110 of 110/)
   await expect(bar.getByTestId('subset-fdr')).toBeVisible()
 })
 

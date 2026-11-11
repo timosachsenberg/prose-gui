@@ -50,7 +50,7 @@ test('History lists the opened search and opens it again', async ({ page }) => {
   const row = page.getByTestId('history-row')
   await expect(row).toHaveCount(1)
   await expect(row).toContainText('Ecoli_1.mzML')
-  await expect(row).toContainText('132')
+  await expect(row).toContainText('110')
   await row.getByRole('button', { name: 'Open Ecoli', exact: true }).click()
   await expect(page).toHaveURL(/#\/results\/100-0$/)
   await expect(page.getByTestId('results-tabs')).toBeVisible()

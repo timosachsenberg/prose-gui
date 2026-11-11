@@ -30,7 +30,7 @@ describe('the example with PeptDeep', () => {
     rmSync(join(dataHome(), 'chosen.prose'), { force: true })
   })
 
-  it('the example with PeptDeep: 132 PSMs, a PSM shows the PeptDeep mirror', async () => {
+  it('the example with PeptDeep: 110 PSMs, a PSM shows the PeptDeep mirror', async () => {
     await expect($('[data-testid="psm-count"]')).toHaveText(expect.stringContaining(EXAMPLE_PSMS))
 
     await openFirstPsm()

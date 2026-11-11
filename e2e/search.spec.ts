@@ -76,7 +76,7 @@ describe('the example search', () => {
     expect(widths.sequence).toBeLessThan(widths.dejavu - 10)
   })
 
-  it('the example search shows 132 PSMs', async () => {
+  it('the example search shows 110 PSMs', async () => {
     await $('header').waitForDisplayed({ timeout: 20000 })
     await $('button=Try the example').click()
     // the two files in the design table, the database counted
@@ -84,7 +84,7 @@ describe('the example search', () => {
     await expect($('[data-testid="fasta-proteins"]')).toHaveText('4,136 proteins')
     await openAdvanced()
     // the example's fragment tolerance for its ion-trap spectra, its PSM FDR of 2 % and its protein FDR off (the run is
-    // too small for 1 % and for a protein FDR)
+    // too small for a protein FDR)
     await expect($('#fragment-tolerance')).toHaveValue('0.5')
     await expect($('#psm-fdr')).toHaveValue('2')
     await expect($('#protein-fdr')).toHaveValue('off')

@@ -50,6 +50,11 @@ const WEB_APP_ALGORITHM = {
   decoy_method: 'reverse',
   'rescoring:terminal_features': false,
   'rescoring:stratum_q_values': false,
+  // (the tool's defaults since OpenMS #10804 and #10805: mass tolerances measured by a calibration pass, the m/z
+  // recalibrated from it, and a second 13C peak as a precursor isotope error)
+  'calibration:enabled': false,
+  'calibration:recalibrate': 'none',
+  'precursor:isotope_error_min': -1,
 }
 
 /**

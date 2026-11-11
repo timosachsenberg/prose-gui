@@ -72,9 +72,9 @@ test('Enter on the open protein narrows the tables below to it; its chip widens 
   await expect(tab(page, 'Peptides')).toHaveAttribute('aria-selected', 'true')
   await expect(page.getByTestId('chip-protein')).toContainText(accession)
   await expect(rows(page)).toHaveCount(peptides)
-  await expect(tab(page, 'Peptides').getByTestId('tab-narrowed')).toHaveText(`${peptides} of 54`)
+  await expect(tab(page, 'Peptides').getByTestId('tab-narrowed')).toHaveText(`${peptides} of 46`)
   // the PSMs are narrowed with them: one narrowing for both tables
-  await expect(tab(page, 'PSMs').getByTestId('tab-narrowed')).toHaveText(`${psms} of 132`)
+  await expect(tab(page, 'PSMs').getByTestId('tab-narrowed')).toHaveText(`${psms} of 110`)
   await tab(page, 'PSMs').click()
   await expect(page.getByTestId('chip-protein')).toContainText(accession)
   await expect(rows(page)).toHaveCount(psms)
@@ -83,7 +83,7 @@ test('Enter on the open protein narrows the tables below to it; its chip widens 
   await page.getByTestId('chip-protein').click()
   await expect(page.getByTestId('chip-protein')).toHaveCount(0)
   await expect(page.getByTestId('tab-narrowed')).toHaveCount(0)
-  await expect(page.getByTestId('row-count')).toHaveText('132 of 132')
+  await expect(page.getByTestId('row-count')).toHaveText('110 of 110')
   // the Proteins tab still has the protein open
   await tab(page, 'Proteins').click()
   await expect(panel.getByTestId('panel-accession')).toHaveText(accession)
@@ -131,13 +131,13 @@ test('a PSM opened through a peptide: Prev and Next go through the peptide\'s PS
   }
   await expect(page.getByTestId('narrowing')).toHaveCount(0)
   await expect(view.getByTestId('psm-up')).toContainText(sequence)
-  await expect(position(page)).toHaveText(/^\d+ of 132$/)
+  await expect(position(page)).toHaveText(/^\d+ of 110$/)
   const at = Number(/^\d+/.exec(await position(page).innerText())![0])
   await expect(page.getByTestId('results-table-area').locator('tbody tr[aria-selected="true"]')).toBeInViewport()
-  await page.keyboard.press(at < 132 ? 'ArrowDown' : 'ArrowUp')
-  await expect(position(page)).toHaveText(`${at < 132 ? at + 1 : at - 1} of 132`)
-  await view.getByRole('button', { name: at < 132 ? 'Previous PSM' : 'Next PSM' }).click()
-  await expect(position(page)).toHaveText(`${at} of 132`)
+  await page.keyboard.press(at < 110 ? 'ArrowDown' : 'ArrowUp')
+  await expect(position(page)).toHaveText(`${at < 110 ? at + 1 : at - 1} of 110`)
+  await view.getByRole('button', { name: at < 110 ? 'Previous PSM' : 'Next PSM' }).click()
+  await expect(position(page)).toHaveText(`${at} of 110`)
   await expect(view.getByTestId('psm-up')).toContainText(sequence)
 })
 
@@ -181,9 +181,9 @@ test('a peptide\'s detail: its proteins and PSMs, each a way on', async ({ page 
   await expect(detail).toBeVisible()
   // the arrow keys of the table go through the peptides, the detail follows
   const first = await detail.getByTestId('peptide-sequence').innerText()
-  await expect(position(page)).toHaveText('1 of 54')
+  await expect(position(page)).toHaveText('1 of 46')
   await page.keyboard.press('ArrowDown')
-  await expect(position(page)).toHaveText('2 of 54')
+  await expect(position(page)).toHaveText('2 of 46')
   await expect(detail.getByTestId('peptide-sequence')).not.toHaveText(first)
 
   // a PSM of the detail opens in the PSMs tab, among the PSMs of the peptide
@@ -296,13 +296,13 @@ test('the keys of the PSM view work from the PSM table, where the focus is: A an
   await expect(accept).toHaveAttribute('aria-pressed', 'false')
   // the mark is the PSM's: the next one has none, and it is still there on coming back
   await page.keyboard.press('ArrowRight')
-  await expect(position(page)).toHaveText('2 of 132')
+  await expect(position(page)).toHaveText('2 of 110')
   await expect(reject).toHaveAttribute('aria-pressed', 'false')
   await page.keyboard.press('ArrowDown')
-  await expect(position(page)).toHaveText('3 of 132')
+  await expect(position(page)).toHaveText('3 of 110')
   await page.keyboard.press('ArrowLeft')
   await page.keyboard.press('ArrowUp')
-  await expect(position(page)).toHaveText('1 of 132')
+  await expect(position(page)).toHaveText('1 of 110')
   await expect(reject).toHaveAttribute('aria-pressed', 'true')
   await page.keyboard.press('r')
   await expect(reject).toHaveAttribute('aria-pressed', 'false')
@@ -328,13 +328,13 @@ test('Next and Prev of the PSM view keep the row of the open PSM in sight in the
   const open = page.getByTestId('results-table-area').locator('tbody tr[aria-selected="true"]')
   for (let i = 2; i <= 9; i++) {
     await view.getByRole('button', { name: 'Next PSM' }).click()
-    await expect(position(page)).toHaveText(`${i} of 132`)
+    await expect(position(page)).toHaveText(`${i} of 110`)
     await expect(open).toBeInViewport({ ratio: 1 })
   }
   // the table's keys go on from that row
   await page.getByTestId('results-table-area').getByRole('grid').focus()
   await page.keyboard.press('ArrowDown')
-  await expect(position(page)).toHaveText('10 of 132')
+  await expect(position(page)).toHaveText('10 of 110')
   await expect(open).toBeInViewport({ ratio: 1 })
 })
 

@@ -522,7 +522,7 @@ export const FAQ: FaqEntry[] = [
       'The precursor m/z was rounded or taken from the wrong scan in conversion.',
     ],
     fixes: [
-      'ProSE searches isotope errors of −1 to +1 by default (precursor:isotope_error_min/max), so some matches of this kind are normal; a large share means the precursor masses of the file are off.',
+      'ProSE searches isotope errors of −2 to +1 by default (precursor:isotope_error_min/max), so some matches of this kind are normal; a large share means the precursor masses of the file are off.',
       'Convert again with a current converter and monoisotopic precursor correction, or add the original .raw or .d.',
       'Do not hide it by widening the precursor tolerance: that adds wrong candidates without fixing the masses.',
     ],

@@ -261,9 +261,9 @@ test.describe('example', () => {
   })
 })
 
-/** The PSMs of the example whose ions the tests recompute: plain, carbamidomethylated, 3+ and 4+ (its PSMs at the
- * current pin have no variable modification). */
-const IONS: { sequence: string; charge?: number }[] = [{ sequence: 'RFYDAVSTFK' }, { sequence: 'CTQELLFGK' }, { sequence: 'AREALGLPHSDVFR', charge: 3 }, { sequence: 'AREALGLPHSDVFR', charge: 4 }]
+/** The PSMs of the example whose ions the tests recompute: plain, carbamidomethylated and 3+ (its PSMs at the
+ * current pin have no variable modification and no charge above 3). */
+const IONS: { sequence: string; charge?: number }[] = [{ sequence: 'RFYDAVSTFK' }, { sequence: 'CTQELLFGK' }, { sequence: 'GYRPQFYFR', charge: 3 }, { sequence: 'FMHVPELSR', charge: 3 }]
 
 function modsOf(p: OraclePsm): Map<number, number> {
   const out = new Map<number, number>()

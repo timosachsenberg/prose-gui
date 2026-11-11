@@ -215,7 +215,19 @@ export function methodsSection(input: MethodsInput): MethodsSection {
   else if (variable.length > 0) search.push(`No fixed modifications were set; ${variableText}.`)
   else search.push('No modifications were searched.')
   if (flag(prov('calibration') ?? p['calibration:enabled'])) {
-    search.push('Before the main search, a calibration pass on a subset of the spectra narrowed the mass tolerances.')
+    // (ProSE narrows the fragment tolerance to the errors it measures, the precursor window only where
+    // calibration:precursor_sigma_factor is set, and never beyond the tolerances set; with too few confident matches
+    // it keeps them. The m/z values are corrected only with calibration:recalibrate.)
+    const recalibrate = String(p['calibration:recalibrate'] ?? 'none')
+    const corrected =
+      recalibrate === 'offset'
+        ? ' and the m/z values were corrected for the median error measured'
+        : recalibrate === 'linear'
+          ? ' and the m/z values were corrected by a line fitted to the errors measured'
+          : ''
+    search.push(
+      `Before the main search, a calibration pass on a subset of the spectra measured the mass errors: within the tolerances set, the fragment tolerance was narrowed to them where enough confident matches were found${corrected}.`,
+    )
   }
   if (flag(p['chimeric:enabled'])) {
     search.push(

@@ -8,9 +8,11 @@ import { fileURLToPath } from 'node:url'
 /** The example's run and FASTA, as the app bundles them (src-tauri/resources/example). */
 /**
  * The PSMs ProSE finds in one copy of the example's run at its settings (2 % PSM FDR), and in the example (two copies):
- * a property of the engine at native/OPENMS_COMMIT (d60780f605), to update with the pin.
+ * a property of the engine at native/OPENMS_COMMIT (d80de8d557), to update with the pin. (66 at the pin before:
+ * since OpenMS #10804 the tool also searches a second 13C peak, precursor:isotope_error_min -2, and in a run this
+ * small the candidates it adds leave 55 at 2 %; with -1 the same ProSE finds the 66.)
  */
-export const EXAMPLE_RUN_PSMS = 66
+export const EXAMPLE_RUN_PSMS = 55
 export const EXAMPLE_PSMS = String(2 * EXAMPLE_RUN_PSMS)
 export const EXAMPLE_DIR = resolve(fileURLToPath(new URL('../src-tauri/resources/example', import.meta.url)))
 export const EXAMPLE_MZML = join(EXAMPLE_DIR, 'Ecoli_MS2_small.mzML')
@@ -205,7 +207,7 @@ export async function showKeyFigures(timeout = 30000) {
 
 /**
  * New search with nothing chosen and the example's own settings set by hand (they end with its files: Start over gives
- * back the preset's): its fragment tolerance, 0.5 Da, its PSM FDR, 2 % (the run is too small for 1 %), and no protein
+ * back the preset's): its fragment tolerance, 0.5 Da, its PSM FDR, 2 %, and no protein
  * FDR.
  */
 export async function exampleSettings() {
