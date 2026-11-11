@@ -1,0 +1,62 @@
+# GCC 13 for the Linux builds (Ubuntu 22.04), pinned: the package files that `apt-get install gcc-13 g++-13`
+# takes from ppa:ubuntu-toolchain-r/test on GitHub's ubuntu-22.04 runners, for amd64 and arm64, and the source
+# packages they were built from. native/scripts/gcc13.sh installs exactly these files, from the release named
+# below (the repository's own copy, made by .github/workflows/toolchain.yml), or else from Launchpad's pool.
+#
+# Written by native/scripts/toolchain_lock.py from the PPA's index for jammy of 2026-03-17 (InRelease,
+# signed by the PPA's key C8EC952E2A0E1FBDC5090F6A2C277A0A352154E5):
+# gcc-13 13.4.0-6ubuntu1~22~ppa2, gcc-16 16-20260315-1ubuntu1~22~ppa1.
+# Do not edit: run the script, then the "Toolchain packages" workflow (native/README.md, "GCC 13").
+#
+# release <name of the release that holds the files>
+# <amd64|arm64|source> <SHA-256> <size in bytes> <path below the PPA's .../ubuntu/>
+release toolchain-jammy-gcc13-20260317
+amd64 0cc91e69686ff380d1253b599e2c0476903eba38de28003f7279a80fc5d26b19 10848654 pool/main/g/gcc-13/cpp-13-x86-64-linux-gnu_13.4.0-6ubuntu1~22~ppa2_amd64.deb
+amd64 b892477440ff22432ecfc4ae1ed258da894ee1b1882feaf7a8d48df179495128 1040 pool/main/g/gcc-13/cpp-13_13.4.0-6ubuntu1~22~ppa2_amd64.deb
+amd64 ad9aecdf198e5dcee502947ce4d1666123de96e5c74c420d3f58c6fcc3dc41fe 12299220 pool/main/g/gcc-13/g++-13-x86-64-linux-gnu_13.4.0-6ubuntu1~22~ppa2_amd64.deb
+amd64 112039d9dbbd65dd7327880bf621e9397e80d8978b7329446e1a102068bf2ff7 19600 pool/main/g/gcc-13/g++-13_13.4.0-6ubuntu1~22~ppa2_amd64.deb
+amd64 d0af9910180c563a1ebe8131a720416abfc2e8f857e34e1b1a49299a2394c1fb 20718 pool/main/g/gcc-13/gcc-13-base_13.4.0-6ubuntu1~22~ppa2_amd64.deb
+amd64 43356b3c9d84900249a72cb67d88c21212dd190fafc156583d31ecc5794fcf7e 21401420 pool/main/g/gcc-13/gcc-13-x86-64-linux-gnu_13.4.0-6ubuntu1~22~ppa2_amd64.deb
+amd64 d50688a2257f29d495cf11052eade98c653c27e579aa7306e00aed1f03df9c53 517142 pool/main/g/gcc-13/gcc-13_13.4.0-6ubuntu1~22~ppa2_amd64.deb
+amd64 3f503a7dcd64fed748eab5e362d8363f79f58a87299fec5e19f6ac4b00b78481 2711540 pool/main/g/gcc-13/libgcc-13-dev_13.4.0-6ubuntu1~22~ppa2_amd64.deb
+amd64 2fbb140dab8dc48cce6b261dc53548f76576e2e9d0b5dda7736e1481564f538e 2431088 pool/main/g/gcc-13/libstdc++-13-dev_13.4.0-6ubuntu1~22~ppa2_amd64.deb
+amd64 0e7bf82489be880d880c5e8491c27d7432a6e5c4d8c62784ec16cd61681badf6 20398 pool/main/g/gcc-16/gcc-16-base_16-20260315-1ubuntu1~22~ppa1_amd64.deb
+amd64 375323f3b2b3b4a7788a9d0adc710557946c21d13bc435254fe604067910b76b 3239530 pool/main/g/gcc-16/libasan8_16-20260315-1ubuntu1~22~ppa1_amd64.deb
+amd64 e90aa8634a2caecfea9f24c358459b94fac132d5d8810931bf0cb2e0067d4d31 11562 pool/main/g/gcc-16/libatomic1_16-20260315-1ubuntu1~22~ppa1_amd64.deb
+amd64 dffbc1d745ca7afaa484712eb77bceb802cba1d522e50e0c6eca35505ac435b7 52204 pool/main/g/gcc-16/libcc1-0_16-20260315-1ubuntu1~22~ppa1_amd64.deb
+amd64 05d1a80203e2f7b7f51b8ad9d686d7d234c4652d6378ce6b4c3d3dd68efecf32 80350 pool/main/g/gcc-16/libgcc-s1_16-20260315-1ubuntu1~22~ppa1_amd64.deb
+amd64 bc9dc8256b3d399e16cd8e0a8d2e08d3ff763deb4637344613565252f4d7d19b 166594 pool/main/g/gcc-16/libgomp1_16-20260315-1ubuntu1~22~ppa1_amd64.deb
+amd64 baeba69c2af5df8ccbec83542b8b88df633cdd0a41730744b2a0577776a35bd2 1750268 pool/main/g/gcc-16/libhwasan0_16-20260315-1ubuntu1~22~ppa1_amd64.deb
+amd64 2f99b00986714b5269cc13347526fc730bc4814d4802e7c4f1745c8344883bf4 31002 pool/main/g/gcc-16/libitm1_16-20260315-1ubuntu1~22~ppa1_amd64.deb
+amd64 6216dd384f8556ebec4f721cde7da2be884cf3c8223bc5008f4020c410203ffd 1409244 pool/main/g/gcc-16/liblsan0_16-20260315-1ubuntu1~22~ppa1_amd64.deb
+amd64 05f31c4197ff5bfdbf10757d80e42458bac5b114ea9b7d8e61e89d3b29d64dab 157312 pool/main/g/gcc-16/libquadmath0_16-20260315-1ubuntu1~22~ppa1_amd64.deb
+amd64 5f20f14daccdf4bcf6c409cac46e37e4571c1347b1a60ec8201e3f7f9482d756 877410 pool/main/g/gcc-16/libstdc++6_16-20260315-1ubuntu1~22~ppa1_amd64.deb
+amd64 a29dc9be5abb305987d7a3eb2f518c8f9e6f4dfa4dcb0f6685b1bc73f3496d2f 2887826 pool/main/g/gcc-16/libtsan2_16-20260315-1ubuntu1~22~ppa1_amd64.deb
+amd64 ccdeb8313e47b39e62c68400c1eebe44f34bdb2e2190c52fcc324ab6ba670994 1256858 pool/main/g/gcc-16/libubsan1_16-20260315-1ubuntu1~22~ppa1_amd64.deb
+arm64 799fc061b90d134ad6254dee0049894852df41796b7d64e1fd06e9eb7a1677af 9635900 pool/main/g/gcc-13/cpp-13-aarch64-linux-gnu_13.4.0-6ubuntu1~22~ppa2_arm64.deb
+arm64 62cf14ede7a10cf25ccbb4db336eddd069d1e3d4ce13b245ce5fb9c4e320fdf7 1038 pool/main/g/gcc-13/cpp-13_13.4.0-6ubuntu1~22~ppa2_arm64.deb
+arm64 b19f70dd4ae3bbd0e6ce9301ed4546a0f442d66931adaeede76c6daf6fc02d96 10978746 pool/main/g/gcc-13/g++-13-aarch64-linux-gnu_13.4.0-6ubuntu1~22~ppa2_arm64.deb
+arm64 ced4597834eff65acabbc2fef7b1dd504c1d82babb6014c97ed652cb7f647c96 19594 pool/main/g/gcc-13/g++-13_13.4.0-6ubuntu1~22~ppa2_arm64.deb
+arm64 0dee804273a33b0a0522dd12f7a1f83ffbca46ff1cd61305a1fb9eca3bc0ab1e 18863106 pool/main/g/gcc-13/gcc-13-aarch64-linux-gnu_13.4.0-6ubuntu1~22~ppa2_arm64.deb
+arm64 ea855275e712db934adc349ba757888ab45cc4063d69485599216acb597747b4 20748 pool/main/g/gcc-13/gcc-13-base_13.4.0-6ubuntu1~22~ppa2_arm64.deb
+arm64 b5d7bef564568bb8111d667cacace462b5167192228d7565c7ba2f3938d75479 506890 pool/main/g/gcc-13/gcc-13_13.4.0-6ubuntu1~22~ppa2_arm64.deb
+arm64 819637518ec2c401126401e23fdcf656fccb9226383edd171e326362e22bbd5f 2510226 pool/main/g/gcc-13/libgcc-13-dev_13.4.0-6ubuntu1~22~ppa2_arm64.deb
+arm64 29eab39b16bdfacaa9210e3b76a76689757d8d1fbc9d40674bf427526a3c5ae7 2413716 pool/main/g/gcc-13/libstdc++-13-dev_13.4.0-6ubuntu1~22~ppa2_arm64.deb
+arm64 fd02e625a2e198617d0963abadde0ea1a3e0db9b9e97a8c56c2b16bee3e4f863 20418 pool/main/g/gcc-16/gcc-16-base_16-20260315-1ubuntu1~22~ppa1_arm64.deb
+arm64 c26ff645b8547b6b1e540d4da1626ac808016c772769e0f9aff7a68ababf3729 3047004 pool/main/g/gcc-16/libasan8_16-20260315-1ubuntu1~22~ppa1_arm64.deb
+arm64 02d32a51c95c3d36c142f28d4b556a2f9118be22eee653bf61790e2acbf5d076 11190 pool/main/g/gcc-16/libatomic1_16-20260315-1ubuntu1~22~ppa1_arm64.deb
+arm64 2b21b933e8a7cb05e3bc23cb389f5c2d144419c016b5bbb24ffc6a3b4334cdff 51914 pool/main/g/gcc-16/libcc1-0_16-20260315-1ubuntu1~22~ppa1_arm64.deb
+arm64 79d3e5c30578ddb13da7295dd47b10c4200faedba34ffbe34afb732cd52bebe2 60990 pool/main/g/gcc-16/libgcc-s1_16-20260315-1ubuntu1~22~ppa1_arm64.deb
+arm64 c0af30700160b0fd17a4fda4b5b7a3fd4986637fc8411c8e64bf758fdd3d5ba7 156400 pool/main/g/gcc-16/libgomp1_16-20260315-1ubuntu1~22~ppa1_arm64.deb
+arm64 070f06fd8c94e37074e9805f45af871ae17677774622526f2ede7f1a7fe2416c 1687572 pool/main/g/gcc-16/libhwasan0_16-20260315-1ubuntu1~22~ppa1_arm64.deb
+arm64 e58196bf00c2f2f2846c671da7ab6bd992e5419875ca5376752df96008f0cdf5 28470 pool/main/g/gcc-16/libitm1_16-20260315-1ubuntu1~22~ppa1_arm64.deb
+arm64 df3674f43cdb519b97459c329e4accdbe720fd51a1802ec7a2a5b07589557b84 1349512 pool/main/g/gcc-16/liblsan0_16-20260315-1ubuntu1~22~ppa1_arm64.deb
+arm64 38004e9fa3046d2be2497ab6f5a6fd620488f2098502711f502875d158ab7c3b 786828 pool/main/g/gcc-16/libstdc++6_16-20260315-1ubuntu1~22~ppa1_arm64.deb
+arm64 740aba782f6c55beb141810cc24ec2d4169e10621b59ce0f93674a5e1ee39f34 2770846 pool/main/g/gcc-16/libtsan2_16-20260315-1ubuntu1~22~ppa1_arm64.deb
+arm64 9c23fcc13091ecbebd8b513c977973676f71e43b637481e23318cec109998bc5 1202290 pool/main/g/gcc-16/libubsan1_16-20260315-1ubuntu1~22~ppa1_arm64.deb
+source 1bb30121cdea6d09277fe411d66609a4894843945dbd7cba92a5cf1d683bd7a8 628628 pool/main/g/gcc-13/gcc-13_13.4.0-6ubuntu1~22~ppa2.debian.tar.xz
+source 123390c5729ba97ba128b96d7681f1c0bd8e024d773562c96a43beeedff5ca9e 44895 pool/main/g/gcc-13/gcc-13_13.4.0-6ubuntu1~22~ppa2.dsc
+source c688225464d1ab1b34ac4613f3cd651af94de80989362a19f2559de66e559158 93434630 pool/main/g/gcc-13/gcc-13_13.4.0.orig.tar.gz
+source b4f2cb2fe5108ed78100d56bfbc3e2455ccd1079888d67ac0a70601285223207 628820 pool/main/g/gcc-16/gcc-16_16-20260315-1ubuntu1~22~ppa1.debian.tar.xz
+source 526de1b63b1a5c7d97fa382a30c554467377c25205143033ed8e503d149b2944 52140 pool/main/g/gcc-16/gcc-16_16-20260315-1ubuntu1~22~ppa1.dsc
+source 698867ae6b08e96120866bfa22208527c34f4246bd24a90d65d2d9c8b3e0bb6e 101755950 pool/main/g/gcc-16/gcc-16_16-20260315.orig.tar.gz

@@ -1,0 +1,219 @@
+# The repository's own copy of GCC 13 for the Linux builds: the packages native/toolchain/jammy-gcc13.lock
+# names (GCC 13 and the runtime libraries it needs, as ppa:ubuntu-toolchain-r/test builds them for Ubuntu 22.04,
+# for amd64 and arm64, and their source packages), kept as a release of this repository, so that a build of
+# OpenMS for Linux does not need Launchpad: it was out of reach for hours more than once, and Ubuntu 22.04's
+# own archive has no GCC 13. native/scripts/gcc13.sh installs them from the release (native/README.md, "GCC 13").
+#
+# Run it from the Actions tab ("Toolchain packages", Run workflow) on main after the lock changed
+# (native/scripts/toolchain_lock.py; native/README.md, "GCC 13"). It
+# - takes the lock's files from Launchpad's pool, each checked against the lock's SHA-256 (the lock's hashes
+#   are those of the PPA's signed index),
+# - installs them on both runners of the Linux builds and compiles and runs a C++23 program with OpenMP,
+# - makes the release the lock names, with three tar files (the packages of amd64, of arm64, and the sources),
+#   as a pre-release that is never the latest release (that is the app's),
+# - and installs from that release on both runners, as a build does.
+# A release is never changed: when the one the lock names exists, its files are checked against the lock and
+# installed, and nothing is published (a changed lock needs a new release name; the script gives it one).
+#
+# A pull request that changes the lock, the script or this file runs it without publishing.
+name: Toolchain packages
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - native/toolchain/**
+      - native/scripts/gcc13.sh
+      - .github/workflows/toolchain.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: toolchain-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  files:
+    name: The lock's files
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    outputs:
+      release: ${{ steps.release.outputs.name }}
+      exists: ${{ steps.release.outputs.exists }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: The release the lock names
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          name=$(native/scripts/gcc13.sh release)
+          [[ $name =~ ^toolchain-jammy-gcc13-[0-9A-Za-z.-]+$ ]] || { echo "::error::The lock names no release (got '$name')."; exit 1; }
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          # (a draft has no tag to be found by; the releases API lists it)
+          found=$(gh api --paginate "repos/$GH_REPO/releases" --jq ".[] | select(.tag_name == \"$name\") | .draft")
+          case "$found" in
+            '') echo "exists=false" >> "$GITHUB_OUTPUT"; echo "release $name: not there yet" ;;
+            false) echo "exists=true" >> "$GITHUB_OUTPUT"; echo "release $name: there" ;;
+            *) echo "::error::There is a draft release $name: publish or delete it, then run this again."; exit 1 ;;
+          esac
+
+      # no release yet: the files from Launchpad, as the tar files the release will hold
+      - name: The files from Launchpad's pool
+        if: steps.release.outputs.exists != 'true'
+        run: |
+          for kind in amd64 arm64 source; do
+            native/scripts/gcc13.sh fetch "$kind" "files/$kind"
+            native/scripts/gcc13.sh pack "$kind" "files/$kind" release
+          done
+          (cd release && sha256sum gcc13-jammy-*.tar > SHA256SUMS && cat SHA256SUMS)
+          cp native/toolchain/jammy-gcc13.lock release/
+
+      # the release is there: it holds the lock's files and no others (a changed lock needs a new release name)
+      - name: The files of the release are the lock's
+        if: steps.release.outputs.exists == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE: ${{ steps.release.outputs.name }}
+        run: |
+          gh release download "$RELEASE" --dir release --pattern 'gcc13-jammy-*.tar'
+          for kind in amd64 arm64 source; do
+            mkdir -p "files/$kind"
+            tar -C "files/$kind" --no-same-owner --no-same-permissions -xf "release/gcc13-jammy-$kind.tar"
+            if ! native/scripts/gcc13.sh check "$kind" "files/$kind"; then
+              echo "::error::The release $RELEASE holds other files of $kind than the lock names. A release is not changed: give the lock a new release name (native/scripts/toolchain_lock.py --release)."
+              exit 1
+            fi
+          done
+          echo "release $RELEASE: the lock's files"
+
+      - uses: actions/upload-artifact@v7
+        if: steps.release.outputs.exists != 'true'
+        with:
+          name: toolchain-packages
+          path: release/
+          if-no-files-found: error
+          retention-days: 3
+
+  # the packages install on the runners of the Linux builds, without Launchpad, and the compiler works:
+  # from the release when it is there (as a build installs them), else from the files just fetched
+  install:
+    name: Install (${{ matrix.arch }})
+    needs: files
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            arch: amd64
+          - runner: ubuntu-22.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read # this run's artifact
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install GCC 13
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          EXISTS: ${{ needs.files.outputs.exists }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          # (as desktop.yml: the runner image's Microsoft repository is not needed, and its outages fail apt-get update)
+          sudo rm -f /etc/apt/sources.list.d/microsoft-prod.list
+          sudo apt-get update
+          if [ "$EXISTS" = true ]; then
+            GCC13_ONLY_RELEASE=1 native/scripts/gcc13.sh install
+          else
+            gh run download "$GITHUB_RUN_ID" --name toolchain-packages --dir release
+            mkdir debs
+            tar -C debs --no-same-owner --no-same-permissions -xf "release/gcc13-jammy-$ARCH.tar"
+            native/scripts/gcc13.sh install debs
+          fi
+      - name: The compiler works
+        run: native/scripts/gcc13.sh test
+
+  publish:
+    name: Publish ${{ needs.files.outputs.release }}
+    needs: [files, install]
+    # from main only, and only a release that is not there yet
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && needs.files.outputs.exists != 'true'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    permissions:
+      contents: write # the release and its tag
+      actions: read # this run's artifact
+    steps:
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE: ${{ needs.files.outputs.release }}
+        run: |
+          gh run download "$GITHUB_RUN_ID" --name toolchain-packages --dir release
+          (cd release && sha256sum --check SHA256SUMS)
+          versions=$(sed -n 's/^# \(gcc-[0-9]* .*\)\.$/\1/p' release/jammy-gcc13.lock)
+          cat > notes.md <<NOTES
+          **This is not a release of the app.** It is a part of how the app's Linux packages are built: the
+          repository's own copy of the compiler packages the build installs. The app is under
+          [the latest release](https://github.com/$GH_REPO/releases/latest).
+
+          The Linux packages are built on Ubuntu 22.04, whose own archive has no GCC 13, which OpenMS needs. These are
+          the packages of GCC 13 and of the runtime libraries it needs, as Ubuntu's toolchain PPA
+          ([ppa:ubuntu-toolchain-r/test](https://launchpad.net/~ubuntu-toolchain-r/+archive/ubuntu/test)) builds them
+          for Ubuntu 22.04, unchanged ($versions), so that a build does not need Launchpad to be reachable:
+
+          - \`gcc13-jammy-amd64.tar\`, \`gcc13-jammy-arm64.tar\`: the packages (.deb) for x64 and arm64
+          - \`gcc13-jammy-source.tar\`: the source packages they were built from (.dsc, .orig.tar.gz, .debian.tar.xz)
+          - \`jammy-gcc13.lock\`: every file with its size and SHA-256, as the PPA's signed index gives them
+            (\`native/toolchain/jammy-gcc13.lock\` of the repository; \`native/scripts/gcc13.sh\` installs only files that match it)
+          - \`SHA256SUMS\`: of the three tar files
+
+          GCC is free software under the GNU General Public License, version 3 or later, its runtime libraries with
+          the GCC Runtime Library Exception; the licence texts are in the packages (\`/usr/share/doc/<package>/copyright\`)
+          and in the sources.
+          NOTES
+          # a pre-release, and never "the latest release": that is the app's (the app's pages link to it)
+          gh release create "$RELEASE" --target "$GITHUB_SHA" --prerelease --latest=false \
+            --title "Build toolchain: GCC 13 for Ubuntu 22.04 (${RELEASE#toolchain-jammy-gcc13-})" --notes-file notes.md \
+            release/gcc13-jammy-amd64.tar release/gcc13-jammy-arm64.tar release/gcc13-jammy-source.tar \
+            release/jammy-gcc13.lock release/SHA256SUMS
+          echo "published $GITHUB_SERVER_URL/$GH_REPO/releases/tag/$RELEASE"
+
+  # what a build does: the packages from the release, on both runners
+  from-release:
+    name: Install from the release (${{ matrix.arch }})
+    needs: publish
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            arch: amd64
+          - runner: ubuntu-22.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install GCC 13 from the release
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/microsoft-prod.list
+          sudo apt-get update
+          GCC13_ONLY_RELEASE=1 native/scripts/gcc13.sh install
+      - name: The compiler works
+        run: native/scripts/gcc13.sh test
