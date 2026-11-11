@@ -94,7 +94,7 @@ describe('the example search', () => {
     // the example's note, on a line of its own that wraps (not cut)
     // (textContent: WebKitWebDriver reads no visible text of a line-clamped box)
     expect(await $('[data-testid="search-note"]').getProperty('textContent')).toBe(
-      "Ion-trap example with a 0.5 Da fragment tolerance, a 2 % PSM FDR and no protein FDR: the run is too small for 1 % and for a protein FDR. It has too few PSMs for Percolator's full model.",
+      "Ion-trap example with a 0.5 Da fragment tolerance, a 2 % PSM FDR and no protein FDR: the run is too small for a protein FDR. It has too few PSMs for Percolator's full model.",
     )
     const clipped = await browser.execute(() => {
       const note = document.querySelector('[data-testid="search-note"]') as HTMLElement
