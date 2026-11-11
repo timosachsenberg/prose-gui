@@ -25,12 +25,26 @@
     level,
     proteinFdrApplied,
     psmFdrApplied = true,
-  }: { view: ResultsView; level: LevelState; proteinFdrApplied: boolean; psmFdrApplied?: boolean } = $props()
+    onWiden,
+  }: {
+    view: ResultsView
+    level: LevelState
+    proteinFdrApplied: boolean
+    psmFdrApplied?: boolean
+    /** A narrowing's chip was taken away (the table shows more rows: the focus can go back to it). */
+    onWiden?: () => void
+  } = $props()
+
+  /** Takes the protein or the peptide the table is narrowed to away, for the tables that share it. */
+  function widen(which: 'protein' | 'peptide') {
+    view.widen(which)
+    onWiden?.()
+  }
 
   const names = {
-    proteins: { filter: 'Filter proteins', placeholder: 'Accession, gene, name, peptide…', q: 'Protein FDR' },
-    peptides: { filter: 'Filter peptides', placeholder: 'Sequence, modification, accession…', q: 'Best PSM q-value' },
-    psms: { filter: 'Filter PSMs', placeholder: 'Sequence, modification, accession…', q: 'PSM FDR' },
+    proteins: { filter: 'Filter proteins', placeholder: 'Accession, gene, name, peptide…', q: 'Protein FDR', rows: 'proteins' },
+    peptides: { filter: 'Filter peptides', placeholder: 'Sequence, modification, accession…', q: 'Best PSM q-value', rows: 'peptides' },
+    psms: { filter: 'Filter PSMs', placeholder: 'Sequence, modification, accession…', q: 'PSM FDR', rows: 'PSMs' },
   } as const
   const name = $derived(names[level.level])
   const cutoff = $derived(level.level === 'proteins' ? view.result.proteinFdr : view.result.psmFdr)
@@ -139,12 +153,33 @@
 
   const chip =
     'inline-flex h-7 items-center gap-1.5 rounded-full border bg-background pr-2 pl-3 text-xs text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none'
+  /** A chip of what the table is narrowed to: it stands out from the filters. */
+  const scopeChip =
+    'inline-flex h-7 items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 pr-2 pl-3 text-xs font-medium text-primary hover:bg-primary/15 focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:outline-none'
   const selectLike =
     'inline-flex h-8 items-center gap-1.5 rounded-md border bg-background px-2.5 text-[13px] whitespace-nowrap hover:bg-muted/50 focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none'
 </script>
 
-<div class="flex flex-wrap items-center gap-2" data-testid="filter-bar">
-  <label class="relative flex h-8 max-w-80 min-w-[18.5rem] grow basis-[18.5rem] items-center">
+<div class="flex min-h-8 flex-wrap items-center gap-2" data-testid="filter-bar">
+  <!-- what the table is narrowed to (a protein, a peptide of it): first in the row; a chip takes it away, for the
+       Peptides and the PSM table alike, and what is open stays open -->
+  {#if protein || peptide}
+    <div class="flex min-w-0 items-center gap-1.5" role="group" aria-label="The table is narrowed to" data-testid="narrowing">
+      {#if protein}
+        <button type="button" class={scopeChip} title="Only the {name.rows} of {protein.accession}. Click to show those of all proteins." data-testid="chip-protein" onclick={() => widen('protein')}>
+          <span class="max-w-[11rem] truncate">Protein: {protein.id}</span><XIcon class="size-3 shrink-0" aria-hidden="true" /><span class="sr-only">(show all proteins)</span>
+        </button>
+      {/if}
+      {#if protein && peptide}<span class="text-xs text-muted-foreground" aria-hidden="true">›</span>{/if}
+      {#if peptide}
+        <button type="button" class={scopeChip} title="Only the PSMs of {peptide}. Click to show those of all peptides." data-testid="chip-peptide" onclick={() => widen('peptide')}>
+          <span class="max-w-[13rem] truncate">Peptide: {peptide}</span><XIcon class="size-3 shrink-0" aria-hidden="true" /><span class="sr-only">(show all peptides)</span>
+        </button>
+      {/if}
+    </div>
+  {/if}
+  <!-- (the text field is the first to give way: it grows where there is room) -->
+  <label class="relative flex h-8 max-w-80 min-w-[9rem] grow basis-[9rem] items-center">
     <span class="sr-only">{name.filter}</span>
     <SearchIcon class="pointer-events-none absolute left-2.5 size-3.5 text-muted-foreground" aria-hidden="true" />
     <input
@@ -219,16 +254,6 @@
       onChange={(v) => (level.filters.curation = v as CurationFilter)} />
   {/if}
 
-  {#if protein}
-    <button type="button" class={chip} title={protein.accession} onclick={() => (level.filters.proteinFilter = undefined)}>
-      Protein: {protein.id}<XIcon class="size-3" aria-hidden="true" /><span class="sr-only">(remove the filter)</span>
-    </button>
-  {/if}
-  {#if peptide}
-    <button type="button" class={chip} title={peptide} onclick={() => (level.filters.peptideFilter = undefined)}>
-      <span class="max-w-[16rem] truncate">Peptide: {peptide}</span><XIcon class="size-3 shrink-0" aria-hidden="true" /><span class="sr-only">(remove the filter)</span>
-    </button>
-  {/if}
   {#if charges.length > 1}
     <div class="flex items-center gap-1" role="group" aria-label="Precursor charges">
       <span class="text-xs text-muted-foreground">z</span>

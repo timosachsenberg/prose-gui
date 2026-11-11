@@ -15,12 +15,15 @@
     fixedMods,
     matched,
     features,
+    heading = true,
   }: {
     model: ResultModel
     row: number
     /** The PSM's features, by the tables' featureNames (read with its spectrum); null: not read (yet). */
     features: Float64Array | null
     fixedMods: string[]
+    /** Whether the features have their heading ("PSM features"): not under a tab that names them. */
+    heading?: boolean
     /** Of the annotation shown: matched ions of those shown, and the share of the intensity they explain. */
     matched: { matched: number; total: number; intensityFraction: number } | null
   } = $props()
@@ -104,7 +107,7 @@
 </script>
 
 <div data-testid="psm-features">
-  <h3 class="mb-1.5 text-[13px] font-semibold">PSM features</h3>
+  {#if heading}<h3 class="mb-1.5 text-[13px] font-semibold">PSM features</h3>{/if}
   <!-- one name and value per line, flowing into columns as the card gets wider -->
   <dl class="kv">
     {#each items as item (item.name)}

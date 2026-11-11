@@ -84,6 +84,7 @@
     precursor = null,
     pending = $bindable(false),
     hover = $bindable(null),
+    fit = null,
   }: {
     mz: Float32Array
     intensity: Float32Array
@@ -114,11 +115,19 @@
     pending?: boolean
     /** The m/z highlighted together with the ion table (a matched peak under the pointer, or an ion cell's). */
     hover?: number | null
+    /**
+     * The height the whole drawing may take (pixels): the plot is as high as fits, at least MIN_PLOT. Null: the
+     * plot has its own height, whatever is around it.
+     */
+    fit?: number | null
   } = $props()
 
   const uid = $props.id()
-  /** The plot's own height; the strip below it has the bottom label and, if it does not fit beside it, a line for the similarity. */
-  const plotHeight = 320
+  /** The plot's own height (see `plotHeight`), and the least it is given when the drawing has to fit a height. */
+  const OWN_PLOT = 320
+  const MIN_PLOT = 130
+  /** With a `fit` below this the error strip is the lower one (see `errorHeight`): above it the plot is as high as its own. */
+  const COMPACT_ERRORS_BELOW = OWN_PLOT + 142
   const M = { left: 46, right: 14 }
   /** The lines of text above the plot, under it and over the error strip are 15 px apart. */
   const line = 15
@@ -146,6 +155,23 @@
   })
   /** The strip above the plot (what the upper half is, the legend) and the one below the axis labels. */
   const plotTop = $derived(24 + legend.lines * line)
+  /**
+   * The height of the error strip's plot: lower where the drawing has to fit a height that would leave the
+   * spectrum less than it has by itself (the ticks ±tolerance and 0 still stand apart, the spectrum keeps the rest).
+   */
+  const errorHeight = $derived(fit !== null && fit < COMPACT_ERRORS_BELOW ? 56 : 84)
+  /**
+   * What the drawing takes besides the plot (`H` without `plotHeight`; see `H` and what it adds up): the strips
+   * above and below it, and the error strip.
+   */
+  const around = $derived.by(
+    () => plotTop - 66 + (errors ? 16 + bottomExtra + 30 + (errorLines.length - 1) * line + errorHeight + 24 + line : 42 + line + bottomExtra),
+  )
+  /**
+   * The plot's height; the strip below it has the bottom label and, if it does not fit beside it, a line for the
+   * similarity. Its own, or what `fit` leaves it.
+   */
+  const plotHeight = $derived(fit === null ? OWN_PLOT : Math.max(MIN_PLOT, Math.floor(fit - around)))
   const plotBottom = $derived(plotTop + plotHeight - 66)
   const mid = $derived((plotTop + plotBottom) / 2)
   const font = "'Inter Variable', ui-sans-serif, system-ui, sans-serif"
@@ -167,7 +193,7 @@
   const bottomLabelY = $derived(errors ? plotBottom + 16 : plotBottom + 36 + line)
   /** The error strip: its header (one line or more), then its plot (errorTop to errorBottom). */
   const errorTop = $derived.by(() => bottomLabelY + bottomExtra + 30 + (errorLines.length - 1) * line)
-  const errorBottom = $derived(errorTop + 84)
+  const errorBottom = $derived(errorTop + errorHeight)
   /** The m/z labels sit below the lowest part: the lower half, or the error strip; the axis title a line under them. */
   const axisBase = $derived(errors ? errorBottom : plotBottom)
   const H = $derived(errors ? axisBase + 24 + line : axisBase + 42 + line + bottomExtra)

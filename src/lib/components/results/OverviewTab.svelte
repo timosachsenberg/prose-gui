@@ -2,12 +2,12 @@
   // The Overview tab: what was searched and how (the settings that matter for reading the numbers, and
   // the engine: the ProSE tool's version), a table of the searched files with what the search reports
   // of each, the methods section for a publication, and, for an open search, the mass shifts the PSMs carry. The
-  // key figures stand above the tabs.
+  // key figures open it (they are of the search as a whole; the tabs carry the counts on every other tab).
   import FaqLink from '$lib/components/help/FaqLink.svelte'
   import * as Table from '$lib/components/ui/table'
   import { formatPercent, formatQ } from '$lib/format/fdr'
   import { formatCount } from '$lib/results/display'
-  import { levelRows } from '$lib/results/figures'
+  import { keyFigures, levelRows } from '$lib/results/figures'
   import { baseName } from '$lib/results/model'
   import { PSM_FDR_SKIPPED_WHY } from '$lib/results/overview'
   import { fileRows, formatSeconds, psmFdrFact, totalsOf, type EngineNote } from '$lib/results/overview'
@@ -18,6 +18,7 @@
   import { methodsPlainText } from '$lib/results/methods'
   import DeltaMassPanel from './DeltaMassPanel.svelte'
   import GuidanceNotices from './GuidanceNotices.svelte'
+  import KeyFigures from './KeyFigures.svelte'
   import DiagnosisCard from './DiagnosisCard.svelte'
   import SanitySection from './SanitySection.svelte'
   import CommandLine from './CommandLine.svelte'
@@ -29,6 +30,7 @@
   const result = $derived(view.result)
   const summary = $derived(result.outcome.summary)
   const settings = $derived(result.settings)
+  const figures = $derived(keyFigures(view.model, summary))
   const rows = $derived(fileRows(view.model, summary))
   const totals = $derived(totalsOf(rows))
   const showNce = $derived(rows.some((r) => r.nce !== null))
@@ -111,6 +113,7 @@
 {/snippet}
 
 <div class="flex flex-col gap-5 pb-6">
+  <KeyFigures {figures} proteinFdr={result.proteinFdr} proteinFdrApplied={summary.proteinFdrApplied} psmFdr={view.model.psmFdr} />
   {#if !summary.proteinFdrApplied}
     <div role="note" class="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200" data-testid="no-protein-fdr">
       <span class="font-medium">No protein-level FDR.</span> The protein groups and their counts come from the PSMs at the PSM FDR and are not

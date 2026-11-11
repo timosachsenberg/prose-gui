@@ -55,6 +55,8 @@
     autoMinWidth = 220,
     empty = 'No rows match the filters.',
     followFocus = false,
+    onRowOpen,
+    onBack,
   }: {
     rows: Uint32Array
     columns: Column[]
@@ -74,6 +76,13 @@
      * staying in the grid: under the PSM view, the keys go through the PSMs. The mouse wheel only scrolls.
      */
     followFocus?: boolean
+    /**
+     * The level below the row: a double click, or Enter on the row that is selected already (whose detail shows:
+     * the first Enter selects, the second goes on). Without it Enter always selects.
+     */
+    onRowOpen?: (row: number) => void
+    /** Backspace in the grid: back up a level. */
+    onBack?: () => void
   } = $props()
 
   const overscan = 3
@@ -124,14 +133,40 @@
 
   const minWidth = $derived(columns.reduce((w, c) => w + (c.width === 'auto' ? autoMinWidth : c.width), 0))
 
-  // new rows (filtered or sorted): back to the top, the first row active
+  // new rows (filtered or sorted): back to the top, the first row active; unless the selected row is among them
+  // (a narrowing was taken away, the table was sorted): then that row is the active one and comes into sight, once
+  // the table has its new height
   let lastRows: Uint32Array | null = null
+  let reveal = -1
   $effect.pre(() => {
     if (rows === lastRows) return
     lastRows = rows
-    active = 0
+    const kept = untrack(() => (selected === null || selected === undefined ? -1 : rows.indexOf(selected)))
+    reveal = kept
+    active = Math.max(0, kept)
     scrollTop = 0
     if (box) box.scrollTop = 0
+  })
+  $effect(() => {
+    void rows
+    if (reveal < 0) return
+    const index = reveal
+    reveal = -1
+    untrack(() => activate(index))
+  })
+
+  // the selection moved from outside the table (Prev and Next of the detail, a link to the row): the active row goes
+  // with it and comes into sight, so that the arrow keys go on from the row that is open
+  let lastSelected: number | null | undefined = undefined
+  $effect(() => {
+    const row = selected
+    if (row === lastSelected) return
+    lastSelected = row
+    if (row === null || row === undefined) return
+    untrack(() => {
+      const index = rows.indexOf(row)
+      if (index >= 0 && index !== active) activate(index)
+    })
   })
 
   function onscroll() {
@@ -184,7 +219,13 @@
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault()
       activate(active)
-      onRowClick(rows[active])
+      if (event.key === 'Enter' && onRowOpen && rows[active] === selected) onRowOpen(rows[active])
+      else onRowClick(rows[active])
+      return
+    }
+    if (event.key === 'Backspace' && onBack) {
+      event.preventDefault()
+      onBack()
       return
     }
     const page = Math.max(1, Math.floor((height - headerHeight) / rowHeight) - 1)
@@ -324,7 +365,8 @@
           class:selected={row === selected}
           class:active={index === active}
           style:height="{rowHeight}px"
-          onclick={() => click(index, row)}>
+          onclick={() => click(index, row)}
+          ondblclick={onRowOpen ? () => onRowOpen(row) : undefined}>
           {#each columns as c, i (c.id)}
             {@const value = c.cell(row)}
             <td

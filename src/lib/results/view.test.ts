@@ -289,13 +289,149 @@ describe('the protein panel', () => {
   })
 })
 
+describe('narrowing the tables below a level', () => {
+  it('narrows the Peptides and the PSM table to a protein together, and the PSM table to a peptide', () => {
+    const view = resultsViewFor(result(1, 1))
+    view.peptides.filters.text = 'zzz'
+    view.narrowTo({ protein: 0 }, 'peptides')
+    expect(view.tab).toBe('peptides')
+    expect(view.peptides.filters).toMatchObject({ proteinFilter: 0, text: '' })
+    expect(view.psms.filters.proteinFilter).toBe(0)
+    expect(Array.from(view.peptides.rows).sort()).toEqual([0, 1]) // ALBU's peptides
+    expect(Array.from(view.psms.rows)).toEqual([1, 3, 0, 2])
+
+    // one of its peptides: the PSM table keeps the protein
+    view.narrowTo({ peptide: 1 })
+    expect(view.tab).toBe('psms')
+    expect(view.psms.filters).toMatchObject({ proteinFilter: 0, peptideFilter: 1 })
+    expect(Array.from(view.psms.rows)).toEqual([3])
+    // a peptide of another protein: the protein goes, from both tables
+    view.narrowTo({ peptide: 2 })
+    expect(view.psms.filters).toMatchObject({ proteinFilter: undefined, peptideFilter: 2 })
+    expect(view.peptides.filters.proteinFilter).toBeUndefined()
+    expect(Array.from(view.psms.rows)).toEqual([4, 5, 6])
+
+    // what is no protein or peptide changes nothing
+    view.narrowTo({ protein: 99 }, 'peptides')
+    view.narrowTo({ peptide: -1 })
+    expect(view.tab).toBe('psms')
+    expect(view.psms.filters.peptideFilter).toBe(2)
+  })
+
+  it('tables that are not narrowed stay as they are when a protein or a peptide opens', () => {
+    const view = resultsViewFor(result(1, 1))
+    view.openProtein(0)
+    view.openPeptide(2)
+    expect(view.peptidePanel).toBe(2)
+    expect(view.peptides.selected).toBe(2)
+    expect(view.peptides.filters.proteinFilter).toBeUndefined()
+    expect(view.psms.filters.proteinFilter).toBeUndefined()
+    expect(view.psms.filters.peptideFilter).toBeUndefined()
+    view.closePeptide()
+    expect(view.peptidePanel).toBeNull()
+    expect(view.peptides.selected).toBe(2) // the row stays selected
+    for (const row of [-1, 5, 1.5, NaN]) view.openPeptide(row)
+    expect(view.peptidePanel).toBeNull()
+  })
+
+  it('once narrowed, the narrowing follows the protein and the peptide that open, and keeps the other filters', () => {
+    const view = resultsViewFor(result(1, 1))
+    view.narrowTo({ protein: 0 }, 'peptides')
+    view.openPeptide(0)
+    view.narrowTo({ peptide: 0 })
+    view.psms.filters.maxQ = 0.5
+    view.openPsm(1)
+
+    // another protein: both tables follow, the peptide of the old one goes, and what it hides closes
+    view.openProtein(1)
+    expect(view.peptides.filters.proteinFilter).toBe(1)
+    expect(view.psms.filters).toMatchObject({ proteinFilter: 1, peptideFilter: undefined, maxQ: 0.5 })
+    expect(Array.from(view.psms.rows)).toEqual([4, 5, 6])
+    expect(view.peptidePanel).toBeNull()
+    expect(view.psm).toBeNull()
+    // the same protein again changes nothing
+    view.psms.filters.text = 'q'
+    view.openProtein(1)
+    expect(view.psms.filters.text).toBe('q')
+    view.psms.filters.text = ''
+
+    // a contaminant: its rows show
+    expect(view.psms.filters.hideContaminants).toBe(true)
+    view.openProtein(2)
+    expect(view.psms.filters).toMatchObject({ proteinFilter: 2, hideContaminants: false })
+    expect(Array.from(view.psms.rows)).toEqual([7])
+
+    // the PSM table narrowed to a peptide follows the peptide that opens
+    view.openProtein(0)
+    view.narrowTo({ peptide: 0 })
+    view.openPeptide(1)
+    expect(view.psms.filters).toMatchObject({ proteinFilter: 0, peptideFilter: 1 })
+    expect(Array.from(view.psms.rows)).toEqual([3])
+  })
+
+  it('goes up from a PSM to its peptide and from a peptide to its protein, lifting the filters that hide them', () => {
+    const view = resultsViewFor(result(1, 1))
+    view.peptides.filters.text = 'zzz'
+    view.showPeptide(2)
+    expect(view.tab).toBe('peptides')
+    expect(view.peptidePanel).toBe(2)
+    expect(view.peptides.selected).toBe(2)
+    expect(view.peptides.filters.text).toBe('')
+    // a filter that lets it through stays
+    view.peptides.filters.maxQ = 0.5
+    view.showPeptide(2)
+    expect(view.peptides.filters.maxQ).toBe(0.5)
+
+    expect(view.proteinOf(2)).toBe(1)
+    view.proteins.filters.text = 'zzz'
+    view.proteins.filters.minPeptides = 5
+    view.showProtein(1)
+    expect(view.tab).toBe('proteins')
+    expect(view.panel).toBe(1)
+    expect(view.proteins.filters).toMatchObject({ text: '', minPeptides: 0 })
+    expect(view.proteins.rows.includes(1)).toBe(true)
+    // a contaminant and a decoy show
+    view.showProtein(2)
+    expect(view.proteins.filters.hideContaminants).toBe(false)
+    view.showPeptide(4)
+    expect(view.peptides.filters.showDecoys).toBe(true)
+    expect(view.peptidePanel).toBe(4)
+    // what is none of them goes nowhere
+    view.tab = 'psms'
+    view.showProtein(99)
+    view.showPeptide(-1)
+    expect(view.tab).toBe('psms')
+  })
+
+  it('steps through the proteins and the peptides as through the PSMs: the rows of their tables', () => {
+    const view = resultsViewFor(result(1, 1))
+    const proteins = Array.from(view.proteins.rows)
+    expect(view.neighbours('proteins')).toEqual({ prev: null, next: null, position: -1, count: proteins.length })
+    view.openProtein(proteins[0])
+    expect(view.neighbours('proteins')).toEqual({ prev: null, next: proteins[1], position: 0, count: proteins.length })
+    view.step('proteins', 1)
+    expect(view.panel).toBe(proteins[1])
+    expect(view.proteins.selected).toBe(proteins[1])
+    view.step('proteins', 1) // nothing after the last
+    expect(view.panel).toBe(proteins[1])
+
+    const peptides = Array.from(view.peptides.rows)
+    view.openPeptide(peptides[1])
+    expect(view.neighbours('peptides')).toMatchObject({ prev: peptides[0], next: peptides[2], position: 1 })
+    view.step('peptides', -1)
+    expect(view.peptidePanel).toBe(peptides[0])
+    expect(view.peptides.selected).toBe(peptides[0])
+    expect(view.openRow('peptides')).toBe(peptides[0])
+  })
+})
+
 describe('the PSM view', () => {
   it('opens a PSM of the PSM table; Prev and Next follow the rows of the table, as sorted and filtered', () => {
     const view = resultsViewFor(result(1, 1))
     // by q-value; 7 (a contaminant) and 8 (a decoy) are hidden
     expect(Array.from(view.psms.rows)).toEqual([1, 3, 0, 4, 5, 6, 2])
     view.openPsm(3)
-    expect(view.psm).toEqual({ row: 3, origin: { kind: 'psms' } })
+    expect(view.psm).toEqual({ row: 3 })
     expect(view.tab).toBe('psms')
     expect(view.psms.selected).toBe(3)
     expect(view.psmNeighbours).toEqual({ prev: 1, next: 0, position: 1, count: 7 })
@@ -320,55 +456,79 @@ describe('the PSM view', () => {
     expect(view.psm?.row).toBe(4)
     expect(view.psmNeighbours).toEqual({ prev: null, next: null, position: -1, count: 1 })
 
-    expect(view.closePsm()).toEqual({ kind: 'psms' })
+    view.closePsm()
     expect(view.psm).toBeNull()
     expect(view.tab).toBe('psms')
     expect(view.psms.selected).toBe(4)
   })
 
-  it('opens a PSM of the protein panel among the PSMs of its peptide, and restores the PSM table when it closes', () => {
+  it('opens a PSM of the protein panel among the PSMs of its peptide; the table stays narrowed, and its chips widen it with the PSM still open', () => {
     const view = resultsViewFor(result(1, 1))
     view.openProtein(0)
     view.panelPeptide = 0
     view.psms.filters.text = 'zzz'
     view.psms.filters.maxQ = 0.005
-    const before = { ...view.psms.filters }
 
     view.openPsmFromPanel(0, 0) // PSM 0 of peptide 0 (M[Oxidation]KWVTF of ALBU)
     expect(view.tab).toBe('psms')
-    expect(view.psm).toMatchObject({ row: 0, origin: { kind: 'panel', protein: 0, peptide: 0 } })
+    expect(view.psm).toEqual({ row: 0 })
     expect(view.psms.filters).toMatchObject({ proteinFilter: 0, peptideFilter: 0, text: '', maxQ: 1 })
+    // (the Peptides table shares the protein)
+    expect(view.peptides.filters.proteinFilter).toBe(0)
     expect(Array.from(view.psms.rows)).toEqual([1, 0, 2])
-    expect(view.psmNeighbours).toMatchObject({ prev: 1, next: 2 })
+    expect(view.psmNeighbours).toMatchObject({ prev: 1, next: 2, position: 1, count: 3 })
 
-    expect(view.closePsm()?.kind).toBe('panel')
-    expect(view.tab).toBe('proteins')
+    // the peptide's chip: all PSMs of the protein, the PSM still open, among other neighbours
+    view.widen('peptide')
+    expect(view.psm).toEqual({ row: 0 })
+    expect(Array.from(view.psms.rows)).toEqual([1, 3, 0, 2])
+    expect(view.psmNeighbours).toMatchObject({ prev: 3, next: 2, position: 2, count: 4 })
+    // the protein's chip: every PSM again, in both tables
+    view.widen('protein')
+    expect(view.psms.filters.proteinFilter).toBeUndefined()
+    expect(view.peptides.filters.proteinFilter).toBeUndefined()
+    expect(Array.from(view.psms.rows)).toEqual([1, 3, 0, 4, 5, 6, 2])
+    expect(view.psm).toEqual({ row: 0 })
+    expect(view.psmNeighbours).toMatchObject({ prev: 3, next: 4 })
+
+    // closing leaves the tab and the table as they are; the protein's panel is as it was, on its tab
+    view.closePsm()
+    expect(view.psm).toBeNull()
+    expect(view.tab).toBe('psms')
+    expect(view.psms.selected).toBe(0)
     expect(view.panel).toBe(0)
-    expect(view.panelPeptide).toBe(0) // the panel shows the peptide as it was
-    expect(view.psms.filters).toEqual(before)
+    expect(view.panelPeptide).toBe(0)
 
     // from the panel's PSMs tab: all PSMs of the protein
     view.openPsmFromPanel(3, null) // TFISLL of ALBU
     expect(view.psms.filters).toMatchObject({ proteinFilter: 0, peptideFilter: undefined })
     expect(Array.from(view.psms.rows)).toEqual([1, 3, 0, 2])
-    view.closePsm()
 
     // another protein forgets the open peptide
     view.openProtein(1)
     expect(view.panelPeptide).toBeNull()
   })
 
-  it('closes when the user goes elsewhere: a protein, a filter of the PSM table', () => {
+  it('stays open while another tab shows; closes when a narrowing hides it', () => {
     const view = resultsViewFor(result(1, 1))
     view.openPsm(0)
+    // nothing is narrowed: a protein that opens on its tab leaves the PSM open on its own
+    view.tab = 'proteins'
     view.openProtein(1)
-    expect(view.psm).toBeNull()
-    view.openPsm(0)
+    expect(view.psm).toEqual({ row: 0 })
+    // the PSM table narrowed to a peptide that is not the PSM's: it closes
     view.filterBy({ peptide: 2 })
     expect(view.psm).toBeNull()
+    // narrowed to what the PSM is of: it stays
+    view.openPsm(4)
+    view.filterBy({ protein: 1 })
+    expect(view.psm).toEqual({ row: 4 })
+    view.closePsm()
     // what is no PSM opens nothing
     view.openPsm(99)
     view.openPsmFromPanel(-1, null)
+    view.openPsmIn(0, { protein: 99 })
+    view.openPsmIn(0, { peptide: -1 })
     expect(view.psm).toBeNull()
   })
 

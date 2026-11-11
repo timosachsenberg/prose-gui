@@ -1,7 +1,7 @@
 <script lang="ts">
   // The PSMs of the open result (the best hit of each spectrum). An open search's mass shift above
   // 0.05 Da goes before the sequence as an unlocalized ProForma mass ("[+15.9949]?"). A row opens the
-  // PSM view (`onOpen`); while it is open, the table stands under its spectrum (`follow`: the arrow keys
+  // PSM view (`onOpen`); while it is open, the table stands above it, a few rows high (`follow`: the arrow keys
   // go through the PSMs, the view showing each). `compact` makes it a narrow list (peptide, charge, sample,
   // q-value and precursor error). A decoy PSM and that of a co-isolated
   // precursor (a search with chimeric:enabled) are marked after the peptide. The Curation column shows the user's
@@ -25,6 +25,7 @@
     compact = false,
     follow = false,
     onOpenProtein,
+    onBack,
   }: {
     view: ResultsView
     level: LevelState
@@ -32,6 +33,8 @@
     compact?: boolean
     follow?: boolean
     onOpenProtein?: (protein: number) => void
+    /** Backspace: up to the peptide of the PSM. */
+    onBack?: () => void
   } = $props()
 
   const m = $derived(view.model)
@@ -164,4 +167,5 @@
   selected={level.selected}
   autoMinWidth={compact ? 80 : 220}
   followFocus={follow}
+  {onBack}
   empty={level.emptyText} />

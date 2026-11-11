@@ -2,12 +2,13 @@
 /// <reference types="node" />
 // The PSM view on the app's example (src/lib/results/fixtures/example: a search of the pinned ProSE with PeptDeep):
 // the fragment mass errors of every annotated ion shown (any ion type, charge, loss, the precursor), in the colours of
-// the spectrum, and the strip collapsed; the PSM table under the spectrum; the tools Measure (Δm/z, the residue it may
-// be) and Label (texts of one's own on peaks), their keys, and what of them the SVG export has.
+// the spectrum, and the strip collapsed; the ways up to the PSM's peptide and protein, and its place in the PSM table;
+// the features and the ion table beside the spectrum; the tools Measure (Δm/z, the residue it may be) and Label
+// (texts of one's own on peaks), their keys, and what of them the SVG export has.
 import { readFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
-import { createRawSnippet, flushSync, mount, tick, unmount } from 'svelte'
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
+import { flushSync, mount, tick, unmount } from 'svelte'
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { input } from '../../design/fixtures'
 import { resolveDesign } from '../../design/model'
 import { bytesOfRange, FileNotFound, readSearch } from '../../results/read'
@@ -76,10 +77,10 @@ describe('the PSM view', () => {
 
   async function show(sequence: string, props: Record<string, unknown> = {}) {
     const view = resultsViewFor(await open())
-    view.psm = { row: rowOf(view, sequence), origin: { kind: 'psms' } }
+    view.psm = { row: rowOf(view, sequence) }
     const target = document.createElement('div')
     document.body.append(target)
-    shown = mount(PsmView, { target, props: { view, onClose: () => {}, onBreadcrumb: () => {}, ...props } })
+    shown = mount(PsmView, { target, props: { view, onClose: () => {}, onUp: () => {}, ...props } })
     flushSync()
     await settle(target)
     return { view, target, text: (id: string) => target.querySelector(`[data-testid="${id}"]`)?.textContent?.replace(/\s+/g, ' ').trim() ?? null }
@@ -166,14 +167,55 @@ describe('the PSM view', () => {
     }
   })
 
-  it('shows the PSM table it is given right under the spectrum, above the ion table', async () => {
-    const list = createRawSnippet(() => ({ render: () => '<div data-testid="the-table">PSMs</div>' }))
-    const { target } = await show(PSM, { list })
-    const box = target.querySelector('[data-testid="psm-list"]')!
-    expect(box.querySelector('[data-testid="the-table"]')).not.toBeNull()
+  it('goes up to the PSM\'s peptide and to its protein, and says where the PSM is among the rows of the table', async () => {
+    const onUp = vi.fn()
+    const { view, target, text } = await show(PSM, { onUp })
+    const row = view.psm!.row
+    const k = view.model.tables.psms.peptide[row]
+    const [peptide, protein] = Array.from(target.querySelectorAll<HTMLButtonElement>('[data-testid="psm-up"] button'))
+    expect(peptide.textContent).toContain(PSM)
+    peptide.click()
+    expect(onUp).toHaveBeenLastCalledWith({ peptide: k })
+    protein.click()
+    expect(onUp).toHaveBeenLastCalledWith({ protein: view.proteinOf(k) })
+    // its place among the rows of the PSM table, which Prev and Next go through
+    const position = view.psms.rows.indexOf(row)
+    expect(text('detail-position')).toBe(`${position + 1} of ${view.psms.rows.length}`)
+    // a filter that hides it: it stays open, and says so
+    view.psms.filters.text = 'no such peptide'
+    flushSync()
+    expect(text('detail-position')).toBe('not in the table')
+  })
+
+  it('has the features and the ion table beside the spectrum, one at a time, in a column that its button shows and hides', async () => {
+    const { target } = await show(PSM)
+    const side = target.querySelector('[data-testid="psm-side"]')!
     const order = (a: Element, b: Element) => a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING
-    expect(order(target.querySelector('[data-testid="spectrum"]')!, box)).toBeTruthy()
-    expect(order(box, target.querySelector('[data-testid="ion-table"]')!)).toBeTruthy()
+    expect(order(target.querySelector('[data-testid="spectrum"]')!, side)).toBeTruthy()
+    // (no layout here: the view is not wide, so the column is closed until asked for; the choice is kept)
+    const toggle = target.querySelector<HTMLButtonElement>('[data-testid="psm-side-toggle"]')!
+    try {
+      expect(side.classList.contains('hidden')).toBe(true)
+      expect(toggle.getAttribute('aria-expanded')).toBe('false')
+      toggle.click()
+      flushSync()
+      expect(side.classList.contains('hidden')).toBe(false)
+      expect(toggle.getAttribute('aria-expanded')).toBe('true')
+      expect(displaySettings.psmSide).toBe(true)
+      toggle.click()
+      flushSync()
+      expect(side.classList.contains('hidden')).toBe(true)
+      expect(displaySettings.psmSide).toBe(false)
+    } finally {
+      displaySettings.psmSide = null
+    }
+    expect(side.querySelector('[data-testid="psm-features"]')).not.toBeNull()
+    expect(side.querySelector('[data-testid="ion-table"]')).toBeNull()
+    target.querySelector<HTMLButtonElement>('[data-testid="psm-side-fragments"]')!.click()
+    flushSync()
+    expect(side.querySelector('[data-testid="ion-table"]')).not.toBeNull()
+    expect(side.querySelector('[data-testid="psm-features"]')).toBeNull()
+    expect(target.querySelector('[data-testid="psm-side-fragments"]')!.getAttribute('aria-selected')).toBe('true')
   })
 
   it('accepts and rejects the PSM by its buttons and by A and R; again takes the mark away', async () => {
@@ -232,13 +274,13 @@ describe("the PSM view's tools: Measure and Label", () => {
 
   async function show(sequence: string, onClose: () => void = () => {}) {
     const view = resultsViewFor(await open())
-    view.psm = { row: rowOf(view, sequence), origin: { kind: 'psms' } }
+    view.psm = { row: rowOf(view, sequence) }
     const target = document.createElement('div')
     document.body.append(target)
-    shown = mount(PsmView, { target, props: { view, onClose, onBreadcrumb: () => {} } })
+    shown = mount(PsmView, { target, props: { view, onClose, onUp: () => {} } })
     flushSync()
     await settle(target)
-    const { mz } = spectrumOf(await view.result.outcome.spectra.load(view.psm.row))
+    const { mz } = spectrumOf(await view.result.outcome.spectra.load(view.psm!.row))
     return { view, target, mz }
   }
 
@@ -390,11 +432,11 @@ describe("the PSM view's tools: Measure and Label", () => {
     clickAt(target, peakAt(target, b))
     const row = view.psm!.row
     const other = rowOf(view, OTHER)
-    view.psm = { row: other, origin: { kind: 'psms' } }
+    view.psm = { row: other }
     flushSync()
     await settle(target)
     expect(target.querySelectorAll('[data-testid="measurement"]')).toHaveLength(0)
-    view.psm = { row, origin: { kind: 'psms' } }
+    view.psm = { row }
     flushSync()
     await settle(target)
     expect(target.querySelectorAll('[data-testid="measurement"]')).toHaveLength(1)
@@ -557,7 +599,7 @@ describe("the PSM view's tools: Measure and Label", () => {
     clickAt(target, peakAt(target, pairOf(mz)[0]))
     expect(hint()?.textContent).toContain('second peak')
     expect(hint()?.className).toBe(width)
-    view.psm = { row: rowOf(view, OTHER), origin: { kind: 'psms' } }
+    view.psm = { row: rowOf(view, OTHER) }
     flushSync()
     expect(hint()?.textContent).toBe('Click two peaks for their Δm/z')
     await settle(target)
