@@ -102,7 +102,8 @@ test.describe('example', () => {
     expect(text).toContain(`Precursor charges ${S('min_charge')} to ${S('max_charge')} were searched`)
     expect(text).toContain(`${S('fixed_modifications')} was set as a fixed modification`)
     expect(text.includes('PSMs were rescored with Percolator')).toBe(f.runs.some((r) => r.rescored))
-    expect(text).toContain(`PSMs were filtered at ${FIXTURE_PSM_FDR * 100}% PSM-level FDR`)
+    // (the FDR the search recorded, not the cutoff the dev hook opens the fixture with)
+    expect(text).toContain(`PSMs were filtered at ${Number(f.fdr.get('psm_fdr')) * 100}% PSM-level FDR`)
     expect(text).toContain('No peptide-level FDR was applied')
     expect(text).toContain(f.fdr.get('protein_fdr_applied') === 'true' ? 'protein-level FDR with the picked-protein approach' : 'No protein-level FDR was applied')
     // the references, numbered as cited; Copy and Export › Methods section have the same text
