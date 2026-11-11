@@ -100,7 +100,7 @@ setup files, kept in `recent-setups.json` of the app's data folder), Save Setup 
 Folder…, Import Results Archive (.prose)…, Export ▸ (CSV, Excel, idXML, Methods section, Results archive; only with a result open,
 CSV and Excel only on a table), Close Window ⌘W. **Edit**: the system's Undo, Redo, Cut, Copy, Paste, Select All (Linux's menus have no predefined Undo and Redo: there Edit has none, and Window's Minimize and Maximize are the app's own).
 **View**: New Search, Results, History, Help (⇧⌘1–4), Theme ▸ System/Light/Dark, full screen. **Window**: Minimize,
-Zoom. **Help**: ProSE Help, Troubleshooting, Keyboard Shortcuts (⌘/), ProSE Web App, Report an Issue (links open in
+Zoom. **Help**: ProSE Help, Troubleshooting, Keyboard Shortcuts (⌘/), Report an Issue (the link opens in
 the browser). A click on an item is the event `menu://action` to the page (`src/lib/menu.svelte.ts`), which does what
 its own buttons do; the page's ⇧⌘1–4 handler leaves those keys to the menu in the desktop app and keeps them in the
 browser. Close Window and Exit close as the window's close button does: a running search, or unsaved changes to the opened

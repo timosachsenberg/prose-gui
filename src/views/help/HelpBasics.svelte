@@ -62,7 +62,7 @@
     <li><b>File</b>: New Search (⌘N: an empty setup, not part of the setup file you had open; Undo under the file list brings the files back, and unsaved changes to that file are asked about first); Open Setup (⌘O), Open Recent, Save Setup (⌘S), Save Setup As (⇧⌘S); Open QPX Folder; Import Results Archive (.prose); Export (CSV, Excel, idXML, Results archive) with a result open; Close Window (⌘W).</li>
     <li><b>Edit</b>: Undo, Redo, Cut, Copy, Paste and Select All, for the text fields (on Linux without Undo and Redo, which Ctrl+Z and Ctrl+⇧Z do in the field).</li>
     <li><b>View</b>: New Search, Results, History and Help (⇧⌘1 to ⇧⌘4); Theme (System, Light, Dark); full screen.</li>
-    <li><b>Window</b>: Minimize and Zoom (Maximize on Windows and Linux). <b>Help</b>: this Help, Troubleshooting, Keyboard Shortcuts (⌘/), the ProSE web app, and Report an Issue (GitHub, in your browser).</li>
+    <li><b>Window</b>: Minimize and Zoom (Maximize on Windows and Linux). <b>Help</b>: this Help, Troubleshooting, Keyboard Shortcuts (⌘/), and Report an Issue (GitHub, in your browser).</li>
   </ul>
   <p>Closing the window while a search runs, or with changes to the opened setup that are not saved, asks first, from the menu as from the window's close button.</p>
 </section>

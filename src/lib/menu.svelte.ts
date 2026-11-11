@@ -17,7 +17,6 @@ import { shortcuts } from './shortcuts.svelte'
 import { theme } from './theme/theme.svelte'
 import type { ThemePreference } from './theme/theme'
 
-export const WEB_APP_URL = 'https://timosachsenberg.github.io/prose-web/'
 export const ISSUES_URL = 'https://github.com/timosachsenberg/prose-gui/issues'
 
 /** The result open in Results, if Results shows one. */
@@ -60,8 +59,6 @@ export async function menuAction(id: string): Promise<void> {
     case 'help-shortcuts':
       shortcuts.open = true
       return
-    case 'help-webapp':
-      return attempt('Opening the link', () => openUrl(WEB_APP_URL))
     case 'help-issue':
       return attempt('Opening the link', () => openUrl(ISSUES_URL))
     case 'open-setup':

@@ -11,7 +11,7 @@
 //! The page's ids: `new-search`, `open-setup`, `save-setup`, `save-setup-as`, `open-qpx`, `import-results`,
 //! `export-csv`, `export-xlsx`, `export-idxml`, `export-methods`, `export-archive`, `view-search`, `view-results`, `view-history`,
 //! `view-help`, `theme-system`, `theme-light`, `theme-dark`, `help`, `help-troubleshooting`, `help-shortcuts`,
-//! `help-webapp`, `help-issue`, and `recent:<n>` (the n-th recent setup, `setup_file::recent`).
+//! `help-issue`, and `recent:<n>` (the n-th recent setup, `setup_file::recent`).
 
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -226,7 +226,6 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<(Menu<R>, MenuHand
             Some("CmdOrCtrl+/"),
         )?)
         .separator()
-        .item(&item(app, "help-webapp", "ProSE Web App", None)?)
         .item(&item(app, "help-issue", "Report an Issue…", None)?);
     if !mac {
         help = help.separator().item(&about);
