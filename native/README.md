@@ -391,7 +391,8 @@ artifact `prose-desktop-linux`) and arm64 on `ubuntu-22.04-arm`, GitHub's arm64 
 (`arm64-linux-dynamic`, OpenMS's own arm64 triplet, which builds OpenBLAS for any ARMv8 CPU; artifact
 `prose-desktop-linux-arm64`). Both are Ubuntu 22.04, so both packages need glibc 2.35. Each job
 checks out OpenMS at `OPENMS_COMMIT`, builds the vcpkg dependencies (a configure step of their own, saved before
-OpenMS is built, as on macOS and Windows) and libOpenMS and ProSE with GCC 13 (toolchain PPA) through
+OpenMS is built, as on macOS and Windows) and libOpenMS and ProSE with GCC 13 (`scripts/gcc13.sh install`: the
+toolchain PPA's packages from the repository's own copy, "GCC 13" below) through
 `build-openms.sh`, on x64 with GNU as 2.42 built from source for it (ONNX Runtime's AVX-NE-CONVERT code needs
 as >= 2.40, Ubuntu 22.04 has 2.38; GCC gets it through `COMPILER_PATH`; MLAS's arm64 code needs nothing newer),
 bundles ProSE, runs svelte-check, vitest and `cargo test` (with the bundled ProSE, so the `real_prose` tests run
@@ -402,7 +403,7 @@ architecture: Tauri's own downloads).
 
 Caches (`actions/cache`) belong to the ref that saved them and are readable from that ref and the default branch
 (`main`) only. The runs of `main` share them, per runner and triplet: the bundled ProSE (key:
-the pin, the triplet and the two scripts), so OpenMS is only built when one of them changes, and vcpkg's binary cache (key: the pin and the
+the pin, the triplet and the two scripts, on Linux also the lock of GCC 13), so OpenMS is only built when one of them changes, and vcpkg's binary cache (key: the pin and the
 triplet, plus the hash of its content, so the packages built before a failure are kept; restored from an earlier
 pin's when the pin moves). vcpkg's asset cache holds what vcpkg downloads (the ports' sources, its tools;
 `X_VCPKG_ASSET_SOURCES` points vcpkg at it, `x-azurl,file://…,,readwrite`): one per system
@@ -458,11 +459,15 @@ runs:
 - `scripts/gcc13.sh install` installs the packages of the machine's architecture with apt: from the release, or,
   when that cannot be had, from Launchpad's pool; either way only files with the lock's size and SHA-256, and no
   source at Launchpad is added to apt. The other packages GCC needs (binutils, libc6-dev, libisl, libmpc, ...) are
-  Ubuntu's own.
+  Ubuntu's own. The `linux` job of `desktop.yml` installs GCC 13 with it when it has to build OpenMS, and the lock
+  is part of the key of its bundle cache: a new lock builds OpenMS again, with the new compiler.
 
 To move to newer packages of the PPA: run `native/scripts/toolchain_lock.py` (it needs gpgv and Launchpad; the lock
-gets a new release name), open a pull request with the lock (its run of "Toolchain packages" installs the new files
-on both runners), and after the merge run "Toolchain packages" on `main`.
+gets a new release name), open a pull request with the lock, and after the merge run "Toolchain packages" on `main`.
+The pull request's run of "Toolchain packages" installs the new files on both runners, and its Linux jobs build
+OpenMS with them. Until the release of the new lock is published, `gcc13.sh` takes the files from Launchpad's pool
+(with a warning), so that pull request and `main`'s run of its merge need Launchpad, as the new packages themselves
+do.
 
 The sources are in the release because GCC is under the GPL (its runtime libraries with the GCC Runtime Library
 Exception): whoever passes the packages on has to offer their source with them.
