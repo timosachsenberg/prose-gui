@@ -10,7 +10,8 @@
 # commit (a tag run builds nothing: it releases the packages that main's run built and tested).
 #
 # Caches (actions/cache), per platform: the bundled ProSE (src-tauri/resources/prose), keyed by the pin and
-# the scripts and licence files that make it, so OpenMS is built only when one of them changes; vcpkg's binary cache, keyed by
+# the scripts and licence files that make it (on Linux also the lock of GCC 13, the compiler),
+# so OpenMS is built only when one of them changes; vcpkg's binary cache, keyed by
 # the pin and the triplet (plus the hash of its content when saved), so a rebuild of OpenMS does not rebuild
 # its dependencies; vcpkg's asset cache, the sources and tools it downloads, one per system for any pin, so a
 # dependency rebuilt from source does not need its download site; on macOS and Windows ccache's objects of
@@ -86,7 +87,8 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: src-tauri/resources/prose
-          key: prose-bundle-v1-${{ matrix.runner }}-${{ env.TRIPLET }}-${{ steps.pin.outputs.commit }}-${{ hashFiles('native/scripts/build-openms.sh', 'native/scripts/bundle-prose.sh', 'native/licenses/**') }}
+          # (the lock of GCC 13: the compiler that builds OpenMS, and the runtime libraries the bundle carries)
+          key: prose-bundle-v1-${{ matrix.runner }}-${{ env.TRIPLET }}-${{ steps.pin.outputs.commit }}-${{ hashFiles('native/scripts/build-openms.sh', 'native/scripts/bundle-prose.sh', 'native/licenses/**', 'native/toolchain/jammy-gcc13.lock') }}
 
       - name: System packages
         run: |
@@ -105,24 +107,15 @@ jobs:
           # (dotnet stays: the Thermo RAW bridge of OpenMS builds with it, native/scripts/build-openms.sh)
           sudo rm -rf /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/.ghcup
           df -h /
-          # OpenMS needs GCC 13 (C++23); Ubuntu 22.04 has GCC 11 and 12. The PPA comes through Launchpad's older
-          # front end, ppa.launchpad.net, which kept serving while ppa.launchpadcontent.net answered 503 for hours
-          # (apt checks the PPA's signature either way); apt retries each download, and the install is tried
-          # again for up to half an hour.
-          echo 'Acquire::Retries "20";' | sudo tee /etc/apt/apt.conf.d/80-retries
-          sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
-          sudo sed -i 's|https://ppa.launchpadcontent.net/|http://ppa.launchpad.net/|' /etc/apt/sources.list.d/*toolchain*
-          grep -h '^deb ' /etc/apt/sources.list.d/*toolchain*
-          for attempt in 1 2 3 4 5 6 7; do
-            sudo apt-get update
-            if sudo apt-get install -y --no-install-recommends gcc-13 g++-13 \
-              autoconf autoconf-archive automake libtool ninja-build pkg-config bison flex curl zip unzip tar; then
-              break
-            fi
-            [ "$attempt" -lt 7 ] || exit 1
-            echo "::warning::GCC 13 from the toolchain PPA failed (attempt $attempt); trying again in 5 minutes"
-            sleep 300
-          done
+          # OpenMS needs GCC 13 (C++23); Ubuntu 22.04's archive ends at GCC 12. GCC 13 is the toolchain PPA's build
+          # for 22.04: the files native/toolchain/jammy-gcc13.lock names, taken from the repository's own copy of
+          # them (a release, which toolchain.yml makes) and not from Launchpad, which was out of reach for hours
+          # more than once. Only when that copy cannot be had do the same files come from Launchpad's pool
+          # (native/README.md, "GCC 13"). The other tools are Ubuntu's own.
+          echo 'Acquire::Retries "3";' | sudo tee /etc/apt/apt.conf.d/80-retries
+          native/scripts/gcc13.sh install
+          sudo apt-get install -y --no-install-recommends \
+            autoconf autoconf-archive automake libtool ninja-build pkg-config bison flex curl zip unzip tar
           uname -m
           nproc
           free -g
