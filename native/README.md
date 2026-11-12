@@ -433,3 +433,36 @@ tags `main`'s head (after checking that the version is `main`'s and that `main`'
 release job on the tag. With `publish` checked it waits for the release job and then publishes the draft: a whole
 release in one run. Before that, the version is set on `main` with `node scripts/bump-version.mjs <version>` (through a
 pull request). The steps for a Claude session are in `CLAUDE.md`, "Releasing".
+
+### GCC 13 (`toolchain/`, `scripts/gcc13.sh`)
+
+OpenMS needs GCC 13 (C++23). The Linux packages are built on Ubuntu 22.04, whose own archive ends at GCC 12; GCC 13
+for 22.04 is built only in Ubuntu's toolchain PPA (`ppa:ubuntu-toolchain-r/test`, on Launchpad), and Launchpad was
+out of reach for hours more than once (on the day of 0.7.0 for more than four hours: every Linux build that had to
+compile OpenMS waited for it). So the repository keeps its own copy of those packages, on GitHub, where the build
+runs:
+
+- `toolchain/jammy-gcc13.lock` names the files: the packages that `apt-get install gcc-13 g++-13` takes from the
+  PPA on GitHub's runners (GCC 13 itself, and the newer runtime libraries it asks for, libstdc++6, libgcc-s1,
+  libgomp1 and the others, which the PPA builds from its newest GCC), for amd64 and arm64, and the source packages
+  they were built from, each with its size and SHA-256; and the name of the release that holds them.
+  `scripts/toolchain_lock.py` writes it from the PPA's index, after checking the index's signature against the
+  PPA's key (`toolchain/ubuntu-toolchain-r-test.asc`).
+- The release (`toolchain-jammy-gcc13-<date of the PPA's index>`) holds them as three tar files (amd64, arm64,
+  source), as a pre-release, which is never "the latest release" (that is the app's). Actions › "Toolchain packages"
+  (`.github/workflows/toolchain.yml`), run on `main`, makes it: it takes the lock's files from Launchpad's pool,
+  checks them, installs them on both Linux runners, compiles and runs a C++23 program with OpenMP
+  (`toolchain/test.cpp`), publishes, and installs once more from the release. A release is never changed: when
+  the one the lock names exists, the run checks its files against the lock and installs from it. A pull request
+  that changes the lock, the script or the workflow runs it without publishing.
+- `scripts/gcc13.sh install` installs the packages of the machine's architecture with apt: from the release, or,
+  when that cannot be had, from Launchpad's pool; either way only files with the lock's size and SHA-256, and no
+  source at Launchpad is added to apt. The other packages GCC needs (binutils, libc6-dev, libisl, libmpc, ...) are
+  Ubuntu's own.
+
+To move to newer packages of the PPA: run `native/scripts/toolchain_lock.py` (it needs gpgv and Launchpad; the lock
+gets a new release name), open a pull request with the lock (its run of "Toolchain packages" installs the new files
+on both runners), and after the merge run "Toolchain packages" on `main`.
+
+The sources are in the release because GCC is under the GPL (its runtime libraries with the GCC Runtime Library
+Exception): whoever passes the packages on has to offer their source with them.
