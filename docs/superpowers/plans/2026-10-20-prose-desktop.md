@@ -17,8 +17,8 @@ parser, `fflate` (project zips), OpenMS ProSE (native, ONNX), WebKitGTK 4.1, tau
 
 ## Global Constraints
 
-- Branch `prose-desktop` (orphan), worktree `/scratch/sachsenb/prose-desktop`; the web app is only a source to copy
-  from: `/scratch/sachsenb/prose-pages/app` at branch `prose-app` (do not modify it).
+- Branch `prose-desktop` (orphan), worktree `<work>/prose-desktop`; the web app is only a source to copy
+  from: `<work>/prose-pages/app` at branch `prose-app` (do not modify it).
 - No own C++; OpenMS changes only as the ProSE option PR to `develop` (Task 2), drafted, OpenMS tags.
 - Rust dependencies limited to the five above (plus `std`); anything else needs a ledger ruling.
 - The look of the web app's latest version: same theme (`app/src/app.css`), components (`app/src/lib/components/ui`),
@@ -27,9 +27,9 @@ parser, `fflate` (project zips), OpenMS ProSE (native, ONNX), WebKitGTK 4.1, tau
 - Inputs `.mzML`, `.mzML.gz`; FASTA `.fasta`/`.fa`/`.faa`; files are read by path, never copied; nothing written into
   input folders; no network at run time; no orphaned ProSE processes.
 - OpenMS pin: `develop` + #10641 + the Task 2 PR, recorded in `native/OPENMS_COMMIT`.
-- Linux x64 first, target Ubuntu 22.04+ (release packages built in CI on `ubuntu-22.04`); development on ibminode06
-  with the user-space toolchain (`native/scripts/in-env.sh`, Rust in `/scratch/sachsenb/tools/rust`, sysroot
-  `/scratch/sachsenb/tools/tauri-sysroot`); Node 24.19.0 from `/scratch/sachsenb/emsdk/node/24.19.0_64bit/bin`.
+- Linux x64 first, target Ubuntu 22.04+ (release packages built in CI on `ubuntu-22.04`); development on a Linux server without root
+  with the user-space toolchain (`native/scripts/in-env.sh`, Rust in `<work>/tools/rust`, sysroot
+  `<work>/tools/tauri-sysroot`); Node 24.19.0 from `<work>/emsdk/node/24.19.0_64bit/bin`.
 - Absolute paths and `git -C` in shell commands (a leading `cd` may be dropped on this node).
 - Commits end with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 - Pushing the branch `prose-desktop` for CI is allowed; releases only after the user's go.
@@ -66,19 +66,19 @@ parser, `fflate` (project zips), OpenMS ProSE (native, ONNX), WebKitGTK 4.1, tau
 - [ ] **Step 1:** Copy the toolchain scripts; fix the deferred minors recorded for them: `in-env.sh` header comment
   about the sandbox, `build-openms.sh` "not in the container" line, `LIBGL_DRIVERS_PATH` only when the directory
   exists, a guard that `libc6`/`libgcc-s1`/`libstdc++6` never enter the sysroot, no abort when `webkit2gtk-driver` is
-  already installed, README note that `/scratch` is node-local.
+  already installed, README note that the tools folder is local to the host.
 - [ ] **Step 2:** Write `e2e/smoke.spec.ts`: `the window shows the ProSE top bar` (text `ProSE` and the nav items
   `New search`, `Results`, `History` visible).
 - [ ] **Step 3:** Run `native/scripts/in-env.sh e2e/run.sh e2e/smoke.spec.ts`. Expected: FAIL (no app).
 - [ ] **Step 4:** Scaffold the Tauri app with the web app's Vite/Tailwind/shadcn setup and its `TopBar` (static nav,
   no engine chip yet).
 - [ ] **Step 5:** Run the smoke test. Expected: PASS; take a screenshot `docs/screens/01-shell.png` and compare it by
-  eye with the web app's top bar (`/scratch/sachsenb/prose-app-screenshots/01-new-search-empty.png`).
+  eye with the web app's top bar (`<work>/prose-app-screenshots/01-new-search-empty.png`).
 - [ ] **Step 6:** Commit `desktop: scaffold, toolchain and the web app's shell`.
 
 ### Task 2: OpenMS — ProSE option for peaks and PeptDeep predictions, parity of outputs
 
-**Files (new OpenMS worktree `/scratch/sachsenb/openms-desktop` of the clone `/scratch/sachsenb/openms-pr10564`,
+**Files (new OpenMS worktree `<work>/openms-desktop` of the clone `<work>/openms-pr10564`,
 branch `claude/prose-qpx-spectra` from `origin/develop`):**
 - Modify: `src/topp/ProSE.cpp`, `src/openms/source/FORMAT/QPXFile.cpp` (+ header), the PeptDeep rescoring/prediction
   call site as needed; tests `src/tests/topp/` (new `TOPP_ProSE_<n>` with a Parquet check), class tests as needed
@@ -91,7 +91,7 @@ branch `claude/prose-qpx-spectra` from `origin/develop`):**
   per-file `peptdeep_nce` in the summary — predictions for every written PSM, also when PeptDeep rescoring is off
   (then calibrated as `PeptDeepRescoring` does).
 - Produces `docs/parity.md`: for every field of the web app's `ResultTables`, `StoredSpectra`, `ProSEMultiSummary`
-  (types in `/scratch/sachsenb/prose-pages/app/public/openms/openms.d.ts`), the ProSE output file and column it
+  (types in `<work>/prose-pages/app/public/openms/openms.d.ts`), the ProSE output file and column it
   comes from; fields with no source are added to this PR as small output additions or marked "derived in the UI"
   with the derivation.
 
@@ -100,8 +100,8 @@ branch `claude/prose-qpx-spectra` from `origin/develop`):**
 - [ ] **Step 2:** Write the TOPP test (example data of `TOPP_ProSE_11_rescore`, with and without
   `peptdeep:enable`): the new columns exist, `peak_mz` lengths equal the spectra's peak counts, predicted intensities
   are non-empty for every PSM with charge 1–6, values match `PeptDeepMS2Inference` for one PSM within 1e-5.
-- [ ] **Step 3:** Build natively (`native/scripts/build-openms.sh /scratch/sachsenb/openms-desktop
-  /scratch/sachsenb/openms-desktop/build`) and run it. Expected: FAIL.
+- [ ] **Step 3:** Build natively (`native/scripts/build-openms.sh <work>/openms-desktop
+  <work>/openms-desktop/build`) and run it. Expected: FAIL.
 - [ ] **Step 4:** Implement the option and the gap additions; merge `origin/claude/peptdeep-onnx-memory` (#10641) into
   a local integration branch `claude/prose-desktop-pin` = develop + #10641 + this branch, built for the app.
 - [ ] **Step 5:** Run the new test and `ctest -R "ProSE|PeptDeep|QPX|Percolator_test"`. Expected: PASS.
@@ -162,7 +162,7 @@ branch `claude/prose-qpx-spectra` from `origin/develop`):**
 
 - [ ] **Step 1:** Write tests: `the example reads as the web app's result` — counts and columns equal the web app's
   result of the same example (export it once from the web app's wasm module in Node with
-  `/scratch/sachsenb/wasm-logs/wasm64/packages-r2/wasm32` into `fixtures/web-example.json`; scores and q-values within
+  `<work>/wasm-logs/wasm64/packages-r2/wasm32` into `fixtures/web-example.json`; scores and q-values within
   1e-6, PeptDeep features 1e-5); `peaks and predictions belong to their PSM`; `reads a 150k-PSM fixture in under 3 s`
   (synthetic Parquet written by the test).
 - [ ] **Step 2:** Run `npx vitest run src/lib/results`. Expected: FAIL.
@@ -213,7 +213,7 @@ branch `claude/prose-qpx-spectra` from `origin/develop`):**
 - [ ] **Step 4:** Run `npx vitest run` and `npm run check`. Expected: PASS, 0 errors.
 - [ ] **Step 5:** Run the example through the app (e2e smoke extended: `the example search shows 1,790 PSMs`); take
   screenshots `docs/screens/` of New search, Results › Proteins, the protein panel, the PSM view, Overview, QC and
-  put them side by side with `/scratch/sachsenb/prose-app-screenshots/` (same window size 1440×900) in
+  put them side by side with `<work>/prose-app-screenshots/` (same window size 1440×900) in
   `docs/screens/compare.html`.
 - [ ] **Step 6:** Commit `desktop: the web app's screens on the ProSE tool`.
 
@@ -248,7 +248,7 @@ branch `claude/prose-qpx-spectra` from `origin/develop`):**
   project opens again with the same PSMs`, `cancel leaves nothing in History and the next search runs`, `a killed
   ProSE reports and the next search runs`, `closing the window ends ProSE`, `paths with spaces and umlauts`, `an
   mzML.gz searches like its mzML`, `a human semi-tryptic search without chunks finishes` (on-demand, env
-  `PROSE_BIG=1`, data `/scratch/sachsenb/prose-bench/data`).
+  `PROSE_BIG=1`, data `<work>/prose-bench/data`).
 - [ ] **Step 2:** Run `native/scripts/in-env.sh e2e/run.sh`. Fix what fails in the code that owns it.
 - [ ] **Step 3:** Run again. Expected: all pass (the on-demand one run once and reported).
 - [ ] **Step 4:** Commit `desktop: end-to-end tests`.

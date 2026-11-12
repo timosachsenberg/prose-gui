@@ -3,13 +3,14 @@
 // results-fixture-web.mjs with the web app's WebAssembly module (as the web app's engine calls it).
 //
 // The data: the app's example and cRAP (RESOURCES, default the app's src-tauri/resources) and OpenMS' TOPP test
-// data (OPENMS_TOPP, default the pin's `src/tests/topp`).
+// data (OPENMS_TOPP: `src/tests/topp` of an OpenMS checkout at the pin).
 
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const RESOURCES = process.env.RESOURCES ?? resolve(dirname(fileURLToPath(import.meta.url)), '../src-tauri/resources')
-const OPENMS_TOPP = process.env.OPENMS_TOPP ?? '/scratch/sachsenb/openms-desktop/src/tests/topp'
+// (without it, the cases that need the test data name files under this folder, which says what is missing)
+const OPENMS_TOPP = process.env.OPENMS_TOPP ?? 'OPENMS_TOPP-is-not-set'
 
 /** The peak filter of the shim (src-tauri/src/args.rs PEAK_WINDOW, PEAK_TOP). */
 export const PEAK_WINDOW = 100

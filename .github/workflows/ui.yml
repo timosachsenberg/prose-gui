@@ -30,6 +30,8 @@ jobs:
         with:
           node-version: 24
           cache: npm
+      # no path of a developer's machine or an internal server in the repository (scripts, docs, fixtures)
+      - run: node scripts/check-paths.mjs
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - run: npm run test:ui

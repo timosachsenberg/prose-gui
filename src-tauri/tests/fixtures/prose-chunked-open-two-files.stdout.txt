@@ -1,6 +1,6 @@
 [ProSE] open_search=true (precursor tolerance [-500, +500] Da)
-[ProSE] Loading /scratch/sachsenb/shimrun/c/1__DatabaseSuitability_1.mzML
-[ProSE] Loading /scratch/sachsenb/shimrun/c/2__DatabaseSuitability_2.mzML
+[ProSE] Loading /work/shimrun/c/1__DatabaseSuitability_1.mzML
+[ProSE] Loading /work/shimrun/c/2__DatabaseSuitability_2.mzML
 [ProSE] Chunk-major multi-file: 330 proteins, 4 chunks, 2 files.
 [ProSE] Chunk 1/4 (100 proteins)
 Generating peptides...
@@ -129,8 +129,8 @@ PTM statistics written to: oc/mods/2__DatabaseSuitability_2_ModificationAnalysis
 [ProSE] Running aggregate modification analysis on 2220 pooled PSM(s) from 2 input file(s).
 Delta mass statistics written to: oc/mods/_aggregate_across_files_ModificationAnalysis_DeltaMassStats.tsv
 PTM statistics written to: oc/mods/_aggregate_across_files_ModificationAnalysis_PTMStats.tsv
-No protein groups inferred for /scratch/sachsenb/shimrun/c/1__DatabaseSuitability_1.mzML — not writing oc/qpx/1__DatabaseSuitability_1.pg.parquet. Protein inference requires 'FDR:protein' > 0 with decoys, or '-out_merged' with several inputs.
-No protein groups inferred for /scratch/sachsenb/shimrun/c/2__DatabaseSuitability_2.mzML — not writing oc/qpx/2__DatabaseSuitability_2.pg.parquet. Protein inference requires 'FDR:protein' > 0 with decoys, or '-out_merged' with several inputs.
+No protein groups inferred for /work/shimrun/c/1__DatabaseSuitability_1.mzML — not writing oc/qpx/1__DatabaseSuitability_1.pg.parquet. Protein inference requires 'FDR:protein' > 0 with decoys, or '-out_merged' with several inputs.
+No protein groups inferred for /work/shimrun/c/2__DatabaseSuitability_2.mzML — not writing oc/qpx/2__DatabaseSuitability_2.pg.parquet. Protein inference requires 'FDR:protein' > 0 with decoys, or '-out_merged' with several inputs.
 Found score type q-value to be of type 5
 Building graph on 2220 spectra and 53 proteins.
 Progress of 'Building graph...':
@@ -142,7 +142,7 @@ Found 51 connected components.
 [ProSE] Merged protein inference + FDR: 51 proteins at 5% FDR
 
 [ProSE] ===================== Search Report =====================
-[ProSE] Database     : /scratch/sachsenb/shimrun/c/db.fasta  (165 target + 165 decoy proteins, decoys: generated)
+[ProSE] Database     : /work/shimrun/c/db.fasta  (165 target + 165 decoy proteins, decoys: generated)
 [ProSE] Config       : Trypsin, 1 MC | prec [-500, +500] Da | frag 20 ppm | z 2-5 | mode: open | chunked
 [ProSE] Fragment idx : 16507 peptides / 360075 fragments (build 0.0 s)
 [ProSE] -------------------------------------------------------------

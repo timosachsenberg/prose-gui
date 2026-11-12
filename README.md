@@ -227,10 +227,10 @@ licence, in `resources/notices/THIRD-PARTY-NOTICES.txt`; the ProSE tool's librar
 `resources/prose/share/OpenMS/LICENSES`. The example is OpenMS example data. OpenMS logo © OpenMS Inc., used with
 permission (the OpenMS Assets License, `src/assets/logo`).
 
-## Develop (ibminode06, no root)
+## Develop (Linux, no root needed)
 
 Everything runs inside the user-space toolchain of `native/scripts/in-env.sh` (Rust, the WebKitGTK 4.1 sysroot,
-Node 24.19.0, `tauri-driver`); see `native/README.md` for how it is built. `/scratch` is node-local and purged.
+Node 24.19.0, `tauri-driver`); see `native/README.md` for how it is built and where it lives (`PROSE_TOOLS`).
 
 ```bash
 npm install
@@ -248,10 +248,10 @@ repository or commit").
 Packages and their smoke test (needs the OpenMS build of `native/scripts/build-openms.sh`):
 
 ```bash
-native/scripts/bundle-prose.sh /scratch/sachsenb/openms-desktop/build src-tauri/resources/prose
+native/scripts/bundle-prose.sh <openms>/build src-tauri/resources/prose   # <openms>: the OpenMS checkout
 native/scripts/package-linux.sh                                    # .deb and AppImage
 native/scripts/smoke-appimage.sh src-tauri/target/release/bundle/appimage/ProSE_0.2.0_amd64.AppImage \
-  --hide-openms /scratch/sachsenb/openms-desktop/build
+  --hide-openms <openms>/build
 ```
 
 The browser UI tests (`e2e-web/`, Playwright with Chromium; any OS, no Tauri, CI workflow `ui`) drive the page

@@ -6,28 +6,29 @@ Tauri and Rust side, and a native OpenMS build that the C++ engine compiles agai
 
 ## Tauri toolchain without root
 
-The host (ibminode06, Ubuntu 24.04) has no Rust and no WebKitGTK development files, and there is
-no root. `/scratch` is node-local (ibminode06 only) and purged, so on another node, or after a
-purge, the toolchain below has to be rebuilt first (rustup and `cargo install` with network access,
-then `make-sysroot.sh`; the `.deb` cache is lost too). A container was tried first and does not work here: `apptainer build --fakeroot`, and
-`apptainer exec --writable --fakeroot` on a sandbox, both fail with `Could not write info to
-setgroups: Permission denied` (the user has no `/etc/subuid` entry, and
-`kernel.apparmor_restrict_unprivileged_userns = 1` blocks the root-mapped namespace). Plain
-`apptainer exec` works, but an image cannot be built. So the toolchain is installed in user space
-and `native/scripts/in-env.sh` puts it on the paths:
+This is for a development host without root: a Linux server (Ubuntu 24.04) that has no Rust and no
+WebKitGTK development files, and on which a container image cannot be built either (no root, and
+unprivileged user namespaces are restricted). There the toolchain is installed in user space, in one
+folder, and `native/scripts/in-env.sh` puts it on the paths. The folder is `PROSE_TOOLS`: set it in
+the environment (`export PROSE_TOOLS=/path/to/tools`); its path has to be short (see "The sysroot").
+Where it is on a disk that belongs to one machine or is purged, the toolchain has to be built again
+on another machine or after a purge (rustup and `cargo install` with network access, then
+`make-sysroot.sh`; the `.deb` cache is lost too). On a system with root, install Rust and Tauri's
+packages as usual (the `System packages` step of `.github/workflows/desktop.yml` lists them): none of
+this is needed.
 
 | Piece | Where | How |
 | --- | --- | --- |
-| Rust stable (rustup, clippy, rustfmt) | `/scratch/sachsenb/tools/rust/{rustup,cargo}` | `curl https://sh.rustup.rs \| sh -s -- -y --no-modify-path -c clippy -c rustfmt`, with `RUSTUP_HOME` and `CARGO_HOME` set to those directories |
-| `tauri-driver` | `/scratch/sachsenb/tools/rust/cargo/bin` | `cargo install tauri-driver --locked` |
-| Node 24.19.0 | `/scratch/sachsenb/emsdk/node/24.19.0_64bit/bin` | already there (emsdk) |
-| WebKitGTK 4.1, GTK/AppIndicator/rsvg development files, `WebKitWebDriver`, `patchelf` | `/scratch/sachsenb/tools/tauri-sysroot` | `native/scripts/make-sysroot.sh` |
+| Rust stable (rustup, clippy, rustfmt) | `$PROSE_TOOLS/rust/{rustup,cargo}` | `curl https://sh.rustup.rs \| sh -s -- -y --no-modify-path -c clippy -c rustfmt`, with `RUSTUP_HOME` and `CARGO_HOME` set to those directories |
+| `tauri-driver` | `$PROSE_TOOLS/rust/cargo/bin` | `cargo install tauri-driver --locked` |
+| Node 24.19.0 | the `node` on the PATH, or the folder `NODE_BIN` names | any installation of Node 24 |
+| WebKitGTK 4.1, GTK/AppIndicator/rsvg development files, `WebKitWebDriver`, `patchelf` | `$PROSE_TOOLS/tauri-sysroot` | `native/scripts/make-sysroot.sh` |
 | `Xvfb`, `xvfb-run`, `xauth`, `file`, GTK 3 runtime | the host | installed system packages |
 
 ### The sysroot
 
-`make-sysroot.sh [sysroot] [deb-cache]` (defaults `/scratch/sachsenb/tools/tauri-sysroot` and
-`/scratch/sachsenb/tools/tauri-sysroot-debs`) works as follows. It is safe to re-run; delete the
+`make-sysroot.sh [sysroot] [deb-cache]` (defaults `$PROSE_TOOLS/tauri-sysroot` and
+`$PROSE_TOOLS/tauri-sysroot-debs`) works as follows. It is safe to re-run; delete the
 sysroot first for a clean slate.
 
 1. Resolves the packages by simulating `apt-get install --no-install-recommends` of the
@@ -56,9 +57,9 @@ and the Ubuntu build honours no environment variable to redirect it (`WEBKIT_EXE
 `WEBKIT_INJECTED_BUNDLE_PATH` exist only in developer builds; `strings` shows only the injected
 bundle one). So `make-sysroot.sh` patches the sysroot's copy of `libwebkit2gtk-4.1.so.0.*` and
 of `WebKitWebDriver`: the 40-byte path is replaced, with the same length, by
-`/scratch/sachsenb/tools/webkit2gtk-4.1` (a symlink to the sysroot directory, padded with extra
+`$PROSE_TOOLS/webkit2gtk-4.1` (a symlink to the sysroot directory, padded with extra
 slashes). The link sits beside the sysroot, so `<parent of the sysroot>/webkit2gtk-4.1` must be at
-most 40 bytes long, which the script checks. `WebKitWebDriver` is patched only when the sysroot has
+most 40 bytes long, which the script checks: `PROSE_TOOLS` has to be a short path. `WebKitWebDriver` is patched only when the sysroot has
 it (a host with `webkit2gtk-driver` installed uses its own copy). `libc6`, `libgcc-s1` and
 `libstdc++6` are never unpacked into the sysroot (its library directories lead `LD_LIBRARY_PATH`,
 and a second libc there would break every host binary); the script warns and skips them if apt
@@ -109,13 +110,12 @@ and a webview under Xvfb, for example a minimal Tauri 2 app built with
 `ProSE` tool and the ProSE class tests with the host toolchain (outside `in-env.sh`):
 
 ```bash
-native/scripts/build-openms.sh /scratch/sachsenb/openms-pr10564 \
-  /scratch/sachsenb/openms-pr10564/build/native-release
+native/scripts/build-openms.sh <openms> <openms>/build/native-release   # <openms>: the OpenMS checkout
 ```
 
 It uses Ninja, a Release build, the vcpkg toolchain of the OpenMS checkout
-(`x64-linux-dynamic`, feature `onnxruntime`) and a vcpkg binary cache in
-`/scratch/sachsenb/vcpkg-bincache-native`, so a rebuild in a fresh directory does not rebuild
+(`x64-linux-dynamic`, feature `onnxruntime`) and a vcpkg binary cache (`VCPKG_BINARY_CACHE`, default
+`~/.cache/prose-vcpkg-bincache`), so a rebuild in a fresh directory does not rebuild
 the dependencies. `JOBS` (default 100) sets the parallelism. Notes on the configuration:
 
 - `WITH_THERMO_RAW=ON` and `WITH_OPENTIMS=ON`: the app searches Thermo `.raw` files and Bruker `.d` folders (the
@@ -134,7 +134,7 @@ the dependencies. `JOBS` (default 100) sets the parallelism. Notes on the config
 Check the build with the ProSE class tests (83 tests):
 
 ```bash
-ctest --test-dir /scratch/sachsenb/openms-pr10564/build/native-release \
+ctest --test-dir <openms>/build/native-release \
   -R "ProSE|PeptDeep|OpenSearchModificationAnalysis|Percolator_test" -j 32 --output-on-failure
 ```
 
@@ -184,7 +184,7 @@ and check it with `ctest --test-dir <OpenMS checkout>/build -R "ProSE|PeptDeep|Q
 one so builds without it work), with what the app ships:
 
 ```bash
-native/scripts/bundle-prose.sh /scratch/sachsenb/openms-desktop/build src-tauri/resources/prose
+native/scripts/bundle-prose.sh <openms>/build src-tauri/resources/prose
 ```
 
 | Part | What |
@@ -350,7 +350,7 @@ into the AppDir with the relative helper path the GTK plugin writes on a normal 
 
 ```bash
 native/scripts/smoke-appimage.sh src-tauri/target/release/bundle/appimage/ProSE_0.2.0_amd64.AppImage \
-  --hide-openms /scratch/sachsenb/openms-desktop/build
+  --hide-openms <openms>/build
 ```
 
 The AppImage runs with `--appimage-extract-and-run` under `xvfb-run` and is driven through WebDriver
@@ -370,8 +370,8 @@ libEGL, libGL and libGLESv2 (`libgles2` on Ubuntu/Debian, `libglvnd-gles` on Fed
 smoke test checks the other side too: the app and WebKit's processes map none of the GUI stack the AppImage
 brings (WebKitGTK, JavaScriptCore, libsoup, GTK, GDK, GLib) from the host, which matters on the CI runner, where
 WebKitGTK is installed, and from the host nothing beyond an allowlist (glibc and the GCC runtime, the GL driver
-stack, the X11/xcb/Wayland client libraries, fonts and text). ibminode06 is a server without `libgles2`, so
-the script supplies the sysroot's `libGLESv2.so.2`, alone in a folder of its own, and reports it.
+stack, the X11/xcb/Wayland client libraries, fonts and text). On a host without `libgles2` (a server, for
+example) the script supplies the sysroot's `libGLESv2.so.2`, alone in a folder of its own, and reports it.
 
 ## CI
 

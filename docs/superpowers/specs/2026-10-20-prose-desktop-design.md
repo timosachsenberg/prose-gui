@@ -127,12 +127,12 @@ name from different folders stay distinct.
 
 ### 4.8 Build, test, release
 
-- Development on ibminode06 with the user-space toolchain of the earlier attempt (`prose-tauri`:
-  `native/scripts/make-sysroot.sh`, `in-env.sh`; Rust under `/scratch/sachsenb/tools/rust`, WebKitGTK 4.1 unpacked into
-  `/scratch/sachsenb/tools/tauri-sysroot`), reused on this branch.
+- Development on a Linux server without root, with the user-space toolchain of the earlier attempt (`prose-tauri`:
+  `native/scripts/make-sysroot.sh`, `in-env.sh`; Rust under `<work>/tools/rust`, WebKitGTK 4.1 unpacked into
+  `<work>/tools/tauri-sysroot`), reused on this branch.
 - Tests: Rust unit tests for the trust boundaries (arguments, paths, process handling), TypeScript unit tests for the
   results reader and the annotation port, end-to-end tests of the app (WebDriver through tauri-driver under xvfb).
-- Target systems: Ubuntu 22.04 and newer (my call). Development on ibminode06 (24.04); the release packages are
+- Target systems: Ubuntu 22.04 and newer (my call). Development on a Linux server (Ubuntu 24.04); the release packages are
   built in CI on an `ubuntu-22.04` runner so they run on older systems too.
 - Releases: AppImage and deb for Linux x64 first; GitHub releases tagged `desktop-native-v0.1.0` etc. (builder may pick
   a clearer tag), unsigned, only after the user's go. macOS and Windows built in CI afterwards.

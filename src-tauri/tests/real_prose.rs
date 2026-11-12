@@ -2,7 +2,7 @@
 //!
 //! Gated: set `PROSE_BIN` to the tool to run these tests: the bundled pin
 //! (`src-tauri/resources/prose/bin/ProSE`, made by `native/scripts/bundle-prose.sh`; with PeptDeep) or the
-//! pin in its build tree (for example `/scratch/sachsenb/openms-desktop-next/build/bin/ProSE`; it has no build
+//! pin in its build tree (for example `<openms>/build/bin/ProSE`; it has no build
 //! manifest, so it counts as without ONNX and the searches run without PeptDeep); without it each test prints
 //! a skip message (shown with `--nocapture`) and passes. `PROSE_EXAMPLE_DIR` names the folder with
 //! `Ecoli_MS2_small.mzML` and `Ecoli_K12_proteome.fasta` (default: the app's `resources/example`); a missing

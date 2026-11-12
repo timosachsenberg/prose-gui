@@ -18,7 +18,8 @@
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
-SYSROOT=${TAURI_SYSROOT:-/scratch/sachsenb/tools/tauri-sysroot}
+# (the sysroot of a host without root, native/scripts/in-env.sh; none on a normal system or in CI)
+SYSROOT=${TAURI_SYSROOT:-${PROSE_TOOLS:-/nonexistent}/tauri-sysroot}
 if [ -d "$SYSROOT/usr/lib/x86_64-linux-gnu" ] && [ -z "${PROSE_IN_ENV:-}" ]; then
   export PROSE_IN_ENV=1
   exec "$ROOT/native/scripts/in-env.sh" "$ROOT/native/scripts/smoke-appimage.sh" "$@"
@@ -61,7 +62,7 @@ trap 'restore; rm -rf "$work"' EXIT
 # --- the host's GLES library ------------------------------------------------------------------------
 # WebKit's libepoxy (in the AppImage) dlopens libGLESv2.so.2. No AppImage bundles it: it is the GL driver
 # stack's, like libEGL and libGL on linuxdeploy's exclude list, and every Ubuntu desktop has it (package
-# libgles2; WebKitGTK and mutter depend on it). A host without it (ibminode06 is a server) gets the
+# libgles2; WebKitGTK and mutter depend on it). A host without it (a server, for example) gets the
 # sysroot's copy of that one library, in a folder of its own that appimage-app.sh appends to the library
 # path; the test reports it.
 if ! /sbin/ldconfig -p | grep -q 'libGLESv2\.so\.2 '; then

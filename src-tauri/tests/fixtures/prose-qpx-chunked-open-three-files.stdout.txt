@@ -1418,7 +1418,7 @@ Omitted writing of 210 peptide identifications due to empty hits.
 Found 51 connected components.
 
 [ProSE] ===================== Search Report =====================
-[ProSE] Database     : /scratch/sachsenb/prose-desktop/src-tauri/resources/example/Ecoli_K12_proteome.fasta  (4136 target + 4136 decoy proteins, decoys: generated)
+[ProSE] Database     : /work/prose-desktop/src-tauri/resources/example/Ecoli_K12_proteome.fasta  (4136 target + 4136 decoy proteins, decoys: generated)
 [ProSE] Config       : Trypsin/P, 2 MC | prec [-500, +500] Da | frag 0.5 Da | z 2-5 | mode: open | chunked
 [ProSE] Fragment idx : 936941 peptides / 23913129 fragments (build 0.9 s)
 [ProSE] -------------------------------------------------------------

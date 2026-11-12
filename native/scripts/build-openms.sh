@@ -26,7 +26,7 @@ mkdir -p "$2"
 SRC=$(native "$(cd "$1" && pwd -P)")
 BUILD=$(native "$(cd "$2" && pwd -P)")
 JOBS=${JOBS:-100}
-BINCACHE=${VCPKG_BINARY_CACHE:-/scratch/sachsenb/vcpkg-bincache-native}
+BINCACHE=${VCPKG_BINARY_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/prose-vcpkg-bincache}
 TRIPLET=${VCPKG_TRIPLET:-x64-linux-dynamic}
 
 TOOLCHAIN="$SRC/vcpkg/scripts/buildsystems/vcpkg.cmake"
