@@ -3,9 +3,9 @@
 // copied into the spec's History one at a time and opened, each in a fresh app. Logs per size the outcome,
 // the time, the files' size and the peak memory (VmHWM) of the app and of its web process. On demand:
 //
-//   PROSE_LARGE_DIR=/scratch/sachsenb/prose-large NODE_OPTIONS=--max-old-space-size=60000 \
+//   PROSE_LARGE_DIR=/path/to/prose-large NODE_OPTIONS=--max-old-space-size=60000 \
 //     npx vitest run src/lib/results/read.test.ts -t 'large search folders'
-//   PROSE_LARGE_DIR=/scratch/sachsenb/prose-large native/scripts/in-env.sh e2e/run.sh e2e/large.spec.ts
+//   PROSE_LARGE_DIR=/path/to/prose-large native/scripts/in-env.sh e2e/run.sh e2e/large.spec.ts
 import { cpSync, existsSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { appProcesses, appReady, goTo, peakMemoryKb, searchesDir, textOf } from './lib.ts'

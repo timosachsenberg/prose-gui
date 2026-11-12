@@ -1,4 +1,4 @@
-[ProSE] [1/2] Searching /scratch/sachsenb/shimrun/r/1__DatabaseSuitability_1.mzML
+[ProSE] [1/2] Searching /work/shimrun/r/1__DatabaseSuitability_1.mzML
 Generating peptides...
 Sorting peptides...
 done.
@@ -13,24 +13,24 @@ Fragment index built!
 [ProSE] Rescoring the PSMs with Percolator...
 Stamped PIN feature meta values; 0 PSMs skipped (no evidence or unknown TD).
 Rescoring 1110 PSMs in-process with 27 features.
-[ProSE] Running detailed modification analysis for /scratch/sachsenb/shimrun/r/1__DatabaseSuitability_1.mzML
+[ProSE] Running detailed modification analysis for /work/shimrun/r/1__DatabaseSuitability_1.mzML
 Delta mass statistics written to: o8/mods/1__DatabaseSuitability_1_ModificationAnalysis_DeltaMassStats.tsv
 PTM statistics written to: o8/mods/1__DatabaseSuitability_1_ModificationAnalysis_PTMStats.tsv
-[ProSE] [2/2] Searching /scratch/sachsenb/shimrun/r/2__DatabaseSuitability_2.mzML
+[ProSE] [2/2] Searching /work/shimrun/r/2__DatabaseSuitability_2.mzML
 [ProSE] open_search=true (precursor tolerance [-500, +500] Da)
 [ProSE] Protein mapping from the fragment index: 1736 sequences, 53 proteins.
 [ProSE] Ion priors (rich model, all peaks): trained on 556 + 553 PSMs at q <= 0.01 (halves by scan parity, each scored by the other's model) in 0.010393 s; 1110 hits annotated in 0.00548 s; peak lists 40033 peaks of 2789 spectra, 0.318563 MiB.
 [ProSE] Rescoring the PSMs with Percolator...
 Stamped PIN feature meta values; 0 PSMs skipped (no evidence or unknown TD).
 Rescoring 1110 PSMs in-process with 27 features.
-[ProSE] Running detailed modification analysis for /scratch/sachsenb/shimrun/r/2__DatabaseSuitability_2.mzML
+[ProSE] Running detailed modification analysis for /work/shimrun/r/2__DatabaseSuitability_2.mzML
 Delta mass statistics written to: o8/mods/2__DatabaseSuitability_2_ModificationAnalysis_DeltaMassStats.tsv
 PTM statistics written to: o8/mods/2__DatabaseSuitability_2_ModificationAnalysis_PTMStats.tsv
 [ProSE] Running aggregate modification analysis on 2220 pooled PSM(s) from 2 input file(s).
 Delta mass statistics written to: o8/mods/_aggregate_across_files_ModificationAnalysis_DeltaMassStats.tsv
 PTM statistics written to: o8/mods/_aggregate_across_files_ModificationAnalysis_PTMStats.tsv
-No protein groups inferred for /scratch/sachsenb/shimrun/r/1__DatabaseSuitability_1.mzML — not writing o8/qpx/1__DatabaseSuitability_1.pg.parquet. Protein inference requires 'FDR:protein' > 0 with decoys, or '-out_merged' with several inputs.
-No protein groups inferred for /scratch/sachsenb/shimrun/r/2__DatabaseSuitability_2.mzML — not writing o8/qpx/2__DatabaseSuitability_2.pg.parquet. Protein inference requires 'FDR:protein' > 0 with decoys, or '-out_merged' with several inputs.
+No protein groups inferred for /work/shimrun/r/1__DatabaseSuitability_1.mzML — not writing o8/qpx/1__DatabaseSuitability_1.pg.parquet. Protein inference requires 'FDR:protein' > 0 with decoys, or '-out_merged' with several inputs.
+No protein groups inferred for /work/shimrun/r/2__DatabaseSuitability_2.mzML — not writing o8/qpx/2__DatabaseSuitability_2.pg.parquet. Protein inference requires 'FDR:protein' > 0 with decoys, or '-out_merged' with several inputs.
 Found score type q-value to be of type 5
 Building graph on 2220 spectra and 53 proteins.
 Progress of 'Building graph...':

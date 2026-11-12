@@ -9,8 +9,13 @@ A Tauri 2 desktop app around OpenMS' ProSE search engine: the Rust shim in `src-
 ```bash
 npx svelte-check --tsconfig ./tsconfig.app.json && npx tsc -p tsconfig.node.json
 npx vitest run
+node scripts/check-paths.mjs
 cd src-tauri && cargo test && cargo clippy --all-targets && cargo fmt --check
 ```
+
+`check-paths.mjs` fails when a file names a folder of someone's machine or of an internal server (scripts' defaults,
+examples in documentation, fixtures recorded from a real run). The repository is public: write a placeholder
+(`<openms>/build`), an environment variable (`PROSE_TOOLS`) or a neutral folder (`/data/...`), and no host names.
 
 The end-to-end specs that search need the real ProSE: `PROSE_BIN=/path/to/ProSE e2e/run.sh` (without it they skip;
 README, "Develop"). OpenMS is not built locally; CI builds it (the packaging jobs take minutes with warm caches, an

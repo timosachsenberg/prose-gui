@@ -1413,7 +1413,7 @@ describe('performance', () => {
 
   // On demand: the time to open a real search folder (PROSE_SEARCH_DIR, as the shim makes it) and to read the
   // spectra of PSMs as the PSM view does, one after the other at random (the first reads its input's footer).
-  //   PROSE_SEARCH_DIR=/scratch/x npx vitest run src/lib/results/read.test.ts -t 'a real search'
+  //   PROSE_SEARCH_DIR=/path/to/search npx vitest run src/lib/results/read.test.ts -t 'a real search'
   test.runIf(Boolean(process.env.PROSE_SEARCH_DIR))('opens a real search and reads the spectra of its PSMs', async () => {
     // (the files in memory, as the app reads the bytes asked for only: the times are the reader's)
     const own = folder(process.env.PROSE_SEARCH_DIR!).files
@@ -1445,7 +1445,7 @@ describe('performance', () => {
   // On demand: search folders of PROSE_LARGE_PSMS PSMs (default 500k, 1M, 2M, 4M) in PROSE_LARGE_DIR/<id>/,
   // saved searches (with search.json) that e2e/large.spec.ts opens in the app to measure the largest result
   // that opens in WebKit. Each is read here too, in Node, with its time.
-  //   PROSE_LARGE_DIR=/scratch/x NODE_OPTIONS=--max-old-space-size=60000 npx vitest run src/lib/results/read.test.ts -t 'large search folders'
+  //   PROSE_LARGE_DIR=/path/to/folder NODE_OPTIONS=--max-old-space-size=60000 npx vitest run src/lib/results/read.test.ts -t 'large search folders'
   test.runIf(Boolean(process.env.PROSE_LARGE_DIR))('writes large search folders for the measurement in the app', async () => {
     const counts = (process.env.PROSE_LARGE_PSMS ?? '500000,1000000,2000000,4000000').split(',').map(Number)
     for (const n of counts) {

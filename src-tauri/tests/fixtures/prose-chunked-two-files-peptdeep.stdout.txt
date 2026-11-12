@@ -1,6 +1,6 @@
 [ProSE] open_search=false (precursor tolerance [-10, +10] ppm)
-[ProSE] Loading /scratch/sachsenb/shimrun/c/1__DatabaseSuitability_1.mzML
-[ProSE] Loading /scratch/sachsenb/shimrun/c/2__DatabaseSuitability_2.mzML
+[ProSE] Loading /work/shimrun/c/1__DatabaseSuitability_1.mzML
+[ProSE] Loading /work/shimrun/c/2__DatabaseSuitability_2.mzML
 [ProSE] Chunk-major multi-file: 330 proteins, 17 chunks, 2 files.
 [ProSE] Chunk 1/17 (20 proteins)
 Generating peptides...
@@ -245,8 +245,8 @@ Protein statistics
 [ProSE] Rescoring the PSMs with Percolator...
 Stamped PIN feature meta values; 0 PSMs skipped (no evidence or unknown TD).
 Rescoring 896 PSMs in-process with 32 features.
-No protein groups inferred for /scratch/sachsenb/shimrun/c/1__DatabaseSuitability_1.mzML — not writing two/qpx/1__DatabaseSuitability_1.pg.parquet. Protein inference requires 'FDR:protein' > 0 with decoys, or '-out_merged' with several inputs.
-No protein groups inferred for /scratch/sachsenb/shimrun/c/2__DatabaseSuitability_2.mzML — not writing two/qpx/2__DatabaseSuitability_2.pg.parquet. Protein inference requires 'FDR:protein' > 0 with decoys, or '-out_merged' with several inputs.
+No protein groups inferred for /work/shimrun/c/1__DatabaseSuitability_1.mzML — not writing two/qpx/1__DatabaseSuitability_1.pg.parquet. Protein inference requires 'FDR:protein' > 0 with decoys, or '-out_merged' with several inputs.
+No protein groups inferred for /work/shimrun/c/2__DatabaseSuitability_2.mzML — not writing two/qpx/2__DatabaseSuitability_2.pg.parquet. Protein inference requires 'FDR:protein' > 0 with decoys, or '-out_merged' with several inputs.
 Found score type q-value to be of type 5
 Building graph on 1792 spectra and 50 proteins.
 Progress of 'Building graph...':
@@ -258,7 +258,7 @@ Found 48 connected components.
 [ProSE] Merged protein inference + FDR: 48 proteins at 5% FDR
 
 [ProSE] ===================== Search Report =====================
-[ProSE] Database     : /scratch/sachsenb/shimrun/c/db.fasta  (165 target + 165 decoy proteins, decoys: generated)
+[ProSE] Database     : /work/shimrun/c/db.fasta  (165 target + 165 decoy proteins, decoys: generated)
 [ProSE] Config       : Trypsin, 1 MC | prec [-10, +10] ppm | frag 20 ppm | z 2-5 | mode: closed | chunked
 [ProSE] Fragment idx : 22820 peptides / 518611 fragments (build 0.0 s)
 [ProSE] -------------------------------------------------------------

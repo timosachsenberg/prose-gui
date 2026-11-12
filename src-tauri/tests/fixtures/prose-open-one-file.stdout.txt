@@ -1,4 +1,4 @@
-[ProSE] [1/1] Searching /scratch/sachsenb/shimrun/r/1__DatabaseSuitability_1.mzML
+[ProSE] [1/1] Searching /work/shimrun/r/1__DatabaseSuitability_1.mzML
 Generating peptides...
 Sorting peptides...
 done.
@@ -13,10 +13,10 @@ Fragment index built!
 [ProSE] Rescoring the PSMs with Percolator...
 Stamped PIN feature meta values; 0 PSMs skipped (no evidence or unknown TD).
 Rescoring 1110 PSMs in-process with 27 features.
-[ProSE] Running detailed modification analysis for /scratch/sachsenb/shimrun/r/1__DatabaseSuitability_1.mzML
+[ProSE] Running detailed modification analysis for /work/shimrun/r/1__DatabaseSuitability_1.mzML
 Delta mass statistics written to: o3/mods/1__DatabaseSuitability_1_ModificationAnalysis_DeltaMassStats.tsv
 PTM statistics written to: o3/mods/1__DatabaseSuitability_1_ModificationAnalysis_PTMStats.tsv
-No protein groups inferred for /scratch/sachsenb/shimrun/r/1__DatabaseSuitability_1.mzML — not writing o3/qpx/1__DatabaseSuitability_1.pg.parquet. Protein inference requires 'FDR:protein' > 0 with decoys, or '-out_merged' with several inputs.
+No protein groups inferred for /work/shimrun/r/1__DatabaseSuitability_1.mzML — not writing o3/qpx/1__DatabaseSuitability_1.pg.parquet. Protein inference requires 'FDR:protein' > 0 with decoys, or '-out_merged' with several inputs.
 
 [ProSE] ===================== Search Report =====================
 [ProSE] Input        : 1__DatabaseSuitability_1.mzML  (2789 MS2 spectra)

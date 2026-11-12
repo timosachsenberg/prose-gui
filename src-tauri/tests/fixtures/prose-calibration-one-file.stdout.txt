@@ -1,4 +1,4 @@
-[ProSE] [1/1] Searching /scratch/sachsenb/shimrun/r/1__DatabaseSuitability_1.mzML
+[ProSE] [1/1] Searching /work/shimrun/r/1__DatabaseSuitability_1.mzML
 Generating peptides...
 Sorting peptides...
 done.
@@ -16,14 +16,14 @@ Fragment index built!
 [ProSE] Protein mapping from the fragment index: 912 sequences, 50 proteins.
 [ProSE] Ion priors (rich model, all peaks): trained on 444 + 451 PSMs at q <= 0.01 (halves by scan parity, each scored by the other's model) in 0.01 s; 896 hits annotated in 0.00 s; peak lists 40033 peaks of 2789 spectra, 0.32 MiB.
 [ProSE] Closed search mode - per-file modification analysis skipped
-No protein groups inferred for /scratch/sachsenb/shimrun/r/1__DatabaseSuitability_1.mzML — not writing o7/qpx/1__DatabaseSuitability_1.pg.parquet. Protein inference requires 'FDR:protein' > 0 with decoys, or '-out_merged' with several inputs.
+No protein groups inferred for /work/shimrun/r/1__DatabaseSuitability_1.mzML — not writing o7/qpx/1__DatabaseSuitability_1.pg.parquet. Protein inference requires 'FDR:protein' > 0 with decoys, or '-out_merged' with several inputs.
 
 [ProSE] ===================== Search Report =====================
 [ProSE] Input        : 1__DatabaseSuitability_1.mzML  (2789 MS2 spectra)
 [ProSE] Config       : Trypsin, 1 MC | prec [-10, +10] ppm | frag 20 ppm | z 2-5
 [ProSE]                fixed: Carbamidomethyl (C) | variable: Oxidation (M)
 [ProSE]                ions: b,y,+c/z+1 for ETD/ECD/EThcD/ETciD | calibration: on | mode: closed
-[ProSE] Database     : /scratch/sachsenb/shimrun/r/db.fasta  (165 target + 165 decoy proteins, decoys: generated)
+[ProSE] Database     : /work/shimrun/r/db.fasta  (165 target + 165 decoy proteins, decoys: generated)
 [ProSE] Fragment idx : 21569 peptides / 496430 fragments  (build 0.1 s)
 [ProSE] --------------------------- Results ---------------------------
 [ProSE] Matched      : 896 / 2789 spectra   (ID rate 32.1%)

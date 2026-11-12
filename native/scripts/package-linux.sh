@@ -31,7 +31,8 @@
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
-SYSROOT=${TAURI_SYSROOT:-/scratch/sachsenb/tools/tauri-sysroot}
+# (the sysroot of a host without root, native/scripts/in-env.sh; none on a normal system or in CI)
+SYSROOT=${TAURI_SYSROOT:-${PROSE_TOOLS:-/nonexistent}/tauri-sysroot}
 if [ -d "$SYSROOT/usr/lib/x86_64-linux-gnu" ] && [ -z "${PROSE_IN_ENV:-}" ]; then
   export PROSE_IN_ENV=1
   exec "$ROOT/native/scripts/in-env.sh" "$ROOT/native/scripts/package-linux.sh" "$@"

@@ -1,27 +1,36 @@
 #!/bin/bash
-# Run a command in the ProSE Tauri build and test environment: Rust and tauri-driver from
-# /scratch/sachsenb/tools/rust, Node 24.19.0, and WebKitGTK 4.1 and friends from the sysroot
-# that native/scripts/make-sysroot.sh builds.
+# Run a command in the ProSE Tauri build and test environment of a host without root: Rust and
+# tauri-driver from the folder of the user-space tools, Node, and WebKitGTK 4.1 and friends from the
+# sysroot that native/scripts/make-sysroot.sh builds.
 #
 #   in-env.sh [--disable-webkit-sandbox] <cmd...>
 #
 #   --disable-webkit-sandbox   sets WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1. WebKitGTK sandboxes
 #                              its web and network processes with bubblewrap, which needs
-#                              unprivileged user namespaces. ibminode06 forbids them (AppArmor),
-#                              but WebKit looks for bwrap at /usr/bin/bwrap, which the host lacks,
-#                              so the processes start unsandboxed anyway and a webview renders
-#                              without this flag. The flag only matters should a /usr/bin/bwrap
-#                              appear. Use it for tests of the app on this host only, never for
+#                              unprivileged user namespaces. Where the host forbids them (AppArmor)
+#                              and has no /usr/bin/bwrap, which is where WebKit looks for it, the
+#                              processes start unsandboxed anyway and a webview renders without
+#                              this flag. The flag only matters should a /usr/bin/bwrap appear.
+#                              Use it for tests of the app on such a host only, never for
 #                              anything that loads untrusted content.
 #
-# Environment overrides: TAURI_SYSROOT, RUSTUP_HOME, CARGO_HOME, NODE_BIN.
+# Environment: PROSE_TOOLS is the folder of the user-space tools (in it: rust/rustup, rust/cargo and
+# tauri-sysroot; native/README.md, "Tauri toolchain without root"). TAURI_SYSROOT, RUSTUP_HOME and
+# CARGO_HOME name one of its parts elsewhere. NODE_BIN is the folder of the Node to use (default: the
+# node on the PATH).
 set -euo pipefail
 
-TOOLS=/scratch/sachsenb/tools
-SYSROOT=${TAURI_SYSROOT:-$TOOLS/tauri-sysroot}
-export RUSTUP_HOME=${RUSTUP_HOME:-$TOOLS/rust/rustup}
-export CARGO_HOME=${CARGO_HOME:-$TOOLS/rust/cargo}
-NODE_BIN=${NODE_BIN:-/scratch/sachsenb/emsdk/node/24.19.0_64bit/bin}
+TOOLS=${PROSE_TOOLS:-}
+SYSROOT=${TAURI_SYSROOT:-${TOOLS:+$TOOLS/tauri-sysroot}}
+if [ -z "$SYSROOT" ]; then
+  echo "error: set PROSE_TOOLS to the folder of the user-space tools (or TAURI_SYSROOT to the sysroot); see native/README.md, \"Tauri toolchain without root\"" >&2
+  exit 1
+fi
+if [ -n "$TOOLS" ]; then
+  export RUSTUP_HOME=${RUSTUP_HOME:-$TOOLS/rust/rustup}
+  export CARGO_HOME=${CARGO_HOME:-$TOOLS/rust/cargo}
+fi
+NODE_BIN=${NODE_BIN:-}
 
 sandbox_flag=0
 if [ "${1:-}" = "--disable-webkit-sandbox" ]; then
@@ -35,7 +44,7 @@ LIBDIRS="$SYSROOT/usr/lib/x86_64-linux-gnu:$SYSROOT/lib/x86_64-linux-gnu"
 
 # Host PATH without linuxbrew, behind the sysroot, cargo and node.
 HOST_PATH=$(printf '%s' "$PATH" | tr ':' '\n' | grep -v 'linuxbrew' | paste -sd: -)
-export PATH="$SYSROOT/usr/bin:$CARGO_HOME/bin:$NODE_BIN:$HOST_PATH"
+export PATH="$SYSROOT/usr/bin:${CARGO_HOME:+$CARGO_HOME/bin:}${NODE_BIN:+$NODE_BIN:}$HOST_PATH"
 
 # Compile and link against the sysroot. The .pc files of the sysroot already name its paths, so
 # PKG_CONFIG_SYSROOT_DIR stays unset: it would also prefix the host's own .pc files.

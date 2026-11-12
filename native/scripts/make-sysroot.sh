@@ -4,7 +4,8 @@
 #
 #   make-sysroot.sh [sysroot-dir] [deb-cache-dir]
 #
-# Defaults: /scratch/sachsenb/tools/tauri-sysroot and /scratch/sachsenb/tools/tauri-sysroot-debs.
+# Defaults: tauri-sysroot and tauri-sysroot-debs in PROSE_TOOLS, the folder of the user-space tools
+# (native/README.md, "Tauri toolchain without root"; its path has to be short, see below).
 # The host (Ubuntu 24.04) supplies every package it already has; the sysroot holds only the
 # missing ones (and the few that apt must upgrade to satisfy their versioned dependencies),
 # unpacked with `dpkg -x`. Re-running is safe: debs already in the cache are not fetched again
@@ -13,8 +14,13 @@
 # SYSROOT_PACKAGES overrides the top-level package list (a space-separated string).
 set -euo pipefail
 
-SYSROOT=$(realpath -m "${1:-/scratch/sachsenb/tools/tauri-sysroot}")
-CACHE=$(realpath -m "${2:-/scratch/sachsenb/tools/tauri-sysroot-debs}")
+TOOLS=${PROSE_TOOLS:-}
+if [ "$#" -lt 2 ] && [ -z "$TOOLS" ]; then
+  echo "usage: $0 [sysroot-dir] [deb-cache-dir]   (without both: set PROSE_TOOLS, the folder that holds them)" >&2
+  exit 2
+fi
+SYSROOT=$(realpath -m "${1:-$TOOLS/tauri-sysroot}")
+CACHE=$(realpath -m "${2:-$TOOLS/tauri-sysroot-debs}")
 TOP=${SYSROOT_PACKAGES:-"libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev webkit2gtk-driver xvfb xauth patchelf file"}
 
 # Host tools only (not linuxbrew's), in particular the host's dpkg and apt.

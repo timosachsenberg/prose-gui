@@ -5,18 +5,18 @@
 //
 //   PROSE_BIG=1 PROSE_BIN=… native/scripts/in-env.sh e2e/run.sh e2e/big.spec.ts
 //
-// Data: PROSE_BIG_DIR, default /scratch/sachsenb/prose-bench/data. Logs the search's time and the peak
+// Data: PROSE_BIG_DIR (the folder with erwinia_tmt.mzML, human_ref.fasta and erwinia.fasta). Logs the search's time and the peak
 // memory of the ProSE process (VmHWM, polled once a second; the last reading before it ends).
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { appReady, clearSearches, dropFiles, freshForm, peakMemoryKb, proseProcesses, resultsId, showKeyFigures, startReady, textOf } from './lib.ts'
 
-const data = process.env.PROSE_BIG_DIR ?? '/scratch/sachsenb/prose-bench/data'
+const data = process.env.PROSE_BIG_DIR ?? ''
 const spectra = join(data, 'erwinia_tmt.mzML')
 const human = join(data, 'human_ref.fasta')
 const erwinia = join(data, 'erwinia.fasta')
-const enabled = Boolean(process.env.PROSE_BIG && process.env.PROSE_BIN) && existsSync(spectra) && existsSync(human) && existsSync(erwinia)
+const enabled = Boolean(process.env.PROSE_BIG && process.env.PROSE_BIN && data) && existsSync(spectra) && existsSync(human) && existsSync(erwinia)
 
 const PRESET = {
   id: 'e2e-tmt-semi',
