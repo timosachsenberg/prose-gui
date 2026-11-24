@@ -324,7 +324,7 @@ macOS, and on Windows it needs msedgedriver of the runner's WebView2 version.
   app (SIGPIPE is at its default in ProSE: Rust's `Command` resets the app's ignored SIGPIPE in the child, and
   OpenMS sets no handler), at the end of its current step. The next start of the app sweeps the folder. The
   watchdog's code is the same on every Unix and is tested on Linux and in the macOS shim job
-  (`tests/watchdog.rs`, and a watched search in `tests/shim.rs`).
+  (`tests/watchdog.rs`, and a watched search in `tests/shim/running.rs`).
 - **Folders**: `finish_partial` retries the rename with back-off (another instance's sweep may hold the
   deleted `.lock` open), and partial folders are removed lock file first, also with back-off (`history.rs`).
 - **File names** the app suggests never are device names (`CON`, `NUL.txt`, ...: a `_` in front), and their
