@@ -312,7 +312,7 @@ macOS, and on Windows it needs msedgedriver of the runner's WebView2 version.
   its merged QPX views are `quantms.*.parquet`. Nothing is ever copied (`args.rs`, `InputLinks`,
   `input_placements`). The app's own example is a hard link, or a copy where the app is on another drive than its
   data.
-- **Cancel** ends a job object the tool runs in (`run.rs`): Windows has no SIGTERM for a console tool; the job
+- **Cancel** ends a job object the tool runs in (`run/sys_windows.rs`): Windows has no SIGTERM for a console tool; the job
   takes every process the tool starts, and it is closed with the app (`KILL_ON_JOB_CLOSE`), so ProSE ends with
   the app however the app ends. The tool runs without a console window.
 - **If the app dies** while ProSE runs: on Linux ProSE gets SIGKILL (`PR_SET_PDEATHSIG`), on Windows the job

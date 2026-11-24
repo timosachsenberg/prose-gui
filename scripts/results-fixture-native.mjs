@@ -1,6 +1,6 @@
 // Makes a fixture of the results reader (src/lib/results/fixtures/<case>/): a search of
 // scripts/results-example.mjs by the pinned ProSE tool, in a search folder as the shim makes it
-// (src-tauri/src/args.rs `build_args`, `with_contaminants`, `input_records`; run.rs `prepare_folder`).
+// (src-tauri/src/args.rs `build_args`, `with_contaminants`, `input_records`; run/folder.rs `prepare_folder`).
 //
 //   node scripts/results-fixture-native.mjs <case> <ProSE>        (case: example, mods, open, empty)
 //
@@ -75,7 +75,7 @@ try {
     return path
   })
 
-  // the search folder (run.rs prepare_folder)
+  // the search folder (run/folder.rs prepare_folder)
   const dir = join(work, 'search')
   mkdirSync(dir)
   const records = paths.map((path, index) => {
