@@ -51,20 +51,24 @@ pub fn fake_prose() -> PathBuf {
     }
 }
 
-/// The example `fake_prose`, which `cargo test` builds with the tests (into `<target>/<profile>/examples`,
-/// beside the tests' own `deps` folder).
+/// The example `fake_prose`, which `cargo test` builds with the tests (into `<target>/<profile>/examples`).
+/// The test executables are further down in `<profile>`, how far depends on Cargo: `<profile>/deps/` up to
+/// Rust 1.99, `<profile>/build/<package>/<hash>/out/` from 1.100 on; the first `examples/fake_prose` above the
+/// test is the one.
 pub fn fake_prose_exe() -> PathBuf {
     let test = std::env::current_exe().unwrap();
-    let profile = test.parent().and_then(Path::parent).unwrap();
-    let exe = profile
-        .join("examples")
-        .join(format!("fake_prose{}", std::env::consts::EXE_SUFFIX));
-    assert!(
-        exe.is_file(),
-        "{} is missing: run all of `cargo test` (or `cargo build --example fake_prose`)",
-        exe.display()
-    );
-    exe
+    let name = format!("fake_prose{}", std::env::consts::EXE_SUFFIX);
+    let exe = test
+        .ancestors()
+        .skip(1)
+        .map(|dir| dir.join("examples").join(&name))
+        .find(|exe| exe.is_file());
+    exe.unwrap_or_else(|| {
+        panic!(
+            "examples/{name} is not in a folder above {}: run all of `cargo test` (or `cargo build --example fake_prose`)",
+            test.display()
+        )
+    })
 }
 
 pub fn fixture(name: &str) -> String {
