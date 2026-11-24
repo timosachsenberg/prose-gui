@@ -49,6 +49,7 @@
 
 pub mod archive;
 pub mod args;
+pub mod contaminants;
 pub mod content;
 pub mod decoys;
 pub mod files;

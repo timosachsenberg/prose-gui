@@ -1,7 +1,7 @@
 //! The decoys of the contaminants the app appends to a database that has decoys of its own.
 //!
 //! With `Search:decoys auto` (the tool's default is `generate`, which removes a database's decoys and generates them
-//! all), ProSE reuses the decoys of a database that has them and generates none, so the cRAP entries the app appends ([`crate::args::with_contaminants`]) would be targets without decoys. The app adds
+//! all), ProSE reuses the decoys of a database that has them and generates none, so the cRAP entries the app appends ([`crate::contaminants::with_contaminants`]) would be targets without decoys. The app adds
 //! their decoys itself, as ProSE would make them: the marker and its position as ProSE detects them in the
 //! database (`ProSEAlgorithm::resolveDecoyStrategy_`: OpenMS' `DecoyHelper::findDecoyString`, then the literal
 //! `Search:decoy_prefix` as prefix or suffix), the sequence as ProSE generates a decoy

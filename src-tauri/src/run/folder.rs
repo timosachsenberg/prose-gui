@@ -4,10 +4,10 @@
 
 use super::{sys, LAST_FAILURE_LOG};
 use crate::args::{
-    command_line, ini_of, reserved_stem, split_search_args, with_contaminants, InputRecord,
-    Placement, SearchRequest, COMMAND_FILE, DATABASE_FILE, DATABASE_RECORD, DATABASE_SOURCE,
-    INI_FILE,
+    command_line, ini_of, reserved_stem, split_search_args, InputRecord, Placement, SearchRequest,
+    COMMAND_FILE, DATABASE_FILE, DATABASE_RECORD, DATABASE_SOURCE, INI_FILE,
 };
+use crate::contaminants::with_contaminants;
 use crate::decoys::DecoyRules;
 use crate::history::remove_partial;
 use std::fs;

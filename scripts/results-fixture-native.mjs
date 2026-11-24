@@ -1,6 +1,6 @@
 // Makes a fixture of the results reader (src/lib/results/fixtures/<case>/): a search of
 // scripts/results-example.mjs by the pinned ProSE tool, in a search folder as the shim makes it
-// (src-tauri/src/args.rs `build_args`, `with_contaminants`, `input_records`; run/folder.rs `prepare_folder`).
+// (src-tauri/src/args.rs `build_args`, args/inputs.rs `input_records`; contaminants.rs `with_contaminants`; run/folder.rs `prepare_folder`).
 //
 //   node scripts/results-fixture-native.mjs <case> <ProSE>        (case: example, mods, open, empty)
 //
@@ -87,7 +87,7 @@ try {
   writeFileSync(join(dir, 'inputs.json'), JSON.stringify(records, null, 2))
   let database = search.fasta
   if (search.contaminants) {
-    // args.rs with_contaminants
+    // contaminants.rs with_contaminants
     let user = readFileSync(search.fasta, 'utf8')
     if (!user.endsWith('\n')) user += '\n'
     const crap = readFileSync(CRAP, 'utf8').replace(/^>(?!CON__)/gm, '>CON__')

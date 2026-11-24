@@ -11,7 +11,7 @@ use std::time::Duration;
 
 const WAIT: Duration = Duration::from_secs(20);
 
-/// A searches folder of its own and the searches run in it (also used by `arguments`).
+/// A searches folder of its own and the searches run in it (also used by `contaminants`).
 pub(super) struct Run {
     work: TempDir,
     searches: Arc<Searches>,

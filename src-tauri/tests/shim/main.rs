@@ -1,7 +1,8 @@
 //! The shim against a fake ProSE (tests/fake-prose.sh; on Windows examples/fake_prose.rs) and fixtures of
 //! real ProSE output. One test binary (`cargo test --test shim`), a module per part of the shim:
 //!
-//! - `arguments`: the search request as ProSE's command line (`args`), the contaminants;
+//! - `arguments`: the search request as ProSE's command line (`args`);
+//! - `contaminants`: the cRAP appended to the database (`contaminants`);
 //! - `progress`: ProSE's log lines as progress events (`progress`);
 //! - `tool_resolution`: finding and probing the tool (`tool`);
 //! - `running`: searches against the fake tool (`run`).
@@ -12,6 +13,7 @@
 mod common;
 
 mod arguments;
+mod contaminants;
 mod progress;
 mod running;
 mod tool_resolution;

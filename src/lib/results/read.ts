@@ -164,7 +164,7 @@ async function inFile<T>(name: string, read: () => T | Promise<T>): Promise<T> {
   }
 }
 
-/** A record of inputs.json (args.rs `InputRecord`). */
+/** A record of inputs.json (args/inputs.rs `InputRecord`). */
 interface InputRecord {
   id: string
   index: number

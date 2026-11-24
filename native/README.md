@@ -309,7 +309,7 @@ macOS, and on Windows it needs msedgedriver of the runner's WebView2 version.
   share a stem go in as hard links `<n>__<name>` in the search folder, which works on the volume of the app's
   data only and is removed when the search ends; on another volume the search is refused with a message asking
   to rename one of the files. An input of stem `quantms` goes in as such a link as well: ProSE refuses it, since
-  its merged QPX views are `quantms.*.parquet`. Nothing is ever copied (`args.rs`, `InputLinks`,
+  its merged QPX views are `quantms.*.parquet`. Nothing is ever copied (`args/inputs.rs`, `InputLinks`,
   `input_placements`). The app's own example is a hard link, or a copy where the app is on another drive than its
   data.
 - **Cancel** ends a job object the tool runs in (`run/sys_windows.rs`): Windows has no SIGTERM for a console tool; the job
