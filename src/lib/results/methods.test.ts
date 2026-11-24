@@ -86,7 +86,7 @@ describe('the example search of the pinned ProSE', async () => {
     expect(search).toContain(
       'Carbamidomethyl (C) was set as a fixed modification, and Oxidation (M) and Acetyl (Protein N-term) were searched as variable modifications (at most 2 per peptide).',
     )
-    expect(search).toContain('so that each target peptide had a decoy of the same length and mass [2].')
+    expect(search).toContain('so that each target peptide had a decoy of the same length, mass and cleavage sites [2].')
   })
 
   test('says how the PSMs were rescored and filtered, and what was not FDR-controlled', () => {
