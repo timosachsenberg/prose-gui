@@ -72,7 +72,7 @@ test('Enter on the open protein narrows the tables below to it; its chip widens 
   await expect(tab(page, 'Peptides')).toHaveAttribute('aria-selected', 'true')
   await expect(page.getByTestId('chip-protein')).toContainText(accession)
   await expect(rows(page)).toHaveCount(peptides)
-  await expect(tab(page, 'Peptides').getByTestId('tab-narrowed')).toHaveText(`${peptides} of 46`)
+  await expect(tab(page, 'Peptides').getByTestId('tab-narrowed')).toHaveText(`${peptides} of 41`)
   // the PSMs are narrowed with them: one narrowing for both tables
   await expect(tab(page, 'PSMs').getByTestId('tab-narrowed')).toHaveText(`${psms} of 110`)
   await tab(page, 'PSMs').click()
@@ -181,9 +181,9 @@ test('a peptide\'s detail: its proteins and PSMs, each a way on', async ({ page 
   await expect(detail).toBeVisible()
   // the arrow keys of the table go through the peptides, the detail follows
   const first = await detail.getByTestId('peptide-sequence').innerText()
-  await expect(position(page)).toHaveText('1 of 46')
+  await expect(position(page)).toHaveText('1 of 41')
   await page.keyboard.press('ArrowDown')
-  await expect(position(page)).toHaveText('2 of 46')
+  await expect(position(page)).toHaveText('2 of 41')
   await expect(detail.getByTestId('peptide-sequence')).not.toHaveText(first)
 
   // a PSM of the detail opens in the PSMs tab, among the PSMs of the peptide

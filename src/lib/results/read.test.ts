@@ -340,11 +340,10 @@ describe('readSearch', () => {
     // one run of 139 spectra searched as two replicates with the ProSE tool's defaults (since OpenMS #10740: decoys
     // generate with decoy_method keep_termini, the terminal rescoring features; since #10804: the second 13C peak as
     // a precursor isotope error, precursor:isotope_error_min -2), at the preset's PSM FDR of 1 %: 55 target PSMs of
-    // each and no decoy (the fixture keeps the decoys that pass, -keep_decoys), all with one q-value, 0.6 %. The
-    // same ProSE finds the same 55 at 2 % (the example's FDR until app 0.6), and with isotope errors from -1, as
-    // before #10804, 64 of each at 1 % and at 2 % the 66 and one decoy that the pin before had: the cause of the
-    // lower count is the wider isotope range (the calibration, on by default since #10804 as well, changes nothing
-    // here).
+    // each and no decoy (the fixture keeps the decoys that pass, -keep_decoys), all with one q-value, 0.3 %. The
+    // same ProSE finds 77 of each and one decoy at 2 % (the example's FDR until app 0.6), and with isotope errors
+    // from -1, as before #10804, 62 of each at 1 % and the same 77 and one decoy at 2 %: the wider isotope range
+    // lowers the count at 1 % (the calibration, on by default since #10804 as well, changes nothing here).
     expect(tables.psms.count).toBe(110)
     const targets = Array.from(tables.psms.qValue).filter((q, i) => q <= 0.01 && tables.psms.decoy[i] === 0)
     expect(targets.length).toBe(110)
@@ -356,30 +355,30 @@ describe('readSearch', () => {
     expect(ppm.every((e) => Math.abs(e) < 10)).toBe(true)
     expect(ppm.filter((e) => Math.abs(e) > 1).length).toBeGreaterThan(60)
 
-    // 84 of the web app's 120 PSMs (its older ProSE, at 1 %) are among them, the same in all but Percolator's
-    // scores; the other 36 (18 of each replicate) are not reported: Percolator's ranking differs (its features since
+    // 64 of the web app's 120 PSMs (its older ProSE, at 1 %) are among them, the same in all but Percolator's
+    // scores; the other 56 (28 of each replicate) are not reported: Percolator's ranking differs (its features since
     // OpenMS #10717, its q-values since #10721, the tool's decoys and terminal features since #10740, the isotope
-    // errors from -2 since #10804, see above)
+    // errors from -2 since #10804, see above; and since the pin of 24 Nov, upstream's Percolator 3.09 (#10931) and
+    // the runner-up hits it trains on with delta_score and hyperscore_zscore of their own (#10895): the PSMs reported
+    // by both pins have the same features, but 19 of the 55 of each file are others than with the pin of 11 Nov,
+    // which had 84 of the web app's; in both, Percolator's check rejects the learned model and scores the PSMs with
+    // its best single feature; rescoring:classic_training, the former training, changes none of them)
     const p = tables.psms
     const wp = w.tables.psms
     expect(wp.count).toBe(120)
     const rows = webRows(tables, w.tables)
-    expect(rows.filter((i) => i < 0).length).toBe(36)
-    expect(new Set(rows.filter((i) => i >= 0)).size).toBe(84)
+    expect(rows.filter((i) => i < 0).length).toBe(56)
+    expect(new Set(rows.filter((i) => i >= 0)).size).toBe(64)
     // the web app's features, and since #10740 the terminal ones (protein_nterm, met_clipped: the tool's
     // rescoring:terminal_features)
     expect(p.featureNames).toEqual([...wp.featureNames, 'protein_nterm', 'met_clipped'])
     const n = p.featureNames.length
     const wn = wp.featureNames.length
     const features = await featureMatrix({ tables, spectra })
-    // one spectrum of the run (scan 11479, in both replicates) has another peptide than the web app's EAEEAASK:
-    // among the candidates that the isotope errors from -2 add (#10804), the rescoring ranks C(Carbamidomethyl)ATQIDK
-    // first. Its PSMs are not compared with the web app's.
+    // every spectrum of both has the web app's peptide (with the pin of 11 Nov, scan 11479 had C(Carbamidomethyl)ATQIDK,
+    // a candidate of the isotope errors from -2 (#10804), where the web app has EAEEAASK; it no longer passes 1 %)
     const other = otherPeptide(tables, w.tables)
-    expect(other.map((i) => [p.nativeId[i], tables.peptides.openms[p.peptide[i]]])).toEqual([
-      ['controllerType=0 controllerNumber=1 scan=11479', 'C(Carbamidomethyl)ATQIDK'],
-      ['controllerType=0 controllerNumber=1 scan=11479', 'C(Carbamidomethyl)ATQIDK'],
-    ])
+    expect(other).toEqual([])
     rows.forEach((i, k) => {
       if (i < 0 || other.includes(i)) return
       const label = `PSM ${wp.nativeId[k]} of file ${wp.file[k]}`
@@ -419,17 +418,19 @@ describe('readSearch', () => {
   test('Percolator\'s scores of the web app\'s example differ from the web app\'s (one decoy per file); its q-values hardly', async () => {
     // A known difference, not of the reader: with a single decoy PSM per file Percolator's model and PEP estimate are
     // degenerate, and the pinned ProSE's Percolator (develop since #10740: the Newton solver, the runner-up hit of each
-    // spectrum among its training rows, pi0) learns another one than the web app's older ProSE: its scores are on
-    // another scale (even in another order) and its PEPs all but 0 (the web app's up to 0.45). The q-values, from
-    // target-decoy competition, hardly differ: the same PSMs pass 1 %, and so do the proteins. The reader passes on
-    // ProSE's QPX scores.
+    // spectrum among its training rows, pi0; upstream's 3.09 since #10931, its PEPs fitted on the score) learns
+    // another one than the web app's older ProSE: its scores are on another scale (even in another order), its PEPs
+    // all but 0 for the targets (at most 7e-10) and 1 for the decoy of each file (the web app's up to 0.45). The
+    // q-values, from target-decoy competition, hardly differ: the same PSMs pass 1 %, and so do the proteins. The
+    // reader passes on ProSE's QPX scores.
     const w = web('suitability')
     const { tables } = await readSearch(folder(join(fixtures, 'suitability')).files)
     const p = tables.psms
     expectClose('psms.qValue', p.qValue, w.tables.psms.qValue, 0.002)
     const passing = (q: ArrayLike<number | null>, decoy: ArrayLike<number>) => Array.from(q).flatMap((v, i) => (v !== null && v <= 0.01 && !decoy[i] ? [i] : []))
     expect(passing(p.qValue, p.decoy)).toEqual(passing(w.tables.psms.qValue, w.tables.psms.decoy))
-    expect(Array.from(p.pep).every((x) => x >= 0 && x < 1e-12)).toBe(true)
+    expect(Array.from(p.decoy).filter((d) => d === 1).length).toBe(2)
+    expect(Array.from(p.pep).every((x, i) => (p.decoy[i] ? x > 0.99 && x <= 1 : x >= 0 && x < 1e-9))).toBe(true)
     expect(Math.max(...(w.tables.psms.pep as number[]))).toBeGreaterThan(0.4)
     const r = tables.proteins
     const wr = w.tables.proteins
@@ -546,10 +547,10 @@ describe('peaks and predictions belong to their PSM', () => {
     const { spectra, tables } = await readSearch(folder(join(fixtures, 'example')).files)
     const wp = w.predicted
     // the PSMs of both (the test above), each with the web app's row
-    // (not the spectrum that has another peptide than the web app's: the test above)
+    // (not a spectrum that has another peptide than the web app's: the test above has none)
     const other = otherPeptide(tables, w.tables)
     const shared = webRows(tables, w.tables).flatMap((i, k) => (i < 0 || other.includes(i) ? [] : [[i, k]]))
-    expect(shared.length).toBe(82)
+    expect(shared.length).toBe(64)
     for (const [i, k] of shared) {
       const { spectra: sp, spectrumRow, predicted, row } = await spectra.load(i)
       const s = sp.psmSpectrum[spectrumRow] ?? -1

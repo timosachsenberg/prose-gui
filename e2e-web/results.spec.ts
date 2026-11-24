@@ -8,7 +8,7 @@ test.beforeEach(async ({ page }) => {
 test('the key figures (in Overview) say which FDR controls each count', async ({ page }) => {
   await page.getByRole('tab', { name: 'Overview' }).click()
   const header = page.locator('main')
-  await expect(header.getByText('protein groups · 47 proteins · no protein FDR')).toBeVisible()
+  await expect(header.getByText('protein groups · 41 proteins · no protein FDR')).toBeVisible()
   await expect(header.getByText('peptides · at 2 % PSM FDR · no peptide FDR')).toBeVisible()
   await expect(header.getByText(/^PSMs · at 2 % PSM FDR · \d+ % of MS2$/)).toBeVisible()
   await expect(header.getByText('median |precursor error|')).toBeVisible()
@@ -16,7 +16,7 @@ test('the key figures (in Overview) say which FDR controls each count', async ({
 
 test('the tabs: Overview, Proteins, Peptides, PSMs, Samples, QC (by click and by ⌘/Ctrl 1–6)', async ({ page }) => {
   const tabs = page.getByTestId('results-tabs').getByRole('tab')
-  await expect(tabs).toHaveText([/^Overview/, /^Proteins\s*47/, /^Peptides\s*46/, /^PSMs\s*110/, /^Samples/, /^QC/])
+  await expect(tabs).toHaveText([/^Overview/, /^Proteins\s*41/, /^Peptides\s*41/, /^PSMs\s*110/, /^Samples/, /^QC/])
   const content: [string, string][] = [
     ['Overview', 'search-facts'],
     ['Proteins', 'results-table'],

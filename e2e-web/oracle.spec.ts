@@ -262,9 +262,10 @@ test.describe('example', () => {
   })
 })
 
-/** The PSMs of the example whose ions the tests recompute: plain, carbamidomethylated and 3+ (its PSMs at the
- * current pin have no variable modification and no charge above 3). */
-const IONS: { sequence: string; charge?: number }[] = [{ sequence: 'RFYDAVSTFK' }, { sequence: 'CTQELLFGK' }, { sequence: 'GYRPQFYFR', charge: 3 }, { sequence: 'FMHVPELSR', charge: 3 }]
+/** The PSMs of the example whose ions the tests recompute: plain and 3+ (its PSMs at the current pin, OpenMS
+ * 38968f6e, have no modification at all, no carbamidomethylated C either, and no charge above 3; at the pin before,
+ * C(Carbamidomethyl)TQELLFGK was one of them). */
+const IONS: { sequence: string; charge?: number }[] = [{ sequence: 'RFYDAVSTFK' }, { sequence: 'GYRPQFYFR', charge: 3 }, { sequence: 'FMHVPELSR', charge: 3 }]
 
 function modsOf(p: OraclePsm): Map<number, number> {
   const out = new Map<number, number>()
