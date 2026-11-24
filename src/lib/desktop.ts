@@ -2,7 +2,7 @@
 // system's dialogs, drag and drop from the file manager). Everything else of the app works with the
 // plain types below, so that the screens stay the web app's and the tests need no Tauri.
 //
-// Commands (src-tauri/src/lib.rs): tool_info, start_search, cancel_search, read_search_file,
+// Commands (listed in src-tauri/src/lib.rs, in src-tauri/src/commands/): tool_info, start_search, cancel_search, read_search_file,
 // inspect_files, cpu_count, example_files, save_text, save_search_file, history_list, history_save_record,
 // history_save_proteins, history_rename, history_delete, history_files, import_archive_file,
 // save_archive_file, save_curation, answer_close, save_setup_file, open_setup_file, use_opened_setup_file,

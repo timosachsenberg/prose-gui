@@ -10,7 +10,7 @@ set -euo pipefail
 home=$1
 shift
 export XDG_DATA_HOME=$home
-# the file that the specs choose in place of the system dialogs (debug builds only; see lib.rs)
+# the file that the specs choose in place of the system dialogs (debug builds only; see src-tauri/src/commands.rs)
 export PROSE_TEST_DIALOG_PATH=$home/chosen.prose
 # the folder that the specs choose in place of the folder dialog of the searches folder (debug builds only)
 export PROSE_TEST_FOLDER_DIALOG_PATH=$home/chosen-folder
