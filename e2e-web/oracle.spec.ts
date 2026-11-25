@@ -262,9 +262,20 @@ test.describe('example', () => {
   })
 })
 
-/** The PSMs of the example whose ions the tests recompute: plain, carbamidomethylated and 3+ (its PSMs at the
- * current pin have no variable modification and no charge above 3). */
-const IONS: { sequence: string; charge?: number }[] = [{ sequence: 'RFYDAVSTFK' }, { sequence: 'CTQELLFGK' }, { sequence: 'GYRPQFYFR', charge: 3 }, { sequence: 'FMHVPELSR', charge: 3 }]
+/** The PSMs whose ions the tests recompute, of the example unless `fixture` says another: plain and 3+ from the
+ * example (whose PSMs at the current pin, OpenMS 38968f6e, have no modification and no charge above 3), a variable
+ * modification from `mods` (Oxidation (M), 3+: opened at the PSM FDR it was searched with, FDR:PSM 1, since its
+ * PSMs have q = 1/3) and the fixed one from `no-decoys` (Carbamidomethyl (C), twice: the example's run without decoys
+ * or FDR, whose PSMs are not validated, which the ions do not need). All are searched with a fragment tolerance in
+ * Da. */
+const IONS: { sequence: string; charge?: number; fixture?: string; psmFdr?: number; crowded?: boolean }[] = [
+  { sequence: 'RFYDAVSTFK' },
+  { sequence: 'GYRPQFYFR', charge: 3 },
+  { sequence: 'FMHVPELSR', charge: 3 },
+  // (28 residues at 3+: more matched ions than the plot has room to label)
+  { sequence: 'IALSRPNVEVVALNDPFITNDYAAYMFK', charge: 3, fixture: 'mods', psmFdr: 1, crowded: true },
+  { sequence: 'GDDVILLAGYFCEQCR', charge: 2, fixture: 'no-decoys' },
+]
 
 function modsOf(p: OraclePsm): Map<number, number> {
   const out = new Map<number, number>()
@@ -278,15 +289,17 @@ function modsOf(p: OraclePsm): Map<number, number> {
   return out
 }
 
-for (const { sequence, charge } of IONS) {
-  test(`${sequence}${charge ? ` ${charge}+` : ''}: the ion table's b/y m/z, the matched ions and the spectrum labels against an independent fragment computation`, async ({ page }) => {
-    const f = await loadFixture('example')
-    const psm = targetPsms(f).find((p) => p.sequence === sequence && (charge === undefined || p.charge === charge))!
+for (const { sequence, charge, fixture = 'example', psmFdr, crowded = false } of IONS) {
+  test(`${sequence}${charge ? ` ${charge}+` : ''}${fixture === 'example' ? '' : ` (${fixture})`}: the ion table's b/y m/z, the matched ions and the spectrum labels against an independent fragment computation`, async ({ page }) => {
+    const f = await loadFixture(fixture)
+    // (any target PSM of the fixture: mods is searched without an FDR filter, its PSMs have q = 1/3)
+    const psm = targetPsms(f, 1).find((p) => p.sequence === sequence && (charge === undefined || p.charge === charge))!
     expect(psm, `${sequence} in the fixture`).toBeTruthy()
-    await openFixture(page)
+    await openFixture(page, fixture, psmFdr)
     const view = await openPsm(page, sequence, charge)
     await expect(view.getByTestId('psm-header')).toContainText(`${psm.charge}+ · m/z ${psm.observedMz.toFixed(4)}`)
-    await expect(view.getByTestId('psm-header')).toContainText(`q ${Number(psm.q.toPrecision(2))}`)
+    // (a dash for a PSM without q-value: no-decoys has none)
+    await expect(view.getByTestId('psm-header')).toContainText(`q ${Number.isNaN(psm.q) ? '–' : Number(psm.q.toPrecision(2))}`)
 
     const ions = byIons(psm.sequence, modsOf(psm), 1)
     const cells = view.getByTestId('ion-table').locator('td[data-ion]')
@@ -307,6 +320,25 @@ for (const { sequence, charge } of IONS) {
     await view.getByTestId('psm-side-toggle').click()
     await expect(view.getByTestId('psm-side')).toBeHidden()
     const labels = () => view.getByTestId('peak-label').evaluateAll((ts) => ts.flatMap((t) => (t.textContent ?? '').split(/[\s,/]+/).filter((l) => /^[by]\d+$/.test(l))).sort())
-    await expect.poll(labels, { message: 'spectrum labels' }).toEqual([...matched.keys()].sort())
+    if (!crowded) {
+      await expect.poll(labels, { message: 'spectrum labels' }).toEqual([...matched.keys()].sort())
+      return
+    }
+    // a crowded spectrum labels the ions it has room for (the most intense peaks first) and no other; a matched ion
+    // left without a label keeps its peak drawn as matched, at the x of its m/z on the plot's scale
+    await expect.poll(async () => (await labels()).length, { message: 'spectrum labels' }).toBeGreaterThan(0)
+    const shownLabels = await labels()
+    expect(shownLabels.filter((l) => !matched.has(l)), 'labels of ions that are not matched').toEqual([])
+    const plot = await view.getByTestId('spectrum').evaluate((svg) => ({
+      domain: svg.getAttribute('data-mz-domain')!.split(' ').map(Number),
+      range: svg.getAttribute('data-x-range')!.split(' ').map(Number),
+      xs: Array.from(svg.querySelectorAll('[data-testid="matched-peaks"]')).flatMap((p) => Array.from((p.getAttribute('d') ?? '').matchAll(/M(-?[\d.]+) /g), (m) => Number(m[1]))),
+    }))
+    const unlabelled = [...matched.entries()].filter(([ion]) => !shownLabels.includes(ion))
+    expect(unlabelled.length, 'matched ions without a label').toBeLessThan(matched.size)
+    for (const [ion, mz] of unlabelled) {
+      const x = plot.range[0] + ((mz - plot.domain[0]) * (plot.range[1] - plot.range[0])) / (plot.domain[1] - plot.domain[0])
+      expect(plot.xs.some((sx) => Math.abs(sx - x) <= 0.1), `${ion} (m/z ${mz.toFixed(4)}): a matched stick at x ${x.toFixed(1)}`).toBe(true)
+    }
   })
 }

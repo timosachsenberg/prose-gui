@@ -61,8 +61,8 @@ async function settle(target: HTMLElement) {
 }
 
 // a PSM of the example with two peaks a Y apart, and one of another spectrum
-const PSM = 'DLLTAYK'
-const OTHER = 'TWFVEAK'
+const PSM = 'LYTSLGDAAVGR'
+const OTHER = 'SVDTPVIGLK'
 // a PSM with many annotated ions of every kind once all are shown
 const RICH = 'VATEFSETAPATLK'
 
