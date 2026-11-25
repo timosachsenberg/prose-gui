@@ -21,8 +21,11 @@ export function useMemoryHistory(): MemoryBackend {
   return backend
 }
 
-/** Adds fixture `name` to `backend` as search `id`, saves it to History and opens it in Results. */
-export async function openFixture(backend: MemoryBackend, name: string, id = '100-0'): Promise<void> {
+/**
+ * Adds fixture `name` to `backend` as search `id`, saves it to History and opens it in Results, as searched at the
+ * PSM FDR `psmFdr` (the record's; `mods` is searched without a PSM FDR filter, FDR:PSM 1).
+ */
+export async function openFixture(backend: MemoryBackend, name: string, id = '100-0', psmFdr = 0.02): Promise<void> {
   const prefix = `../results/fixtures/${name}/`
   const paths = Object.keys(files).filter((p) => p.startsWith(prefix))
   if (paths.length === 0) throw new Error(`No fixture ${name}.`)
@@ -41,7 +44,7 @@ export async function openFixture(backend: MemoryBackend, name: string, id = '10
     createdAt: '2026-10-20T10:00:00.000Z',
     outcome: { ...read, seconds: 12.5 },
     design: resolveDesign(inputs.map((f, i) => ({ id: f.id, fileName: f.name, fileSize: 1000, condition: i % 2 ? 'b' : 'a' }))),
-    psmFdr: 0.02,
+    psmFdr,
     proteinFdr: 0.01,
     settings: {
       // what ProSE recorded, so that the checks of the search find no setting it did not use
