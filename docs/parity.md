@@ -157,7 +157,7 @@ retries with them too). A PSM whose `spectrum_reference` is null has no stored s
 second spectrum of a native ID, whose mz row is the first's (the PSM view says so); such a PSM is never matched by
 another key (`run_file_name`, `scan`). A row whose `scan_start_time` is not the PSM's RT (the first of several spectra
 of the PSM's native ID) is not the PSM's either. Both are read by row group (256 rows) when the PSM view opens a PSM,
-and the last four row groups of each are kept (`src/lib/results/read.ts`, `SearchResult.spectra.load`). Nothing of
+and the last four row groups of each are kept (`src/lib/results/psm-spectra.ts`, `SearchResult.spectra.load`). Nothing of
 them is read when the search opens.
 
 ## ResultTables

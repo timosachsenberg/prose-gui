@@ -313,10 +313,10 @@ macOS, and on Windows it needs msedgedriver of the runner's WebView2 version.
   share a stem go in as hard links `<n>__<name>` in the search folder, which works on the volume of the app's
   data only and is removed when the search ends; on another volume the search is refused with a message asking
   to rename one of the files. An input of stem `quantms` goes in as such a link as well: ProSE refuses it, since
-  its merged QPX views are `quantms.*.parquet`. Nothing is ever copied (`args.rs`, `InputLinks`,
+  its merged QPX views are `quantms.*.parquet`. Nothing is ever copied (`args/inputs.rs`, `InputLinks`,
   `input_placements`). The app's own example is a hard link, or a copy where the app is on another drive than its
   data.
-- **Cancel** ends a job object the tool runs in (`run.rs`): Windows has no SIGTERM for a console tool; the job
+- **Cancel** ends a job object the tool runs in (`run/sys_windows.rs`): Windows has no SIGTERM for a console tool; the job
   takes every process the tool starts, and it is closed with the app (`KILL_ON_JOB_CLOSE`), so ProSE ends with
   the app however the app ends. The tool runs without a console window.
 - **If the app dies** while ProSE runs: on Linux ProSE gets SIGKILL (`PR_SET_PDEATHSIG`), on Windows the job
@@ -328,7 +328,7 @@ macOS, and on Windows it needs msedgedriver of the runner's WebView2 version.
   app (SIGPIPE is at its default in ProSE: Rust's `Command` resets the app's ignored SIGPIPE in the child, and
   OpenMS sets no handler), at the end of its current step. The next start of the app sweeps the folder. The
   watchdog's code is the same on every Unix and is tested on Linux and in the macOS shim job
-  (`tests/watchdog.rs`, and a watched search in `tests/shim.rs`).
+  (`tests/watchdog.rs`, and a watched search in `tests/shim/running.rs`).
 - **Folders**: `finish_partial` retries the rename with back-off (another instance's sweep may hold the
   deleted `.lock` open), and partial folders are removed lock file first, also with back-off (`history.rs`).
 - **File names** the app suggests never are device names (`CON`, `NUL.txt`, ...: a `_` in front), and their
