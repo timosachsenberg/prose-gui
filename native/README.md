@@ -155,7 +155,11 @@ rescoring; `-write_ini` gives them, so the parameter table has them. Since devel
 longer a switch, with six parameters more), corrects the m/z by the errors it measures (`calibration:recalibrate
 offset`, 10 RT chunks) and searches a second 13C peak (`precursor:isotope_error_min -2`); the app's notices, Help and
 methods text say so, and the cases compared with the web app's results switch the three off
-(`scripts/results-example.mjs`). The per-input QPX files are in
+(`scripts/results-example.mjs`). Since develop `38968f6e` (24 Nov) the vcpkg build has OpenMS' overlay of boost-locale
+with the upstream fix for CMake 4.5 (#10904; Boost.Locale 1.91 does not configure with it, which the runner images
+have), `decoy_method keep_termini` keeps the residues of the search enzyme's cleavage rule and P in place instead of K,
+R and P for every enzyme (#10882; Trypsin/P decoys are unchanged), and the vendored Percolator is upstream's 3.09 with
+its new training (#10931; `rescoring:classic_training` brings back the former one; the app does not offer it). The per-input QPX files are in
 `qpx/runs/`; the reader also reads the layout of app 0.1.x (per-input files next to `quantms.*`). CI checks the commit out
 of `OPENMS_REPO` (OpenMS/OpenMS without the file); it never builds from local state. Build it with
 

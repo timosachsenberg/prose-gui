@@ -8,9 +8,9 @@ import { fileURLToPath } from 'node:url'
 /** The example's run and FASTA, as the app bundles them (src-tauri/resources/example). */
 /**
  * The PSMs ProSE finds in one copy of the example's run at its settings (1 % PSM FDR), and in the example (two copies):
- * a property of the engine at native/OPENMS_COMMIT (d80de8d557), to update with the pin. (66 at the pin before:
- * since OpenMS #10804 the tool also searches a second 13C peak, precursor:isotope_error_min -2, and in a run this
- * small the candidates it adds leave 55, at 1 % as at 2 %; with -1 the same ProSE finds 64 at 1 % and the 66 at 2 %.)
+ * a property of the engine at native/OPENMS_COMMIT (38968f6e), to update with the pin. (66 at the pins before OpenMS
+ * #10804, since which the tool also searches a second 13C peak, precursor:isotope_error_min -2: in a run this small
+ * the candidates it adds leave 55 at 1 % (77 at 2 %); with -1 the same ProSE finds 62 at 1 % and 77 at 2 %.)
  */
 export const EXAMPLE_RUN_PSMS = 55
 export const EXAMPLE_PSMS = String(2 * EXAMPLE_RUN_PSMS)

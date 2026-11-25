@@ -17,9 +17,12 @@ export const test = base.extend<{ consoleErrors: string[] }>({
 })
 export { expect }
 
-/** Opens the bundled fixture result `name` in Results (the dev hook `?fixture=`). */
-export async function openFixture(page: Page, name = 'example'): Promise<void> {
-  await page.goto(`/?fixture=${name}#/results`)
+/**
+ * Opens the bundled fixture result `name` in Results (the dev hook `?fixture=`), as searched at the PSM FDR `psmFdr`
+ * (default the hook's, FIXTURE_PSM_FDR).
+ */
+export async function openFixture(page: Page, name = 'example', psmFdr?: number): Promise<void> {
+  await page.goto(`/?fixture=${name}${psmFdr === undefined ? '' : `&psmFdr=${psmFdr}`}#/results`)
   await expect(page.getByTestId('results-tabs')).toBeVisible()
 }
 

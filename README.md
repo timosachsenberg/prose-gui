@@ -212,12 +212,12 @@ only: ProSE adds the decoys, the app the cRAP contaminants). The settings are th
 fragment tolerance of 0.5 Da for the ion-trap fragments and the protein FDR off: the run is too small for a
 protein FDR, so its proteins are listed without one (Overview says "not applied"). Leaving the
 example (other files or another database, Remove all, Start over) gives these two settings back to the preset's, unless
-you changed them. The search takes a few seconds and finds 55 target PSMs in each replicate (46 peptides, 47
-proteins), with a median precursor error of 4.1 ppm; their q-value is 0.6 %, and a PSM FDR of 2 % finds the same 55.
+you changed them. The search takes a few seconds and finds 55 target PSMs in each replicate (41 peptides, 41
+proteins), with a median precursor error of 4.1 ppm; their q-value is 0.3 %, and a PSM FDR of 2 % finds 77.
 (Until app 0.6 the example searched at 2 %, when its PSMs could not pass 1 %, and found 66 per replicate: since
 OpenMS #10804 the tool also searches a second 13C peak, `precursor:isotope_error_min` −2, and in a run this small the
-candidates that adds leave fewer PSMs within the FDR. With −1, set in "All parameters", it finds 64 at 1 % and the 66
-at 2 %.) The run also has too few PSMs for Percolator's full model: Percolator falls back to its best single feature
+candidates that adds leave fewer PSMs within 1 %. With −1, set in "All parameters", it finds 62 at 1 % and 77 at
+2 %.) The run also has too few PSMs for Percolator's full model: Percolator falls back to its best single feature
 (Overview says why).
 
 ## Licence
